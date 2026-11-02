@@ -23,6 +23,8 @@ import {
   byKind,
   setupState,
   setupSteps,
+  mergeNetApps,
+  sortedNetRows,
 } from "../src/lib/utils/dashboard.js";
 import { readFileSync } from "node:fs";
 
@@ -308,3 +310,43 @@ console.log(
 console.log(
   "PASS: sensor helper pipe summary, fan groups, setup states and steps",
 );
+
+{
+  let rows = mergeNetApps(
+    new Map(),
+    [
+      { name: "chrome.exe", rx: 1000, tx: 10 },
+      { name: "chrome.exe", rx: 500, tx: 0 },
+      { name: "steam.exe", rx: 3000, tx: 0 },
+      { name: "idle.exe", rx: 0, tx: 0 },
+    ],
+    1000,
+  );
+  assert.deepEqual(
+    sortedNetRows(rows).map((r) => [r.name, r.rx, r.tx]),
+    [
+      ["steam.exe", 3000, 0],
+      ["chrome.exe", 1500, 10],
+      ["idle.exe", 0, 0],
+    ],
+  );
+  // Next second: steam is quiet (kept, at 0), chrome continues.
+  rows = mergeNetApps(rows, [{ name: "chrome.exe", rx: 200, tx: 0 }], 2000);
+  assert.deepEqual(
+    sortedNetRows(rows).map((r) => [r.name, r.rx]),
+    [
+      ["chrome.exe", 200],
+      ["idle.exe", 0],
+      ["steam.exe", 0],
+    ],
+  );
+  // 31 s after its last traffic an app drops out.
+  rows = mergeNetApps(rows, [], 31_500);
+  assert.deepEqual(
+    sortedNetRows(rows).map((r) => r.name),
+    ["chrome.exe"],
+  );
+  rows = mergeNetApps(rows, [], 40_000);
+  assert.equal(rows.size, 0);
+}
+console.log("PASS: per-app network rows group, stick for 30 s and sort");

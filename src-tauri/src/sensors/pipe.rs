@@ -39,9 +39,77 @@ fn kind(text: &str) -> Option<SensorKind> {
     }
 }
 
-/// One pipe line -> (timestamp, sensors). Sensors without a finite value or of
-/// another type are dropped; anything that isn't a helper line is `None`.
-pub fn parse_line(line: &str) -> Option<(u64, Vec<Sensor>)> {
+/// Bytes one process sent/received during `NetSample::ms`.
+#[derive(Clone, Debug, PartialEq)]
+pub struct NetProc {
+    pub pid: u32,
+    pub name: Option<String>,
+    pub rx: u64,
+    pub tx: u64,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct NetSample {
+    pub ms: u64,
+    pub procs: Vec<NetProc>,
+}
+
+/// What the UI gets: per-process rates in bytes per second.
+#[derive(Clone, Debug, PartialEq, serde::Serialize)]
+pub struct NetApp {
+    pub pid: u32,
+    pub name: String,
+    pub rx: f64,
+    pub tx: f64,
+}
+
+/// Bytes per interval -> bytes/s, named with winperf's own process names
+/// (same as the process table) and the helper's guess as fallback.
+pub fn app_rates(sample: &NetSample, name_of: impl Fn(u32) -> Option<String>) -> Vec<NetApp> {
+    let per_second = 1000.0 / sample.ms as f64;
+    sample
+        .procs
+        .iter()
+        .map(|p| NetApp {
+            pid: p.pid,
+            name: name_of(p.pid)
+                .or_else(|| p.name.clone())
+                .unwrap_or_else(|| format!("PID {}", p.pid)),
+            rx: p.rx as f64 * per_second,
+            tx: p.tx as f64 * per_second,
+        })
+        .collect()
+}
+
+/// One helper line.
+#[derive(Clone, Debug, PartialEq)]
+pub struct HelperLine {
+    pub ts: u64,
+    pub sensors: Vec<Sensor>,
+    /// Present while the helper's ETW network session runs.
+    pub net: Option<NetSample>,
+}
+
+fn parse_net(value: &Value) -> Option<NetSample> {
+    let ms = value["ms"].as_u64().filter(|ms| *ms > 0)?;
+    let procs = value["procs"]
+        .as_array()?
+        .iter()
+        .filter_map(|p| {
+            Some(NetProc {
+                pid: u32::try_from(p["pid"].as_u64()?).ok()?,
+                name: p["name"].as_str().map(str::to_owned),
+                rx: p["rx"].as_u64().unwrap_or(0),
+                tx: p["tx"].as_u64().unwrap_or(0),
+            })
+        })
+        .collect();
+    Some(NetSample { ms, procs })
+}
+
+/// One pipe line. Sensors without a finite value or of another type are
+/// dropped; anything that isn't a helper line is `None`.
+pub fn parse_line(line: &str) -> Option<HelperLine> {
     let root: Value = serde_json::from_str(line.trim()).ok()?;
     let ts = root["ts"].as_u64()?;
     let sensors = root["sensors"]
@@ -58,7 +126,11 @@ pub fn parse_line(line: &str) -> Option<(u64, Vec<Sensor>)> {
             })
         })
         .collect();
-    Some((ts, sensors))
+    Some(HelperLine {
+        ts,
+        sensors,
+        net: parse_net(&root["net"]),
+    })
 }
 
 #[cfg(target_os = "windows")]
@@ -73,7 +145,7 @@ mod client {
         time::Duration,
     };
 
-    type Latest = Arc<Mutex<Option<(u64, Vec<Sensor>)>>>;
+    type Latest = Arc<Mutex<Option<(u64, HelperLine)>>>;
 
     /// Reads the pipe on its own thread so a slow or absent helper never
     /// blocks sampling; `read` hands out the newest line if it is fresh.
@@ -90,10 +162,10 @@ mod client {
                 Ok(pipe) => {
                     for line in BufReader::new(pipe).lines() {
                         let Ok(line) = line else { break };
-                        if let Some((_, sensors)) = parse_line(&line) {
+                        if let Some(parsed) = parse_line(&line) {
                             let now = now_ms();
                             LAST_LINE.store(now, Ordering::Relaxed);
-                            *latest.lock().unwrap() = Some((now, sensors));
+                            *latest.lock().unwrap() = Some((now, parsed));
                         }
                     }
                     std::thread::sleep(Duration::from_secs(1));
@@ -128,8 +200,13 @@ mod client {
                     .spawn(move || pump(latest));
             }
             let guard = self.latest.lock().ok()?;
-            let (at, sensors) = guard.as_ref()?;
-            (now_ms().saturating_sub(*at) < 5_000).then(|| sensors.clone())
+            let (at, line) = guard.as_ref()?;
+            (now_ms().saturating_sub(*at) < 5_000).then(|| line.sensors.clone())
+        }
+        fn net(&mut self) -> Option<NetSample> {
+            let guard = self.latest.lock().ok()?;
+            let (at, line) = guard.as_ref()?;
+            (now_ms().saturating_sub(*at) < 5_000).then(|| line.net.clone())?
         }
     }
 }
@@ -142,6 +219,7 @@ mod client {
 pub struct FakeReplay {
     lines: Vec<String>,
     next: usize,
+    net: Option<NetSample>,
 }
 
 #[cfg(debug_assertions)]
@@ -150,7 +228,11 @@ impl FakeReplay {
         let path = std::env::var_os("WINPERF_FAKE_SENSORS")?;
         let text = std::fs::read_to_string(path).ok()?;
         let lines: Vec<String> = text.lines().map(str::to_owned).collect();
-        (!lines.is_empty()).then_some(Self { lines, next: 0 })
+        (!lines.is_empty()).then_some(Self {
+            lines,
+            next: 0,
+            net: None,
+        })
     }
 }
 
@@ -162,9 +244,13 @@ impl SensorSource for FakeReplay {
     fn read(&mut self) -> Option<Vec<Sensor>> {
         let line = &self.lines[self.next % self.lines.len()];
         self.next += 1;
-        let (_, sensors) = parse_line(line)?;
+        let parsed = parse_line(line)?;
         LAST_LINE.store(now_ms(), Ordering::Relaxed);
-        Some(sensors)
+        self.net = parsed.net;
+        Some(parsed.sensors)
+    }
+    fn net(&mut self) -> Option<NetSample> {
+        self.net.clone()
     }
 }
 
@@ -177,7 +263,7 @@ mod tests {
     fn fixture_lines_parse() {
         let lines: Vec<_> = FIXTURE.lines().collect();
         assert_eq!(lines.len(), 3);
-        let (ts, sensors) = parse_line(lines[0]).unwrap();
+        let HelperLine { ts, sensors, net } = parse_line(lines[0]).unwrap();
         assert_eq!(ts, 1_793_612_400_000);
         // 19 written, Load is never written; null/NaN/Infinity values dropped.
         assert_eq!(sensors.len(), 15);
@@ -200,9 +286,53 @@ mod tests {
             .unwrap();
         assert_eq!(duty.value, 42.35);
         assert!(!sensors.iter().any(|s| s.hardware.starts_with("Weird")));
-        let (_, later) = parse_line(lines[2]).unwrap();
+        let net = net.unwrap();
+        assert_eq!(net.ms, 1000);
+        assert_eq!(net.procs.len(), 6);
+        assert_eq!(
+            net.procs[1],
+            NetProc {
+                pid: 10412,
+                name: Some("chrome".into()),
+                rx: 1_200_000,
+                tx: 35_000
+            }
+        );
+        let later = parse_line(lines[2]).unwrap().sensors;
         let package = later.iter().find(|s| s.name == "CPU Package").unwrap();
         assert_eq!(package.value, 54.0);
+    }
+
+    #[test]
+    fn rates_are_per_second_and_prefer_winperf_names() {
+        let sample = NetSample {
+            ms: 500,
+            procs: vec![
+                NetProc {
+                    pid: 1,
+                    name: Some("chrome".into()),
+                    rx: 1000,
+                    tx: 10,
+                },
+                NetProc {
+                    pid: 2,
+                    name: Some("svchost".into()),
+                    rx: 0,
+                    tx: 50,
+                },
+                NetProc {
+                    pid: 3,
+                    name: None,
+                    rx: 5,
+                    tx: 0,
+                },
+            ],
+        };
+        let apps = app_rates(&sample, |pid| (pid == 1).then(|| "chrome.exe".to_string()));
+        assert_eq!(apps[0].name, "chrome.exe");
+        assert_eq!((apps[0].rx, apps[0].tx), (2000.0, 20.0));
+        assert_eq!(apps[1].name, "svchost");
+        assert_eq!(apps[2].name, "PID 3");
     }
 
     #[test]
@@ -210,7 +340,9 @@ mod tests {
         assert!(parse_line("").is_none());
         assert!(parse_line("{\"sensors\":[]}").is_none());
         assert!(parse_line("[1,2]").is_none());
-        let (_, s) = parse_line(
+        let HelperLine {
+            sensors: s, net, ..
+        } = parse_line(
             r#"{"ts":1,"sensors":[{"hw":"A","id":"/a/0/fan/0","name":"F","type":"Fan","value":"12"},
                {"hw":"A","name":"T","type":"Temperature","value":30.5},
                {"hw":"A","id":"x","name":"V","type":"Voltage","value":1.2}]}"#,
@@ -218,5 +350,27 @@ mod tests {
         .unwrap();
         assert_eq!(s.len(), 1);
         assert_eq!((s[0].name.as_str(), s[0].id.as_str()), ("T", ""));
+        assert!(net.is_none()); // a helper without ETW sends no "net"
+        let bad = parse_line(
+            r#"{"ts":1,"sensors":[],"net":{"ms":500,"procs":[{"pid":-1},{"pid":7,"rx":10}]}}"#,
+        )
+        .unwrap()
+        .net
+        .unwrap();
+        assert_eq!(
+            bad.procs,
+            vec![NetProc {
+                pid: 7,
+                name: None,
+                rx: 10,
+                tx: 0
+            }]
+        );
+        assert!(
+            parse_line(r#"{"ts":1,"sensors":[],"net":{"ms":0,"procs":[]}}"#)
+                .unwrap()
+                .net
+                .is_none()
+        );
     }
 }

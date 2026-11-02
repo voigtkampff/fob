@@ -43,6 +43,9 @@ pub struct Extra {
     /// winperf: Unix seconds of the last real start (cold boot or Fast
     /// Startup resume); `None` = only the kernel uptime is known.
     pub started_at: Option<u64>,
+    /// winperf: per-process network rates from the sensor helper (ETW);
+    /// `None` when the helper isn't running.
+    pub net_apps: Option<Vec<crate::sensors::pipe::NetApp>>,
 }
 #[cfg(target_os = "windows")]
 fn commit_charge() -> Option<(u64, u64)> {
@@ -264,8 +267,15 @@ impl Hub {
             }
             gpus
         };
+        let mut sensors = state.sensors.lock().map_err(|e| e.to_string())?.read(&gpus);
+        let net_apps = sensors.net.take().map(|sample| {
+            let names: std::collections::HashMap<u32, &str> =
+                processes.iter().map(|p| (p.pid, p.name.as_str())).collect();
+            crate::sensors::pipe::app_rates(&sample, |pid| names.get(&pid).map(|n| n.to_string()))
+        });
         let extra = Extra {
-            sensors: state.sensors.lock().map_err(|e| e.to_string())?.read(&gpus),
+            sensors,
+            net_apps,
             commit: commit_charge(),
             started_at: crate::boot::last_start(now_ms() / 1000, stats.uptime),
         };

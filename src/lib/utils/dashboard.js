@@ -329,3 +329,37 @@ export function setupSteps(status) {
   );
   return steps;
 }
+
+/** Per-app network rows for the network detail: apps grouped by name (a
+ * browser's processes add up), kept for `keepMs` after their last traffic so
+ * the list doesn't jump, busiest first.
+ * @param {Map<string, { name: string, rx: number, tx: number, seen: number }>} prev
+ * @param {{ name: string, rx: number, tx: number }[]} apps current rates (B/s)
+ * @param {number} now ms
+ */
+export function mergeNetApps(prev, apps, now, keepMs = 30000) {
+  /** @type {Map<string, { name: string, rx: number, tx: number, seen: number }>} */
+  const next = new Map();
+  for (const [name, row] of prev)
+    if (now - row.seen <= keepMs) next.set(name, { ...row, rx: 0, tx: 0 });
+  for (const app of apps) {
+    const row = next.get(app.name) ?? {
+      name: app.name,
+      rx: 0,
+      tx: 0,
+      seen: now,
+    };
+    row.rx += app.rx;
+    row.tx += app.tx;
+    if (app.rx + app.tx > 0) row.seen = now;
+    next.set(app.name, row);
+  }
+  return next;
+}
+
+/** @param {Map<string, { name: string, rx: number, tx: number, seen: number }>} rows */
+export function sortedNetRows(rows) {
+  return [...rows.values()].sort(
+    (a, b) => b.rx + b.tx - (a.rx + a.tx) || natural.compare(a.name, b.name),
+  );
+}

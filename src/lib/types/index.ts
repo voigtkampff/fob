@@ -222,6 +222,14 @@ export interface FrameExtra {
   commit: [number, number] | null;
   /** Unix seconds of the last real start (cold boot / Fast Startup resume). */
   started_at?: number | null;
+  /** Per-process network rates (bytes/s) from the sensor helper's ETW session. */
+  net_apps?: NetApp[] | null;
+}
+export interface NetApp {
+  pid: number;
+  name: string;
+  rx: number;
+  tx: number;
 }
 export interface MonitorSnapshot {
   port_error?: string | null;

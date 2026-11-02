@@ -7,6 +7,9 @@
 //  - Started at logon by the "winperf-sensors" scheduled task (highest
 //    privileges). It keeps running; while no client is connected it does not
 //    touch the hardware, it only sleeps.
+//  - While a client is connected it also runs the "winperf-net" ETW session
+//    (Microsoft-Windows-Kernel-Network) for per-process network bytes; it is
+//    stopped as soon as no client is connected, and on exit.
 //  - LibreHardwareMonitorLib takes global mutexes around ISA/SMBus access, so
 //    this coexists with FanControl, HWiNFO-style tools and LHM itself.
 using System;
@@ -34,6 +37,10 @@ namespace WinperfSensors
 
         static Snapshot latest;
         static int clients;
+        static readonly NetAgg netAgg = new NetAgg();
+        static NetTrace net;
+        static long netSince;
+        const int MaxNetProcs = 64;
 
         static int Main(string[] args)
         {
@@ -69,6 +76,9 @@ namespace WinperfSensors
             };
             computer.Open();
             Log("started");
+            NetTrace.StopStale();
+            net = new NetTrace(netAgg);
+            AppDomain.CurrentDomain.ProcessExit += (_, __) => net.Stop();
             try
             {
                 if (once)
@@ -80,12 +90,18 @@ namespace WinperfSensors
                 new Thread(Accept) { IsBackground = true, Name = "pipe" }.Start();
                 while (true)
                 {
-                    if (Volatile.Read(ref clients) > 0) Update(computer);
+                    var connected = Volatile.Read(ref clients) > 0;
+                    if (connected && !net.Running && net.Start())
+                        netSince = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+                    else if (!connected && net.Running)
+                        net.Stop();
+                    if (connected) Update(computer);
                     Thread.Sleep(1000);
                 }
             }
             finally
             {
+                net?.Stop();
                 computer.Close();
             }
         }
@@ -95,8 +111,34 @@ namespace WinperfSensors
             var list = new List<Reading>();
             foreach (var hw in computer.Hardware) Walk(hw, list);
             var ts = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
-            var line = Wire.Line(ts, list) + "\n";
+            List<NetUsage> procs = null;
+            long ms = 0;
+            if (net != null && net.Running)
+            {
+                procs = netAgg.Drain();
+                if (procs.Count > MaxNetProcs) procs.RemoveRange(MaxNetProcs, procs.Count - MaxNetProcs);
+                for (var i = 0; i < procs.Count; i++)
+                {
+                    var p = procs[i];
+                    p.Name = ProcessName(p.Pid);
+                    procs[i] = p;
+                }
+                ms = Math.Max(1, ts - netSince);
+                netSince = ts;
+            }
+            var line = Wire.Line(ts, list, procs, ms) + "\n";
             Volatile.Write(ref latest, new Snapshot { Ts = ts, Bytes = Encoding.UTF8.GetBytes(line) });
+        }
+
+        static string ProcessName(uint pid)
+        {
+            if (pid == 0) return "Idle";
+            if (pid == 4) return "System";
+            try
+            {
+                using (var p = System.Diagnostics.Process.GetProcessById((int)pid)) return p.ProcessName;
+            }
+            catch { return null; } // exited
         }
 
         static void Walk(IHardware hw, List<Reading> list)
@@ -183,7 +225,7 @@ namespace WinperfSensors
 
         static readonly object logLock = new object();
 
-        static void Log(string message)
+        internal static void Log(string message)
         {
             try
             {

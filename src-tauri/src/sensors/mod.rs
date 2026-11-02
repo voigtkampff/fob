@@ -37,12 +37,20 @@ pub struct SensorReport {
     pub sensors: Vec<Sensor>,
     /// Names of the sources that answered this round.
     pub sources: Vec<String>,
+    /// Per-process network bytes from the helper's ETW session (not sent to
+    /// the UI as is; `sampling` turns it into named per-app rates).
+    #[serde(skip)]
+    pub net: Option<pipe::NetSample>,
 }
 
 /// A place sensor readings come from. `None` = source not available right now.
 pub trait SensorSource: Send + Debug {
     fn name(&self) -> &'static str;
     fn read(&mut self) -> Option<Vec<Sensor>>;
+    /// Per-process network bytes that came with the last `read`, if any.
+    fn net(&mut self) -> Option<pipe::NetSample> {
+        None
+    }
 }
 
 /// NVIDIA GPU temperature / fan duty, read through NeoHtop's NVML GPU code.
@@ -104,6 +112,7 @@ impl SensorHub {
             if let Some(sensors) = source.read() {
                 report.sources.push(source.name().into());
                 report.sensors.extend(sensors);
+                report.net = source.net();
                 break;
             }
         }

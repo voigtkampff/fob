@@ -39,6 +39,36 @@ static class WireTests
         yield return new Reading("Weird \"name\"\\ \t", "/x/0/temperature/0", "Ünïcode °", "Temperature", float.PositiveInfinity);
     }
 
+    // Per-process network bytes per second as NetAgg would drain them.
+    static List<NetUsage> Net(int tick)
+    {
+        var agg = new NetAgg();
+        var names = new Dictionary<uint, string>
+        {
+            [10412] = "chrome", [7788] = "steam", [5120] = "Dropbox", [3344] = "svchost",
+            [9001] = "Grok Bot", [4] = "System", [6200] = "WeChat",
+        };
+        // chrome: 1.2 MB/s down over TCPv4 + IPv6, a little up
+        agg.Add(11, 10412, 800_000u + (uint)tick * 50_000); agg.Add(27, 10412, 400_000);
+        agg.Add(10, 10412, 35_000);
+        agg.Add(11, 7788, 2_400_000u - (uint)tick * 300_000);  // steam download
+        agg.Add(10, 5120, 180_000); agg.Add(11, 5120, 12_000); // Dropbox upload
+        agg.Add(43, 3344, 2_048); agg.Add(42, 3344, 1_024);    // svchost UDP (DNS)
+        agg.Add(59, 9001, 64_000); agg.Add(58, 9001, 9_000);   // UDP over IPv6
+        agg.Add(11, 4, 512);
+        agg.Add(18, 6200, 99_999);                             // ignored: "copied on behalf of user"
+        agg.Add(12, 6200, 1);                                  // ignored: connect
+        var list = agg.Drain();
+        Check(agg.Drain().Count == 0, "drain resets");
+        for (var i = 0; i < list.Count; i++)
+        {
+            var u = list[i];
+            u.Name = names[u.Pid];
+            list[i] = u;
+        }
+        return list;
+    }
+
     static int Main(string[] args)
     {
         // Prove the output does not depend on the machine's culture (decimal commas).
@@ -46,7 +76,8 @@ static class WireTests
         var fixture = Path.Combine(AppContext.BaseDirectory, "../../../../../src-tauri/tests/fixtures/sensors-pipe.jsonl");
         var lines = new List<string>();
         for (var tick = 0; tick < 3; tick++)
-            lines.Add(Wire.Line(1793612400000 + tick * 1000L, Sample(tick)));
+            lines.Add(Wire.Line(1793612400000 + tick * 1000L, Sample(tick), Net(tick), 1000));
+        var oldStyle = Wire.Line(1793612400000, Sample(0)); // helper without ETW
         var text = string.Join("\n", lines) + "\n";
 
         if (Array.IndexOf(args, "--write") >= 0)
@@ -61,7 +92,11 @@ static class WireTests
         Check(lines[0].Contains("\"value\":42.35}"), "two decimals at most");
         Check(lines[0].Contains("\"id\":\"/lpc/example/0/fan/6\",\"name\":\"Fan #7\",\"type\":\"Fan\",\"value\":null}"), "NaN -> null");
         Check(lines[0].Contains("\"hw\":\"Weird \\\"name\\\"\\\\ \\t\""), "escaping");
-        Check(lines[0].Contains("\"value\":null}]}"), "infinity -> null");
+        Check(oldStyle.EndsWith("\"value\":null}]}"), "infinity -> null, no net field without ETW");
+        Check(lines[0].Contains(",\"net\":{\"ms\":1000,\"procs\":[{\"pid\":7788,\"name\":\"steam\",\"rx\":2400000,\"tx\":0},{\"pid\":10412,\"name\":\"chrome\",\"rx\":1200000,\"tx\":35000}"),
+            "net: busiest first, TCP/UDP v4/v6 summed per pid");
+        Check(!lines[0].Contains("\"pid\":6200"), "ignored event ids");
+        Check(NetAgg.Direction(10) == 1 && NetAgg.Direction(59) == -1 && NetAgg.Direction(18) == 0, "directions");
         var onDisk = File.Exists(fixture) ? File.ReadAllText(fixture) : "";
         Check(onDisk == text, "fixture " + Path.GetFullPath(fixture) + " is up to date (run with --write)");
         Console.WriteLine(failures == 0 ? "PASS: helper wire format matches the fixture" : $"FAIL: {failures}");

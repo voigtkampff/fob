@@ -2,6 +2,7 @@
   // winperf: one detail view for any card (back button / Esc returns).
   import type {
     GpuDevice,
+    NetApp,
     ResourceSample,
     Sensor,
     SystemStats,
@@ -20,6 +21,8 @@
     sensorSummary,
     setupState,
     lastN,
+    mergeNetApps,
+    sortedNetRows,
     series,
     sparklinePath,
   } from "$lib/utils/dashboard.js";
@@ -41,6 +44,8 @@
   export let sensors: Sensor[] = [];
   export let sources: string[] = [];
   export let commit: [number, number] | null = null;
+  /** Per-process network rates from the sensor helper; null without it. */
+  export let netApps: NetApp[] | null = null;
   export let lists: { cpu: Row[]; gpu: Row[]; memory: Row[] };
   export let compact = false;
   export let onBack: () => void;
@@ -75,6 +80,11 @@
   $: volumes = [...systemStats.details.volumes].sort((a, b) =>
     a.mount.localeCompare(b.mount),
   );
+  let netRows = new Map();
+  $: if (kind === "network" && netApps)
+    netRows = mergeNetApps(netRows, netApps, Date.now());
+  $: appRows = sortedNetRows(netRows).slice(0, compact ? 12 : 25);
+  $: appMax = Math.max(1, ...appRows.map((r) => Math.max(r.rx, r.tx)));
   $: summary = sensorSummary(sensors);
   $: fans = fanGroups(sensors);
   // Fans are listed on their own above; the per-hardware lists show the rest.
@@ -298,6 +308,39 @@
         />
       </svg>
     </div>
+    {#if netApps}
+      <div class="panel">
+        <div class="list-head apps-head">
+          <span>App</span><span><i class="dot blue"></i>↓</span><span
+            ><i class="dot green"></i>↑</span
+          >
+        </div>
+        {#each appRows as app (app.name)}
+          <div class="app" class:idle={app.rx + app.tx === 0}>
+            <span class="name" title={app.name}>{app.name}</span>
+            <span class="num">{rate(app.rx)}</span>
+            <span class="num">{rate(app.tx)}</span>
+            <div class="bars">
+              <i class="bar blue" style:width={`${pct(app.rx, appMax)}%`}></i>
+              <i class="bar green" style:width={`${pct(app.tx, appMax)}%`}></i>
+            </div>
+          </div>
+        {:else}
+          <p class="note">
+            No app has used the network in the last 30 seconds.
+          </p>
+        {/each}
+      </div>
+    {:else}
+      <div class="panel">
+        <p class="note">
+          Per-app speeds come from the winperf sensor helper, which reads
+          Windows network events (ETW) with administrator rights.
+          {#if setupState($sensorSetup) === "ready"}Waiting for the helper…{/if}
+        </p>
+      </div>
+      <SensorSetup status={$sensorSetup} />
+    {/if}
     <div class="panel">
       <div class="list-head"><span>Adapter</span><span>↓ / ↑</span></div>
       {#each interfaces as i (i.name)}
@@ -309,10 +352,6 @@
       {:else}
         <p class="note">No active network adapters.</p>
       {/each}
-      <p class="note">
-        Per-app network speed needs administrator rights (ETW tracing), so it
-        isn't shown.
-      </p>
     </div>
   {:else if kind === "temp"}
     <SensorSetup status={$sensorSetup} />
@@ -380,6 +419,49 @@
 </section>
 
 <style>
+  .apps-head,
+  .app {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 5.5rem 5.5rem;
+    gap: 0 8px;
+    align-items: baseline;
+  }
+  .apps-head span:not(:first-child) {
+    text-align: right;
+  }
+  .app {
+    padding: 4px 0;
+  }
+  .app .name {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .app .num {
+    text-align: right;
+  }
+  .app.idle {
+    opacity: 0.55;
+  }
+  .bars {
+    grid-column: 1 / -1;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    margin-top: 3px;
+  }
+  .bar {
+    display: block;
+    height: 3px;
+    min-width: 1px;
+    border-radius: 2px;
+  }
+  .bar.blue {
+    background: var(--blue);
+  }
+  .bar.green {
+    background: var(--green);
+  }
   .detail {
     display: flex;
     flex-direction: column;
