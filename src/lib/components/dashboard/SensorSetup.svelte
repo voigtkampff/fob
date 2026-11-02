@@ -119,9 +119,15 @@
   }
   .setup.row {
     flex-direction: row;
+    flex-wrap: wrap;
     align-items: center;
     justify-content: space-between;
+    column-gap: 12px;
     padding: 8px 12px;
+  }
+  .setup.row .note {
+    flex: 1 1 12rem;
+    min-width: 0;
   }
   .lead {
     font-weight: 600;
@@ -144,10 +150,12 @@
     font-size: 12px;
     color: var(--red, #f87171);
   }
+  /* Buttons wrap instead of overflowing the narrow mini window. */
   .buttons {
     display: flex;
+    flex-wrap: wrap;
     gap: 8px;
-    flex-shrink: 0;
+    max-width: 100%;
   }
   button {
     font-size: 12px;
@@ -157,7 +165,9 @@
     background: transparent;
     color: var(--foreground);
     cursor: pointer;
-    white-space: nowrap;
+    max-width: 100%;
+    text-align: left;
+    overflow-wrap: anywhere;
   }
   button:hover:not(:disabled) {
     background: color-mix(in oklab, var(--foreground) 8%, transparent);

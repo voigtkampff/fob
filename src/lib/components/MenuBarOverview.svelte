@@ -29,6 +29,11 @@
   $: view = miniView(!!data, detail);
   $: if (needsFit(fitted, view)) void fit(view);
   const frame = () => new Promise((r) => requestAnimationFrame(r));
+  function refitAfterClick() {
+    void tick().then(() => {
+      if (fitted === view) fitted = null; // the reactive fit runs again
+    });
+  }
   async function fit(target: string) {
     fitted = target;
     let asked = 0;
@@ -163,7 +168,10 @@
 />
 
 <div class="mini-shell">
-  <div class="mini" bind:this={panel}>
+  <!-- A click can open or close part of a view (the sensor setup steps):
+       measure once more after it. Data refreshes never resize. -->
+  <!-- svelte-ignore a11y_click_events_have_key_events a11y_no_static_element_interactions -->
+  <div class="mini" bind:this={panel} on:click={refitAfterClick}>
     <div class="mini-bar">
       <img src="/fob.svg" alt="" class="size-4" />
       <span class="mini-title">{$t("app.name")}</span>
