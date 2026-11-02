@@ -51,7 +51,7 @@ test("release versions must agree across both lockfiles and app manifests", asyn
   const lock = await readFile(path, "utf8");
   await writeFile(
     path,
-    lock.replace(/(name = "neohtop"\s*\nversion = ")[^"]+/, "$199.0.0"),
+    lock.replace(/(name = "winperf"\s*\nversion = ")[^"]+/, "$199.0.0"),
   );
   await assert.rejects(checkVersion(root), /Versions differ/);
 });

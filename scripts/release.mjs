@@ -49,9 +49,11 @@ export async function checkVersion(root = projectRoot, tag = "") {
     .split(/(?=^\[)/m)
     .find((block) => block.startsWith("[package]"));
   const cargoVersion = packageBlock?.match(/^version\s*=\s*"([^"]+)"/m)?.[1];
-  const lockedVersion = lock.match(
-    /\[\[package\]\]\s*\nname = "neohtop"\s*\nversion = "([^"]+)"/,
-  )?.[1];
+  const crateName = packageBlock?.match(/^name\s*=\s*"([^"]+)"/m)?.[1];
+  const lockedVersion = lock
+    .split(/(?=^\[\[package\]\])/m)
+    .find((block) => block.match(/^name = "([^"]+)"/m)?.[1] === crateName)
+    ?.match(/^version = "([^"]+)"/m)?.[1];
   const versions = [
     pkg.version,
     npmLock.version,
