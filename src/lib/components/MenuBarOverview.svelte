@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { onMount, onDestroy } from "svelte";
+  import { onMount, onDestroy, tick } from "svelte";
   import { invoke } from "@tauri-apps/api/core";
   import { listen, type UnlistenFn } from "@tauri-apps/api/event";
   import { getCurrentWindow } from "@tauri-apps/api/window";
@@ -9,6 +9,7 @@
   import type { DetailKind } from "./dashboard/detail";
   import { themeStore } from "$lib/stores/theme";
   import { t } from "$lib/i18n";
+  import { miniView, needsFit } from "$lib/utils/mini-fit.js";
   import type { OverviewSnapshot } from "$lib/types";
   let data: OverviewSnapshot | null = null;
   let error = "";
@@ -20,18 +21,20 @@
   let poll: ReturnType<typeof setTimeout>;
   let ticker: ReturnType<typeof setInterval>;
   const listeners: UnlistenFn[] = [];
-  // winperf: the window height follows the panel's content (clamped natively).
+  // winperf: the window is sized to the panel once per view (cards <-> a
+  // detail), never on data refreshes; see utils/mini-fit.js.
   let panel: HTMLDivElement;
-  // Stable wrapper: Dashboard swaps its root elements when a detail opens.
-  let body: HTMLDivElement;
   let detail: DetailKind | null = null;
-  let resize: ResizeObserver | undefined;
-  let lastHeight = 0;
-  function fit() {
-    if (!panel) return;
+  let fitted: string | null = null;
+  $: view = miniView(!!data, detail);
+  $: if (needsFit(fitted, view)) void fit(view);
+  async function fit(target: string) {
+    fitted = target;
+    await tick();
+    await new Promise((r) => requestAnimationFrame(r));
+    if (!panel || fitted !== target) return;
+    panel.scrollTop = 0;
     const h = Math.ceil(panel.scrollHeight);
-    if (Math.abs(h - lastHeight) < 2) return;
-    lastHeight = h;
     void invoke("fit_companion", { height: h }).catch(() => {});
   }
   $: age = data
@@ -76,7 +79,10 @@
   }
   async function visibility(value: boolean) {
     visible = value;
-    if (!visible) detail = null; // reopen on the cards
+    if (!visible) {
+      detail = null; // reopen on the cards
+      fitted = null; // and measure them once more while hidden
+    }
     clearTimeout(poll);
     clearInterval(ticker);
     if (visible && !destroyed) {
@@ -104,9 +110,6 @@
   }
   onMount(() => {
     document.documentElement.dataset.companion = "true";
-    resize = new ResizeObserver(fit);
-    if (body) resize.observe(body);
-    if (panel) resize.observe(panel);
     themeStore.init();
     void (async () => {
       for (const [event, callback] of [
@@ -134,7 +137,6 @@
   });
   onDestroy(() => {
     destroyed = true;
-    resize?.disconnect();
     clearTimeout(poll);
     clearInterval(ticker);
     listeners.forEach((stop) => stop());
@@ -189,7 +191,7 @@
         onclick={() => invoke("quit_app")}><Power /></Button
       >
     </div>
-    <div bind:this={body}>
+    <div>
       {#if error}<div role="alert" class="mini-error">
           {error}<Button variant="link" size="sm" onclick={read}
             >{$t("mini.retry")}</Button

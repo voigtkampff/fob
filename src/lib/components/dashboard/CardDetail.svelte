@@ -71,7 +71,10 @@
   let netRows = new Map();
   $: if (kind === "network" && netApps)
     netRows = mergeNetApps(netRows, netApps, Date.now());
-  $: appRows = sortedNetRows(netRows).slice(0, compact ? 12 : 25);
+  // Fixed slots so the list (and the window measured for it) keeps its height
+  // while apps come and go; see utils/mini-fit.js.
+  $: appSlots = compact ? 8 : 12;
+  $: appRows = sortedNetRows(netRows).slice(0, appSlots);
   $: appMax = Math.max(1, ...appRows.map((r) => Math.max(r.rx, r.tx)));
   $: summary = sensorSummary(sensors);
   $: fans = fanGroups(sensors);
@@ -324,7 +327,7 @@
           ><span><i class="dot green"></i>↑</span>
         </div>
         {#each appRows as app (app.name)}
-          <div class="app" class:idle={app.rx + app.tx === 0}>
+          <div class="item app" class:idle={app.rx + app.tx === 0}>
             <span class="name" title={app.name}>{app.name}</span>
             <span class="num">{rate(app.rx)}</span>
             <span class="num">{rate(app.tx)}</span>
@@ -333,8 +336,15 @@
               <i class="bar green" style:width={`${pct(app.tx, appMax)}%`}></i>
             </div>
           </div>
-        {:else}
+        {/each}
+        {#if !appRows.length}
           <p class="note">{$t("detail.noAppTraffic")}</p>
+        {/if}
+        {#each { length: Math.max(0, appSlots - Math.max(1, appRows.length)) } as _}
+          <div class="item app slot" aria-hidden="true">
+            <span class="name">&nbsp;</span>
+            <div class="bars"><i class="bar"></i><i class="bar"></i></div>
+          </div>
         {/each}
       </div>
     {:else}
@@ -434,8 +444,10 @@
 </section>
 
 <style>
+  /* App rows are ordinary list rows (.item: same font and padding as every
+     other detail list) laid out as a grid with two thin bars underneath. */
   .apps-head,
-  .app {
+  .item.app {
     display: grid;
     grid-template-columns: minmax(0, 1fr) 5.5rem 5.5rem;
     gap: 0 8px;
@@ -444,31 +456,26 @@
   .apps-head span:not(:first-child) {
     text-align: right;
   }
-  .app {
-    padding: 4px 0;
-  }
-  .app .name {
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
   .app .num {
     text-align: right;
   }
   .app.idle {
     opacity: 0.55;
   }
+  .app.slot {
+    visibility: hidden;
+  }
   .bars {
     grid-column: 1 / -1;
     display: flex;
     flex-direction: column;
-    gap: 2px;
-    margin-top: 3px;
+    gap: 1px;
+    margin-top: 2px;
   }
   .bar {
     display: block;
-    height: 3px;
-    border-radius: 2px;
+    height: 2px;
+    border-radius: 1px;
   }
   .bar.blue {
     background: var(--blue);

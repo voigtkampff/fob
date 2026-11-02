@@ -407,3 +407,31 @@ console.log(
   assert.equal(rows.size, 0);
 }
 console.log("PASS: per-app network rows group, stick for 30 s and sort");
+
+// mini window: resize only on a view change, never on a data refresh
+{
+  const { miniView, needsFit } = await import("../src/lib/utils/mini-fit.js");
+  assert.equal(miniView(false, null), "loading");
+  assert.equal(miniView(true, null), "cards");
+  assert.equal(miniView(true, "network"), "network");
+  let fitted = null;
+  const fits = [];
+  const step = (
+    /** @type {boolean} */ hasData,
+    /** @type {string|null} */ detail,
+  ) => {
+    const view = miniView(hasData, detail);
+    if (needsFit(fitted, view)) {
+      fitted = view;
+      fits.push(view);
+    }
+  };
+  step(false, null); // first paint
+  step(true, null); // first data
+  for (let i = 0; i < 5; i++) step(true, null); // refreshes
+  step(true, "network"); // open a detail
+  for (let i = 0; i < 30; i++) step(true, "network"); // the app list changes every second
+  step(true, null); // back
+  assert.deepEqual(fits, ["loading", "cards", "network", "cards"]);
+  console.log("PASS: mini window resizes only when the view changes");
+}
