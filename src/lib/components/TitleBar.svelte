@@ -9,6 +9,7 @@
     Pause,
     Play,
     PanelsTopLeft,
+    Minimize2,
     Ellipsis,
     Settings2,
     Info,
@@ -70,6 +71,13 @@
       title="Mini window"
       onclick={() => command("show_companion")}><PanelsTopLeft /></Button
     >
+    <Button
+      variant="ghost"
+      size="icon-sm"
+      aria-label="Collapse to tray"
+      title="Collapse to tray (mini window mode)"
+      onclick={() => command("collapse_to_tray")}><Minimize2 /></Button
+    >
     <div class="mx-1 h-4 w-px bg-border"></div>
     <ThemeSwitcher />
     <DropdownMenu.Root
@@ -93,7 +101,10 @@
           ><Info />About winperf</DropdownMenu.Item
         >
         <DropdownMenu.Separator /><DropdownMenu.Item
-          onclick={() => command("quit_app")}>Quit winperf</DropdownMenu.Item
+          onclick={() => command("collapse_to_tray")}
+          ><Minimize2 />Collapse to tray</DropdownMenu.Item
+        ><DropdownMenu.Item onclick={() => command("quit_app")}
+          >Quit winperf</DropdownMenu.Item
         >
       </DropdownMenu.Content>
     </DropdownMenu.Root>

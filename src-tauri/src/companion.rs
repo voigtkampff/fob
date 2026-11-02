@@ -5,13 +5,13 @@ use std::{
     time::{Duration, Instant},
 };
 use tauri::{
-    menu::{Menu, MenuItem},
+    menu::{CheckMenuItem, Menu, MenuItem, PredefinedMenuItem},
     tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
 };
 use tauri::{AppHandle, Emitter, Manager, PhysicalPosition, Rect, WindowEvent};
 
 const TRAY_ID: &str = "neohtop-overview";
-#[derive(Debug, Default)]
+#[derive(Default)]
 pub struct CompanionState {
     pub keep_running: bool,
     pub hidden_at: Option<Instant>,
@@ -19,6 +19,8 @@ pub struct CompanionState {
     pub height: Option<f64>,
     /// winperf: last tray icon rect (physical px), so resizes stay anchored.
     pub anchor: Option<(f64, f64, f64, f64)>,
+    /// winperf: tray menu "Start in tray only" item, kept in sync with settings.
+    pub start_item: Option<CheckMenuItem<tauri::Wry>>,
 }
 
 /// winperf mini window: fixed width, height follows its content.
@@ -75,7 +77,12 @@ fn ghost() -> tauri::image::Image<'static> {
     tauri::image::Image::new_owned(rgba, 32, 32)
 }
 
-fn configure(app: &AppHandle, enabled: bool, keep_running: bool) -> Result<(), String> {
+fn configure(
+    app: &AppHandle,
+    enabled: bool,
+    keep_running: bool,
+    start_in_tray: Option<bool>,
+) -> Result<(), String> {
     // Called only on the main thread: native menus and tray destruction require it.
     if enabled && app.tray_by_id(TRAY_ID).is_none() {
         let overview = MenuItem::with_id(app, "overview", "Show mini window", true, None::<&str>)
@@ -84,7 +91,22 @@ fn configure(app: &AppHandle, enabled: bool, keep_running: bool) -> Result<(), S
             .map_err(|e| e.to_string())?;
         let quit = MenuItem::with_id(app, "quit", "Quit", true, None::<&str>)
             .map_err(|e| e.to_string())?;
-        let menu = Menu::with_items(app, &[&overview, &open, &quit]).map_err(|e| e.to_string())?;
+        let start = CheckMenuItem::with_id(
+            app,
+            "start-in-tray",
+            "Start in tray only (mini window mode)",
+            true,
+            start_in_tray.unwrap_or(true),
+            None::<&str>,
+        )
+        .map_err(|e| e.to_string())?;
+        let line = || PredefinedMenuItem::separator(app).map_err(|e| e.to_string());
+        let (first, second) = (line()?, line()?);
+        let menu = Menu::with_items(app, &[&overview, &open, &first, &start, &second, &quit])
+            .map_err(|e| e.to_string())?;
+        if let Ok(mut state) = app.state::<Mutex<CompanionState>>().lock() {
+            state.start_item = Some(start);
+        }
         TrayIconBuilder::with_id(TRAY_ID)
             .icon(ghost())
             .icon_as_template(true)
@@ -95,6 +117,10 @@ fn configure(app: &AppHandle, enabled: bool, keep_running: bool) -> Result<(), S
                 let _ = match event.id.as_ref() {
                     "overview" => show(app, None),
                     "open-main" => open_main(app),
+                    "start-in-tray" => {
+                        set_start_in_tray(app);
+                        Ok(())
+                    }
                     "quit" => {
                         app.exit(0);
                         Ok(())
@@ -134,6 +160,12 @@ fn configure(app: &AppHandle, enabled: bool, keep_running: bool) -> Result<(), S
     } else if !enabled {
         drop(app.remove_tray_by_id(TRAY_ID));
     }
+    if let (Some(checked), Ok(state)) = (start_in_tray, app.state::<Mutex<CompanionState>>().lock())
+    {
+        if let Some(item) = &state.start_item {
+            let _ = item.set_checked(checked);
+        }
+    }
     // Only opt in to hiding the main window when the tray actually exists.
     app.state::<Mutex<CompanionState>>()
         .lock()
@@ -143,6 +175,56 @@ fn configure(app: &AppHandle, enabled: bool, keep_running: bool) -> Result<(), S
         .keep_running = enabled;
     let _ = keep_running;
     Ok(())
+}
+
+/// The tray check item toggled itself; save its new state as the setting.
+fn set_start_in_tray(app: &AppHandle) {
+    let item = app
+        .state::<Mutex<CompanionState>>()
+        .lock()
+        .ok()
+        .and_then(|s| s.start_item.clone());
+    let Some(item) = item else { return };
+    let checked = item.is_checked().unwrap_or(true);
+    let app = app.clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        let patch = serde_json::json!({ "behavior": { "startInTray": checked } });
+        if crate::preferences::apply_patch(&app, &patch).is_err() {
+            let _ = item.set_checked(!checked); // settings not ready: undo
+        }
+    });
+}
+
+/// winperf launch: with "Start in tray only" (default) only the tray icon
+/// appears; the first launch also pops the mini window once so it's clear
+/// where winperf went. Otherwise the main window opens as before.
+pub fn launch(app: &AppHandle) -> Result<(), String> {
+    let startup = crate::preferences::startup(app);
+    // No tray (or it can't be created): the main window must appear.
+    if startup.tray && startup.start_in_tray && configure(app, true, true, Some(true)).is_ok() {
+        if startup.first_launch {
+            show(app, None)?;
+        }
+        Ok(())
+    } else {
+        let window = app
+            .get_webview_window("main")
+            .ok_or("Main window unavailable")?;
+        window.show().map_err(|e| e.to_string())
+    }
+}
+
+/// Title bar "Collapse to tray": hide the main window (minimize without a tray).
+#[tauri::command]
+pub async fn collapse_to_tray(app: AppHandle) -> Result<(), String> {
+    let window = app
+        .get_webview_window("main")
+        .ok_or("Main window unavailable")?;
+    if app.tray_by_id(TRAY_ID).is_some() {
+        window.hide().map_err(|e| e.to_string())
+    } else {
+        window.minimize().map_err(|e| e.to_string())
+    }
 }
 
 pub fn hide(app: &AppHandle) {
@@ -308,11 +390,12 @@ pub async fn configure_companion(
     app: AppHandle,
     enabled: bool,
     keep_running: bool,
+    start_in_tray: Option<bool>,
 ) -> Result<(), String> {
     let (sender, mut receiver) = tauri::async_runtime::channel(1);
     let handle = app.clone();
     app.run_on_main_thread(move || {
-        let result = configure(&handle, enabled, keep_running);
+        let result = configure(&handle, enabled, keep_running, start_in_tray);
         let _ = sender.try_send(result);
     })
     .map_err(|e| e.to_string())?;

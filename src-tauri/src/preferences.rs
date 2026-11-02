@@ -49,7 +49,9 @@ fn merge(config: &mut Value, patch: &Value) {
                     .as_u64()
                     .is_some_and(|n| [15, 25, 50, 100, 250, 500].contains(&n)),
                 "refreshRate" => value.as_u64().is_some_and(|n| (1000..=30000).contains(&n)),
-                "menuBarEnabled" | "keepRunning" | "usageAnalytics" => value.is_boolean(),
+                "menuBarEnabled" | "keepRunning" | "startInTray" | "usageAnalytics" => {
+                    value.is_boolean()
+                }
                 "processView" => matches!(value.as_str(), Some("flat" | "tree")),
                 "defaultStatusFilter" => matches!(
                     value.as_str(),
@@ -134,41 +136,73 @@ pub async fn read_preferences(
     .await
     .map_err(|e| e.to_string())?
 }
+/// Merge `patch` into the live preferences, persist and broadcast them.
+pub fn apply_patch(app: &AppHandle, patch: &Value) -> Result<Snapshot, String> {
+    let service = app.state::<Preferences>();
+    let mut state = service.0.lock().map_err(|e| e.to_string())?;
+    if !state.ready {
+        return Err("Settings are still starting. Try again shortly.".into());
+    }
+    let mut next = state.config.clone();
+    merge(&mut next, patch);
+    if next != state.config {
+        let path = app
+            .path()
+            .app_config_dir()
+            .map_err(|e| e.to_string())?
+            .join("settings.json");
+        persist(&path, &next)?;
+        if let Err(error) = crate::telemetry::configure(
+            app,
+            next["behavior"]["usageAnalytics"]
+                .as_bool()
+                .unwrap_or(false),
+        ) {
+            persist(&path, &state.config).map_err(|rollback| format!("{error}. {rollback}"))?;
+            return Err(error);
+        }
+        state.config = next;
+        state.revision += 1;
+        app.emit("preferences-change", state.clone())
+            .map_err(|e| e.to_string())?;
+    }
+    Ok(state.clone())
+}
 #[tauri::command]
 pub async fn update_preferences(app: AppHandle, patch: Value) -> Result<Snapshot, String> {
-    tauri::async_runtime::spawn_blocking(move || {
-        let service = app.state::<Preferences>();
-        let mut state = service.0.lock().map_err(|e| e.to_string())?;
-        if !state.ready {
-            return Err("Settings are still starting. Try again shortly.".into());
-        }
-        let mut next = state.config.clone();
-        merge(&mut next, &patch);
-        if next != state.config {
-            let path = app
-                .path()
-                .app_config_dir()
-                .map_err(|e| e.to_string())?
-                .join("settings.json");
-            persist(&path, &next)?;
-            if let Err(error) = crate::telemetry::configure(
-                &app,
-                next["behavior"]["usageAnalytics"]
-                    .as_bool()
-                    .unwrap_or(false),
-            ) {
-                persist(&path, &state.config).map_err(|rollback| format!("{error}. {rollback}"))?;
-                return Err(error);
-            }
-            state.config = next;
-            state.revision += 1;
-            app.emit("preferences-change", state.clone())
-                .map_err(|e| e.to_string())?;
-        }
-        Ok(state.clone())
-    })
-    .await
-    .map_err(|e| e.to_string())?
+    tauri::async_runtime::spawn_blocking(move || apply_patch(&app, &patch))
+        .await
+        .map_err(|e| e.to_string())?
+}
+
+/// winperf: what launch needs before any webview has loaded the settings.
+#[derive(Debug, PartialEq)]
+pub struct Startup {
+    /// No settings file yet: this is the first launch.
+    pub first_launch: bool,
+    pub tray: bool,
+    pub start_in_tray: bool,
+}
+pub fn startup_from(saved: Option<&Value>) -> Startup {
+    let mut config = defaults();
+    if let Some(saved) = saved {
+        merge(&mut config, saved);
+    }
+    let flag = |key: &str| config["behavior"][key].as_bool().unwrap_or(true);
+    Startup {
+        first_launch: saved.is_none(),
+        tray: flag("menuBarEnabled"),
+        start_in_tray: flag("startInTray"),
+    }
+}
+pub fn startup(app: &AppHandle) -> Startup {
+    let saved = app
+        .path()
+        .app_config_dir()
+        .ok()
+        .and_then(|dir| fs::read(dir.join("settings.json")).ok())
+        .map(|bytes| serde_json::from_slice::<Value>(&bytes).unwrap_or(Value::Null));
+    startup_from(saved.as_ref())
 }
 #[cfg(test)]
 mod tests {
@@ -189,6 +223,27 @@ mod tests {
         assert!(config["appearance"]["columnVisibility"]
             .get("unknown")
             .is_none());
+    }
+    #[test]
+    fn start_in_tray_defaults_on_for_new_and_existing_installs() {
+        let first = startup_from(None);
+        assert_eq!(
+            first,
+            Startup {
+                first_launch: true,
+                tray: true,
+                start_in_tray: true
+            }
+        );
+        // v0.3 settings files have no startInTray key: still on.
+        let old = startup_from(Some(&json!({"behavior":{"refreshRate":5000}})));
+        assert!(!old.first_launch && old.start_in_tray && old.tray);
+        let off = startup_from(Some(
+            &json!({"behavior":{"startInTray":false,"menuBarEnabled":false}}),
+        ));
+        assert!(!off.start_in_tray && !off.tray);
+        // Unreadable file: treat as existing with defaults.
+        assert!(startup_from(Some(&Value::Null)).start_in_tray);
     }
     #[test]
     fn independent_patches_do_not_overwrite_other_windows() {

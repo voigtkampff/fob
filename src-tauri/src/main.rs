@@ -48,6 +48,8 @@ fn main() {
             if let Some(mini) = app.get_webview_window("overview") {
                 let _ = mini.remove_menu();
             }
+            // winperf: tray-only start (default) or the main window.
+            companion::launch(app.handle())?;
             Ok(())
         })
         .plugin(tauri_plugin_shell::init())
@@ -76,6 +78,7 @@ fn main() {
             companion::show_companion,
             companion::hide_companion,
             companion::fit_companion,
+            companion::collapse_to_tray,
             companion::open_main_window,
             companion::quit_app,
             sensors::setup::sensor_setup_status,

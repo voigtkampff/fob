@@ -24,6 +24,7 @@
     "refreshRate": 3000,
     "menuBarEnabled": true,
     "keepRunning": true,
+    "startInTray": true,
     "defaultStatusFilter": "all",
     "processView": "flat",
     "usageAnalytics": false

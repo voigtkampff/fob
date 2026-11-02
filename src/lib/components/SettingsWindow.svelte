@@ -29,7 +29,12 @@
     }
   }
   function save(
-    key: "refreshRate" | "menuBarEnabled" | "keepRunning" | "usageAnalytics",
+    key:
+      | "refreshRate"
+      | "menuBarEnabled"
+      | "keepRunning"
+      | "startInTray"
+      | "usageAnalytics",
     value: number | boolean,
   ) {
     settingsStore.updateConfig({
@@ -142,6 +147,25 @@
                 <Label for="show-menu-icon">Show tray icon</Label>
                 <p class="mt-1 text-xs leading-relaxed text-muted-foreground">
                   Keep CPU, memory, graphics and network readings close at hand.
+                </p>
+              </div>
+            </div>
+            <div class="flex items-start gap-3">
+              <Checkbox
+                id="start-in-tray"
+                class="mt-0.5"
+                disabled={!$settingsStore.behavior.menuBarEnabled}
+                checked={$settingsStore.behavior.startInTray}
+                onCheckedChange={(value) => save("startInTray", value)}
+              />
+              <div>
+                <Label for="start-in-tray"
+                  >Start in tray only (mini window mode)</Label
+                >
+                <p class="mt-1 text-xs leading-relaxed text-muted-foreground">
+                  winperf starts with just the tray icon; click it for the mini
+                  window. Open the full window from the tray menu or the mini
+                  window.
                 </p>
               </div>
             </div>

@@ -138,6 +138,8 @@ export interface AppConfig {
     menuBarEnabled: boolean;
     usageAnalytics: boolean;
     keepRunning: boolean;
+    /** winperf: launch with only the tray icon (mini window mode). */
+    startInTray: boolean;
   };
 }
 
