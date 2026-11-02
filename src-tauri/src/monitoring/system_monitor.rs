@@ -6,7 +6,6 @@
 use super::{InterfaceDetails, ResourceDetails, SystemIdentity, SystemStats, VolumeDetails};
 use std::collections::BTreeMap;
 use std::fmt::Debug;
-use std::path::Path;
 use std::time::Instant;
 use sysinfo::{Disk, Disks, Networks, System};
 
@@ -114,7 +113,7 @@ impl SystemMonitor {
     fn filter_disks(disks: &[Disk]) -> impl Iterator<Item = &Disk> {
         disks
             .iter()
-            .filter(|disk| disk.mount_point() == Path::new("/"))
+            .filter(|disk| disk.mount_point() == std::path::Path::new("/"))
     }
 
     /// Windows-specific disk filtering
