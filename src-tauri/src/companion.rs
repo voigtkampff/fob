@@ -15,6 +15,8 @@ const TRAY_ID: &str = "neohtop-overview";
 pub struct CompanionState {
     pub keep_running: bool,
     pub hidden_at: Option<Instant>,
+    /// Fob: pinned mini window (behavior.miniPinned): focus loss doesn't hide it.
+    pub pinned: bool,
     /// winperf: last tray icon rect (physical px), so resizes stay anchored.
     pub anchor: Option<(f64, f64, f64, f64)>,
     /// winperf: tray menu "Start in tray only" item, kept in sync with settings.
@@ -297,6 +299,9 @@ fn set_start_in_tray(app: &AppHandle) {
 /// where winperf went. Otherwise the main window opens as before.
 pub fn launch(app: &AppHandle) -> Result<(), String> {
     let startup = crate::preferences::startup(app);
+    if let Ok(mut state) = app.state::<Mutex<CompanionState>>().lock() {
+        state.pinned = startup.mini_pinned;
+    }
     // No tray (or it can't be created): the main window must appear.
     if startup.tray
         && startup.start_in_tray
@@ -659,6 +664,42 @@ fn record_placement(
     let _ = std::fs::create_dir_all(&dir);
     let _ = std::fs::write(dir.join("mini-placement.txt"), text);
 }
+/// Fob: an unpinned mini window closes like a flyout when another window gets
+/// focus; a pinned one stays open (and on top) until the tray icon, Esc or
+/// "open full window" hides it.
+fn hides_on_focus_loss(pinned: bool) -> bool {
+    !pinned
+}
+/// Fob: the mini window's pin button. Saved as behavior.miniPinned.
+#[tauri::command]
+pub async fn get_companion_pinned(
+    state: tauri::State<'_, Mutex<CompanionState>>,
+) -> Result<bool, String> {
+    Ok(state.lock().map_err(|e| e.to_string())?.pinned)
+}
+#[tauri::command]
+pub async fn set_companion_pinned(app: AppHandle, pinned: bool) -> Result<bool, String> {
+    let before = {
+        let state = app.state::<Mutex<CompanionState>>();
+        let mut state = state.lock().map_err(|e| e.to_string())?;
+        std::mem::replace(&mut state.pinned, pinned)
+    };
+    let saver = app.clone();
+    let saved = tauri::async_runtime::spawn_blocking(move || {
+        let patch = serde_json::json!({ "behavior": { "miniPinned": pinned } });
+        crate::preferences::apply_patch(&saver, &patch).map(|_| ())
+    })
+    .await
+    .map_err(|e| e.to_string())
+    .and_then(|r| r);
+    if let Err(e) = saved {
+        if let Ok(mut state) = app.state::<Mutex<CompanionState>>().lock() {
+            state.pinned = before; // not saved: keep the old behaviour
+        }
+        return Err(e);
+    }
+    Ok(pinned)
+}
 pub fn open_main(app: &AppHandle) -> Result<(), String> {
     hide(app);
     let window = app
@@ -671,7 +712,15 @@ pub fn open_main(app: &AppHandle) -> Result<(), String> {
 pub fn window_event(window: &tauri::Window, event: &WindowEvent) {
     let app = window.app_handle();
     match (window.label(), event) {
-        ("overview", WindowEvent::Focused(false)) => hide(app),
+        ("overview", WindowEvent::Focused(false)) => {
+            let pinned = app
+                .state::<Mutex<CompanionState>>()
+                .lock()
+                .is_ok_and(|s| s.pinned);
+            if hides_on_focus_loss(pinned) {
+                hide(app);
+            }
+        }
         ("overview", WindowEvent::CloseRequested { api, .. }) => {
             api.prevent_close();
             hide(app);
@@ -793,6 +842,20 @@ mod tests {
 
     use super::*;
     #[test]
+    fn focus_loss_hides_only_an_unpinned_mini_window() {
+        assert!(hides_on_focus_loss(false));
+        assert!(!hides_on_focus_loss(true));
+        // The focus-loss handler is the only automatic hide and goes through it.
+        let src = include_str!("companion.rs");
+        let code = src.split("#[cfg(test)]").next().unwrap();
+        let handler = code
+            .split(r#"("overview", WindowEvent::Focused(false))"#)
+            .nth(1)
+            .unwrap();
+        let body = &handler[..handler.find("WindowEvent::CloseRequested").unwrap()];
+        assert!(body.contains("hides_on_focus_loss(pinned)"));
+    }
+    #[test]
     fn mini_height_matches_the_frontend_layout() {
         let js = include_str!("../../src/lib/utils/mini-layout.js");
         let line = js
@@ -814,7 +877,7 @@ mod tests {
         let src = include_str!("companion.rs");
         let code = src.split("#[cfg(test)]").next().unwrap();
         let callers = |needle: &str| code.matches(needle).count();
-        assert_eq!(callers(concat!("place", "(")), 2); // the fn and its one call in `show`
+        assert_eq!(callers(concat!(" place", "(")), 2); // the fn and its one call in `show`
         assert_eq!(callers(concat!(".set_", "size(")), 1);
         assert_eq!(callers(concat!(".set_", "position(")), 1);
         assert!(!code.contains(concat!("fit_", "companion")));

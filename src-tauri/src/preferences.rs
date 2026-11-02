@@ -49,7 +49,9 @@ fn merge(config: &mut Value, patch: &Value) {
                     .as_u64()
                     .is_some_and(|n| [15, 25, 50, 100, 250, 500].contains(&n)),
                 "refreshRate" => value.as_u64().is_some_and(|n| (1000..=30000).contains(&n)),
-                "menuBarEnabled" | "keepRunning" | "startInTray" => value.is_boolean(),
+                "menuBarEnabled" | "keepRunning" | "startInTray" | "miniPinned" => {
+                    value.is_boolean()
+                }
                 "processView" => matches!(value.as_str(), Some("flat" | "tree")),
                 "language" => matches!(value.as_str(), Some("auto" | "en" | "zh")),
                 "defaultStatusFilter" => matches!(
@@ -164,6 +166,8 @@ pub struct Startup {
     pub first_launch: bool,
     pub tray: bool,
     pub start_in_tray: bool,
+    /// Fob: the mini window stays open when another window is clicked.
+    pub mini_pinned: bool,
     /// "auto" | "en" | "zh" (validated by `merge`).
     pub language: Option<String>,
 }
@@ -177,6 +181,7 @@ pub fn startup_from(saved: Option<&Value>) -> Startup {
         first_launch: saved.is_none(),
         tray: flag("menuBarEnabled"),
         start_in_tray: flag("startInTray"),
+        mini_pinned: config["behavior"]["miniPinned"].as_bool().unwrap_or(false),
         language: config["behavior"]["language"].as_str().map(str::to_owned),
     }
 }
@@ -218,6 +223,7 @@ mod tests {
                 first_launch: true,
                 tray: true,
                 start_in_tray: true,
+                mini_pinned: false,
                 language: Some("auto".into()),
             }
         );
@@ -235,6 +241,20 @@ mod tests {
         assert_eq!(bad.language.as_deref(), Some("auto"));
         // Unreadable file: treat as existing with defaults.
         assert!(startup_from(Some(&Value::Null)).start_in_tray);
+    }
+    #[test]
+    fn mini_pin_survives_a_restart() {
+        // What set_companion_pinned saves is what the next launch reads.
+        let mut config = defaults();
+        assert_eq!(config["behavior"]["miniPinned"], json!(false));
+        merge(&mut config, &json!({"behavior":{"miniPinned":true}}));
+        assert!(startup_from(Some(&config)).mini_pinned);
+        merge(&mut config, &json!({"behavior":{"miniPinned":"yes"}}));
+        assert!(startup_from(Some(&config)).mini_pinned, "non-bool rejected");
+        merge(&mut config, &json!({"behavior":{"miniPinned":false}}));
+        assert!(!startup_from(Some(&config)).mini_pinned);
+        // Older settings files have no key: unpinned.
+        assert!(!startup_from(Some(&json!({"behavior":{}}))).mini_pinned);
     }
     #[test]
     fn independent_patches_do_not_overwrite_other_windows() {

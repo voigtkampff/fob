@@ -4,7 +4,7 @@
   import { listen, type UnlistenFn } from "@tauri-apps/api/event";
   import { getCurrentWindow } from "@tauri-apps/api/window";
   import { Button } from "$lib/components/ui/button/index.js";
-  import { Pause, Play, Maximize2, Power } from "@lucide/svelte";
+  import { Pause, Play, Maximize2, Power, Pin, PinOff } from "@lucide/svelte";
   import Dashboard from "./dashboard/Dashboard.svelte";
   import type { DetailKind } from "./dashboard/detail";
   import { themeStore } from "$lib/stores/theme";
@@ -82,6 +82,18 @@
       schedule();
     }
   }
+  // Pinned: clicking another window does not hide the mini window
+  // (saved as behavior.miniPinned; the backend owns the state).
+  let pinned = false;
+  async function togglePin() {
+    try {
+      pinned = await invoke<boolean>("set_companion_pinned", {
+        pinned: !pinned,
+      });
+    } catch (e) {
+      error = String(e);
+    }
+  }
   async function pause() {
     try {
       await invoke("set_monitor_paused", { paused: !data?.paused });
@@ -119,6 +131,7 @@
         if (destroyed) stop();
         else listeners.push(stop);
       }
+      pinned = await invoke<boolean>("get_companion_pinned").catch(() => false);
       // Listen before reading visibility, so a popup opened during startup is not lost.
       const isVisible = await getCurrentWindow().isVisible();
       if (!destroyed) void visibility(isVisible);
@@ -156,6 +169,16 @@
               : $t("mini.reading")}</span
       >
       <span class="flex-1"></span>
+      <Button
+        variant={pinned ? "secondary" : "ghost"}
+        size="icon-sm"
+        class={pinned ? "pinned" : ""}
+        aria-pressed={pinned}
+        aria-label={pinned ? $t("mini.unpin") : $t("mini.pin")}
+        title={pinned ? $t("mini.unpin") : $t("mini.pin")}
+        onclick={togglePin}
+        >{#if pinned}<Pin class="fill-current" />{:else}<PinOff />{/if}</Button
+      >
       <Button
         variant="ghost"
         size="icon-sm"
@@ -245,6 +268,10 @@
   .mini-status {
     font-size: 11px;
     color: var(--muted-foreground);
+  }
+  .mini-bar :global(.pinned) {
+    color: var(--primary);
+    background: color-mix(in oklab, var(--primary) 18%, transparent);
   }
   .mini-error {
     font-size: 12px;
