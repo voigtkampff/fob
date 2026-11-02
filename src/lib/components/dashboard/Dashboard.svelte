@@ -19,7 +19,6 @@
     formatDuration,
     uptimeInfo,
     gpuSummary,
-    lastN,
     series,
     sparklinePath,
     systemVolume,
@@ -94,7 +93,6 @@
 
   const W = 260;
   const H = 36;
-  const SLOTS = 40; // 120 s of history at the default 3 s refresh
 
   $: identity = systemStats.details.identity;
   $: cores = systemStats.cpu_usage;
@@ -105,14 +103,9 @@
       : null;
   $: gpu = gpuSummary(gpus);
   $: gpuId = gpus.find((g) => g.name === gpu.name)?.id;
-  $: gpuSeries = lastN(
-    history.map((s) => (gpuId ? (s.gpus?.[gpuId] ?? null) : null)),
-    SLOTS,
-  );
-  $: memSeries = lastN(series(history, "memory"), SLOTS);
-  $: rxSeries = lastN(series(history, "received"), SLOTS);
-  $: txSeries = lastN(series(history, "sent"), SLOTS);
-  $: netMax = chartMax([rxSeries, txSeries]);
+  $: pickGpu = (s: ResourceSample) =>
+    gpuId ? (s.gpus?.[gpuId] ?? null) : null;
+  $: netMax = chartMax([series(history, "received"), series(history, "sent")]);
   $: down = formatRate(systemStats.network_rx_bytes);
   $: up = formatRate(systemStats.network_tx_bytes);
   $: volume = systemVolume(systemStats.details.volumes);
@@ -232,11 +225,10 @@
         </div>
         <svg viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none" class="spark">
           <path
-            d={sparklinePath(gpuSeries, {
+            d={sparklinePath(history, pickGpu, {
               width: W,
               height: H,
               max: 100,
-              slots: SLOTS,
             })}
             class="line peach"
           />
@@ -271,11 +263,10 @@
         <div class="big">{formatPercent(memPct, $t)}<small>%</small></div>
         <svg viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none" class="spark">
           <path
-            d={sparklinePath(memSeries, {
+            d={sparklinePath(history, (s) => s.memory, {
               width: W,
               height: H,
               max: 100,
-              slots: SLOTS,
             })}
             class="line yellow"
           />
@@ -345,20 +336,18 @@
         <div class="big">{down.value}<small>{down.unit}</small></div>
         <svg viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none" class="spark">
           <path
-            d={sparklinePath(txSeries, {
+            d={sparklinePath(history, (s) => s.sent, {
               width: W,
               height: H,
               max: netMax,
-              slots: SLOTS,
             })}
             class="line green"
           />
           <path
-            d={sparklinePath(rxSeries, {
+            d={sparklinePath(history, (s) => s.received, {
               width: W,
               height: H,
               max: netMax,
-              slots: SLOTS,
             })}
             class="line blue"
           />

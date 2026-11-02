@@ -150,15 +150,6 @@ export function series(history, key) {
   });
 }
 
-/** Keep only the newest `size` points (a fixed-width window for small charts).
- * @template T
- * @param {T[]} values
- * @param {number} size
- */
-export function lastN(values, size) {
-  return values.length > size ? values.slice(values.length - size) : values;
-}
-
 /** Scale for a shared network chart: at least 1 KB/s so idle lines sit at the bottom.
  * @param {(number | null)[][]} lines
  */
@@ -166,30 +157,44 @@ export function chartMax(lines, floor = 1024) {
   return Math.max(floor, ...lines.flat().map((v) => v ?? 0));
 }
 
-/** SVG path for a sparkline. Points are evenly spaced over `slots` slots,
- * aligned right; null values break the line.
- * @param {(number | null)[]} values
- * @param {{ width: number, height: number, max: number, slots?: number }} box
+/** Every small chart shows the same fixed time window (matches the main window charts). */
+export const SPARK_WINDOW_MS = 120_000;
+
+/** SVG path for a sparkline on a fixed time axis: the newest sample sits at the
+ * right edge, `windowMs` earlier is the left edge, so a short history is a short
+ * line at the right that grows leftwards. Null values and samples older than the
+ * window are not drawn; a null breaks the line.
+ * @param {{ timestamp: number }[]} history
+ * @param {(sample: any) => number | null | undefined} pick
+ * @param {{ width: number, height: number, max: number, end?: number, windowMs?: number }} box
  */
 export function sparklinePath(
-  values,
-  { width, height, max, slots = values.length },
+  history,
+  pick,
+  { width, height, max, end, windowMs = SPARK_WINDOW_MS },
 ) {
-  if (!values.length || max <= 0) return "";
-  const step = slots > 1 ? width / (slots - 1) : 0;
-  const offset = slots - values.length;
+  const list = history ?? [];
+  if (!list.length || max <= 0 || windowMs <= 0) return "";
+  const right = end ?? list[list.length - 1].timestamp;
+  const left = right - windowMs;
   let path = "";
   let pen = false;
-  values.forEach((v, i) => {
-    if (v == null) {
+  for (const sample of list) {
+    const v = pick(sample);
+    if (
+      typeof v !== "number" ||
+      !Number.isFinite(v) ||
+      sample.timestamp < left ||
+      sample.timestamp > right
+    ) {
       pen = false;
-      return;
+      continue;
     }
-    const x = (offset + i) * step;
+    const x = ((sample.timestamp - left) / windowMs) * width;
     const y = height - (Math.min(Math.max(v, 0), max) / max) * height;
     path += `${pen ? "L" : "M"}${x.toFixed(1)},${y.toFixed(1)}`;
     pen = true;
-  });
+  }
   return path;
 }
 

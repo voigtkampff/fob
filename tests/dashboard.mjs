@@ -11,7 +11,7 @@ import {
   gpuSummary,
   topByMemory,
   series,
-  lastN,
+  SPARK_WINDOW_MS,
   chartMax,
   sparklinePath,
   topBy,
@@ -27,6 +27,7 @@ import {
   sortedNetRows,
 } from "../src/lib/utils/dashboard.js";
 import { readFileSync } from "node:fs";
+import { RESOURCE_WINDOW_MS } from "../src/lib/utils/resource-history.js";
 
 assert.deepEqual(formatRate(null), { value: "—", unit: "" });
 assert.deepEqual(formatRate(-1), { value: "—", unit: "" });
@@ -116,25 +117,57 @@ assert.deepEqual(series([{ cpu: 1 }, { cpu: null }, { cpu: NaN }, {}], "cpu"), [
   null,
   null,
 ]);
-assert.deepEqual(lastN([1, 2, 3, 4], 2), [3, 4]);
-assert.deepEqual(lastN([1], 2), [1]);
 assert.equal(chartMax([[null, 10], [20]]), 1024);
 assert.equal(chartMax([[5000], [null]]), 5000);
 
-assert.equal(sparklinePath([], { width: 10, height: 10, max: 1 }), "");
+const at = (/** @type {number} */ t, /** @type {number|null} */ v) => ({
+  timestamp: t,
+  v,
+});
+const pickV = (/** @type {{v: number|null}} */ s) => s.v;
+assert.equal(sparklinePath([], pickV, { width: 10, height: 10, max: 1 }), "");
+// a full 120 s of samples spans the whole width
 assert.equal(
-  sparklinePath([0, 50, 100], { width: 100, height: 10, max: 100 }),
+  sparklinePath([at(0, 0), at(60_000, 50), at(120_000, 100)], pickV, {
+    width: 100,
+    height: 10,
+    max: 100,
+  }),
   "M0.0,10.0L50.0,5.0L100.0,0.0",
 );
+// a short history is drawn at its real time position: right edge, growing left
 assert.equal(
-  sparklinePath([10, null, 10], { width: 2, height: 10, max: 10 }),
-  "M0.0,0.0M2.0,0.0",
+  sparklinePath([at(0, 10), at(6_000, 10)], pickV, {
+    width: 120,
+    height: 10,
+    max: 10,
+  }),
+  "M114.0,0.0L120.0,0.0",
 );
-// fewer points than slots are right-aligned; values above max are clamped
+// nulls break the line; a long gap keeps its width instead of collapsing to one slot
 assert.equal(
-  sparklinePath([200], { width: 100, height: 10, max: 100, slots: 3 }),
+  sparklinePath(
+    [at(0, 10), at(3_000, null), at(90_000, 10), at(93_000, 10)],
+    pickV,
+    {
+      width: 93,
+      height: 10,
+      max: 10,
+      windowMs: 93_000,
+    },
+  ),
+  "M0.0,0.0M90.0,0.0L93.0,0.0",
+);
+// samples older than the window are dropped; values above max are clamped
+assert.equal(
+  sparklinePath([at(0, 5), at(200_000, 200)], pickV, {
+    width: 100,
+    height: 10,
+    max: 100,
+  }),
   "M100.0,0.0",
 );
+assert.equal(SPARK_WINDOW_MS, RESOURCE_WINDOW_MS, "same window as main charts");
 
 // detail views
 const ps = [

@@ -20,7 +20,6 @@
     byKind,
     sensorSummary,
     setupState,
-    lastN,
     mergeNetApps,
     sortedNetRows,
     series,
@@ -54,14 +53,9 @@
   $: title = $t(`detail.${kind}`);
   const W = 300;
   const H = 70;
-  const SLOTS = 40;
   $: n = compact ? 8 : 10;
   $: cores = systemStats.cpu_usage;
-  $: rx = lastN(series(history, "received"), SLOTS);
-  $: tx = lastN(series(history, "sent"), SLOTS);
-  $: netMax = chartMax([rx, tx]);
-  $: cpuLine = lastN(series(history, "cpu"), SLOTS);
-  $: memLine = lastN(series(history, "memory"), SLOTS);
+  $: netMax = chartMax([series(history, "received"), series(history, "sent")]);
   $: interfaces = [...systemStats.details.interfaces]
     .filter((i) => i.received_total + i.sent_total > 0)
     .sort(
@@ -118,11 +112,10 @@
       </div>
       <svg viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none" class="graph">
         <path
-          d={sparklinePath(cpuLine, {
+          d={sparklinePath(history, (s) => s.cpu, {
             width: W,
             height: H,
             max: 100,
-            slots: SLOTS,
           })}
           class="line green"
         />
@@ -210,11 +203,10 @@
       </div>
       <svg viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none" class="graph">
         <path
-          d={sparklinePath(memLine, {
+          d={sparklinePath(history, (s) => s.memory, {
             width: W,
             height: H,
             max: 100,
-            slots: SLOTS,
           })}
           class="line yellow"
         />
@@ -308,20 +300,18 @@
       </div>
       <svg viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none" class="graph">
         <path
-          d={sparklinePath(tx, {
+          d={sparklinePath(history, (s) => s.sent, {
             width: W,
             height: H,
             max: netMax,
-            slots: SLOTS,
           })}
           class="line green"
         />
         <path
-          d={sparklinePath(rx, {
+          d={sparklinePath(history, (s) => s.received, {
             width: W,
             height: H,
             max: netMax,
-            slots: SLOTS,
           })}
           class="line blue"
         />
