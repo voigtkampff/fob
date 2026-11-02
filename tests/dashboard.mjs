@@ -39,10 +39,10 @@ assert.equal(formatGB(24.96 * 1024 ** 3, 2), "24.96 GB");
 assert.equal(formatPercent(null), "n/a");
 assert.equal(formatPercent(51.6), "52");
 
-assert.equal(formatUptimeShort(26 * 3600 + 5), "up 1 day, 2 hr");
-assert.equal(formatUptimeShort(3 * 86400), "up 3 days, 0 hr");
-assert.equal(formatUptimeShort(3 * 3600 + 4 * 60), "up 3 hr, 4 min");
-assert.equal(formatUptimeShort(59), "up 0 min");
+assert.equal(formatUptimeShort(26 * 3600 + 5), "kernel up 1 day, 2 hr");
+assert.equal(formatUptimeShort(3 * 86400), "kernel up 3 days, 0 hr");
+assert.equal(formatUptimeShort(3 * 3600 + 4 * 60), "kernel up 3 hr, 4 min");
+assert.equal(formatUptimeShort(59), "kernel up 0 min");
 assert.equal(formatDuration(69 * 3600), "2 days, 21 hr");
 // Fast Startup: kernel up 2 days 21 hr, but started 3 h 4 min ago.
 const now = 2_000_000_000;

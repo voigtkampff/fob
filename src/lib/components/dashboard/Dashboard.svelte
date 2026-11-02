@@ -122,14 +122,17 @@
   // Re-evaluated with every new sample (systemStats changes).
   $: since = uptimeInfo(
     systemStats.uptime,
-    extra?.started_at,
+    extra?.started?.[0],
     systemStats && Date.now() / 1000,
   );
   $: upText = $t(since.sinceStart ? "uptime.on" : "uptime.up", {
     d: formatDuration(since.seconds, $t),
   });
   $: upTitle = since.sinceStart
-    ? $t("uptime.titleStart", { d: formatDuration(since.kernel, $t) })
+    ? $t("uptime.titleStart", {
+        d: formatDuration(since.kernel, $t),
+        how: $t(`uptime.kind.${extra?.started?.[1] ?? "cold"}`),
+      })
     : $t("uptime.titleKernel");
 
   function level(p: number | null) {

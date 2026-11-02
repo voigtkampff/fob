@@ -223,8 +223,8 @@ export interface FrameExtra {
   sensors: { sensors: Sensor[]; sources: string[] };
   /** Windows commit charge [used, limit] in bytes. */
   commit: [number, number] | null;
-  /** Unix seconds of the last real start (cold boot / Fast Startup resume). */
-  started_at?: number | null;
+  /** Last power-on: Unix seconds and kind; null = only kernel uptime known. */
+  started?: [number, "cold" | "fast" | "hibernate"] | null;
   /** Per-process network rates (bytes/s) from the sensor helper's ETW session. */
   net_apps?: NetApp[] | null;
 }

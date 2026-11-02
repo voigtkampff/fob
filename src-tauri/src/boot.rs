@@ -3,13 +3,18 @@
 //! With Fast Startup (hybrid shutdown, the Windows default) "Shut down" only
 //! logs the user off and hibernates the kernel, so the kernel uptime that
 //! sysinfo and Task Manager show keeps counting across days the PC was off.
-//! What a user means by "on since" is the last time the PC was started. Every
-//! start - cold boot, Fast Startup resume or resume from hibernation - logs
-//! Microsoft-Windows-Kernel-Power event 27 ("The boot type was 0x0/0x1/0x2")
-//! in the System log; a cold boot also logs Kernel-General event 12 (OS
-//! started). We take the newest of those that isn't before the kernel boot.
-//! Sleep (S3 / Modern Standby) does not count as a start. The System log is
-//! readable without administrator rights.
+//! What a user means by "on since" is the last power-on after "Shut down":
+//! the newest Fast Startup resume, hibernation resume or full boot. Sleep is
+//! not a start. In the System log (readable without administrator rights):
+//! - Microsoft-Windows-Kernel-Boot 27, "The boot type was 0x0/0x1/0x2":
+//!   every start; 0x1 is a Fast Startup resume, 0x2 a resume from hibernation.
+//!   (v0.5.0 asked for provider Kernel-Power here, which never logs event 27,
+//!   so only the cold-boot event below matched and the chip kept showing the
+//!   kernel uptime.)
+//! - Microsoft-Windows-Kernel-General 12: the OS started (cold boot).
+//! We take the newest of those that isn't before the kernel boot, and log
+//! what was found (or why nothing was) to fob.log. When nothing is found the
+//! chip shows the kernel uptime, labelled as such.
 
 #![cfg_attr(not(target_os = "windows"), allow(dead_code))]
 
@@ -46,6 +51,62 @@ pub fn parse_utc(value: &str) -> Option<u64> {
     u64::try_from(days * 86_400 + hh * 3_600 + mm * 60 + ss).ok()
 }
 
+/// What kind of start an event records.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum StartKind {
+    Cold,
+    FastStartup,
+    Hibernate,
+}
+impl StartKind {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Cold => "cold",
+            Self::FastStartup => "fast",
+            Self::Hibernate => "hibernate",
+        }
+    }
+}
+
+/// Value of `<Tag ...>value</Tag>` or `<Data Name='name'>value</Data>`.
+fn element<'a>(xml: &'a str, open: &str, close: &str) -> Option<&'a str> {
+    let start = xml.find(open)?;
+    let after = &xml[start + open.len()..];
+    let body = &after[after.find('>')? + 1..];
+    Some(body[..body.find(close)?].trim())
+}
+
+/// Parse one rendered start event: its time and kind.
+pub fn start_event(xml: &str) -> Option<(u64, StartKind)> {
+    let time = event_time(xml)?;
+    let provider = {
+        let at = xml.find("Provider Name=")? + "Provider Name=".len();
+        let quote = xml[at..].chars().next()?;
+        let rest = &xml[at + 1..];
+        &rest[..rest.find(quote)?]
+    };
+    let id: u32 = element(xml, "<EventID", "</EventID>")?.parse().ok()?;
+    let kind = match (provider, id) {
+        ("Microsoft-Windows-Kernel-Boot", 27) => {
+            let boot_type = ["<Data Name='BootType'", "<Data Name=\"BootType\""]
+                .iter()
+                .find_map(|open| element(xml, open, "</Data>"))
+                .and_then(|v| {
+                    let v = v.trim_start_matches("0x");
+                    u32::from_str_radix(v, 16).ok()
+                })?;
+            match boot_type {
+                1 => StartKind::FastStartup,
+                2 => StartKind::Hibernate,
+                _ => StartKind::Cold,
+            }
+        }
+        ("Microsoft-Windows-Kernel-General", 12) => StartKind::Cold,
+        _ => return None,
+    };
+    Some((time, kind))
+}
+
 /// When the PC was last started: the newest start event that is not older
 /// than the kernel boot (a minute of slack for logging) nor in the future;
 /// the kernel boot itself when there is none.
@@ -59,7 +120,7 @@ pub fn started_at(now: u64, kernel_boot: u64, events: &[u64]) -> u64 {
 }
 
 #[cfg(target_os = "windows")]
-fn latest_start_event() -> Option<u64> {
+fn latest_start_event() -> Result<(u64, StartKind), String> {
     use windows::core::w;
     use windows::Win32::System::EventLog::{
         EvtClose, EvtNext, EvtQuery, EvtQueryChannelPath, EvtQueryReverseDirection, EvtRender,
@@ -69,33 +130,61 @@ fn latest_start_event() -> Option<u64> {
         let query = EvtQuery(
             None,
             w!("System"),
-            w!("*[System[(Provider[@Name='Microsoft-Windows-Kernel-Power'] and EventID=27) or (Provider[@Name='Microsoft-Windows-Kernel-General'] and EventID=12)]]"),
+            w!("*[System[(Provider[@Name='Microsoft-Windows-Kernel-Boot'] and EventID=27) or (Provider[@Name='Microsoft-Windows-Kernel-General'] and EventID=12)]]"),
             (EvtQueryChannelPath.0 | EvtQueryReverseDirection.0) as u32,
         )
-        .ok()?;
-        let mut events = [0isize; 1];
-        let mut returned = 0u32;
-        let next = EvtNext(query, &mut events, 2_000, 0, &mut returned);
-        let mut result = None;
-        if next.is_ok() && returned == 1 {
-            let event = EVT_HANDLE(events[0]);
-            let mut buffer = vec![0u16; 4096];
-            let (mut used, mut count) = (0u32, 0u32);
-            if EvtRender(
-                None,
-                event,
-                EvtRenderEventXml.0 as u32,
-                (buffer.len() * 2) as u32,
-                Some(buffer.as_mut_ptr().cast()),
-                &mut used,
-                &mut count,
-            )
-            .is_ok()
-            {
-                let len = (used as usize / 2).min(buffer.len());
-                result = event_time(&String::from_utf16_lossy(&buffer[..len]));
+        .map_err(|e| format!("EvtQuery(System): {e}"))?;
+        let mut result =
+            Err("no Kernel-Boot 27 or Kernel-General 12 event in the System log".to_string());
+        // Newest first; skip anything we can't parse (e.g. an unknown boot type layout).
+        'events: for _ in 0..8 {
+            let mut events = [0isize; 4];
+            let mut returned = 0u32;
+            if let Err(e) = EvtNext(query, &mut events, 2_000, 0, &mut returned) {
+                if result.is_err()
+                    && e.code() != windows::Win32::Foundation::ERROR_NO_MORE_ITEMS.to_hresult()
+                {
+                    result = Err(format!("EvtNext: {e}"));
+                }
+                break;
             }
-            let _ = EvtClose(event);
+            for &raw in &events[..returned as usize] {
+                let event = EVT_HANDLE(raw);
+                let mut buffer = vec![0u16; 8192];
+                let (mut used, mut count) = (0u32, 0u32);
+                let rendered = EvtRender(
+                    None,
+                    event,
+                    EvtRenderEventXml.0 as u32,
+                    (buffer.len() * 2) as u32,
+                    Some(buffer.as_mut_ptr().cast()),
+                    &mut used,
+                    &mut count,
+                );
+                let xml = rendered.is_ok().then(|| {
+                    let len = (used as usize / 2).min(buffer.len());
+                    String::from_utf16_lossy(&buffer[..len])
+                });
+                let _ = EvtClose(event);
+                match xml.as_deref().map(start_event) {
+                    Some(Some(found)) if result.is_err() => {
+                        result = Ok(found);
+                    }
+                    Some(None) => crate::boot::log(&format!(
+                        "skipped an event: {}",
+                        xml.unwrap_or_default()
+                            .chars()
+                            .take(300)
+                            .collect::<String>()
+                    )),
+                    None => crate::boot::log(&format!("EvtRender: {:?}", rendered.err())),
+                    _ => {}
+                }
+            }
+            if result.is_ok() {
+                // close the remaining handles of this batch already done; stop.
+                break 'events;
+            }
         }
         let _ = EvtClose(query);
         result
@@ -103,27 +192,70 @@ fn latest_start_event() -> Option<u64> {
 }
 
 #[cfg(not(target_os = "windows"))]
-fn latest_start_event() -> Option<u64> {
-    None
+fn latest_start_event() -> Result<(u64, StartKind), String> {
+    Err("not Windows".into())
 }
 
-/// Unix seconds of the last start, or `None` where we can't tell better than
-/// the kernel uptime (non-Windows, event log unavailable). Re-read every
-/// 5 minutes so a Fast Startup resume while winperf keeps running is seen.
-pub fn last_start(now: u64, kernel_uptime: u64) -> Option<u64> {
+/// Append one line to fob.log next to Fob's settings
+/// (%LOCALAPPDATA%\com.hcb.fob\fob.log), kept under 256 KB.
+pub fn log(line: &str) {
+    use std::io::Write;
+    let Some(dir) = std::env::var_os(if cfg!(windows) {
+        "LOCALAPPDATA"
+    } else {
+        "XDG_STATE_HOME"
+    })
+    .map(std::path::PathBuf::from)
+    .map(|d| d.join("com.hcb.fob")) else {
+        return;
+    };
+    let _ = std::fs::create_dir_all(&dir);
+    let path = dir.join("fob.log");
+    if std::fs::metadata(&path).is_ok_and(|m| m.len() > 256 * 1024) {
+        let _ = std::fs::remove_file(&path);
+    }
+    let stamp = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |d| d.as_secs());
+    if let Ok(mut file) = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(path)
+    {
+        let _ = writeln!(file, "{stamp} boot: {line}");
+    }
+}
+
+/// The last power-on (Unix seconds and kind), or `None` where we can't
+/// tell better than the kernel uptime (non-Windows, event log unavailable).
+/// Re-read every 5 minutes so a resume while Fob keeps running is seen; each
+/// new result or failure is written to fob.log.
+pub fn last_start(now: u64, kernel_uptime: u64) -> Option<(u64, StartKind)> {
     use std::sync::Mutex;
     use std::time::{Duration, Instant};
-    static CACHE: Mutex<Option<(Instant, Option<u64>)>> = Mutex::new(None);
+    type Cached = Option<(Instant, Result<(u64, StartKind), String>)>;
+    static CACHE: Mutex<Cached> = Mutex::new(None);
     let mut cache = CACHE.lock().ok()?;
-    let event = match *cache {
-        Some((at, value)) if at.elapsed() < Duration::from_secs(300) => value,
-        _ => {
-            let value = latest_start_event();
-            *cache = Some((Instant::now(), value));
-            value
+    let fresh = matches!(&*cache, Some((at, _)) if at.elapsed() < Duration::from_secs(300));
+    if !fresh {
+        let value = latest_start_event();
+        let changed = cache.as_ref().is_none_or(|(_, old)| *old != value);
+        let kernel_boot = now.saturating_sub(kernel_uptime);
+        if changed {
+            match &value {
+                Ok((t, kind)) => log(&format!(
+                    "last {} start at {t} (unix s); kernel boot at {kernel_boot}",
+                    kind.as_str()
+                )),
+                Err(e) => log(&format!("using kernel uptime, {e}")),
+            }
         }
-    }?;
-    Some(started_at(now, now.saturating_sub(kernel_uptime), &[event]))
+        *cache = Some((Instant::now(), value));
+    }
+    let (event, kind) = cache.as_ref()?.1.clone().ok()?;
+    let at = started_at(now, now.saturating_sub(kernel_uptime), &[event]);
+    // An event from before the kernel boot was dropped: that is a cold boot.
+    Some((at, if at == event { kind } else { StartKind::Cold }))
 }
 
 #[cfg(test)]
@@ -144,6 +276,35 @@ mod tests {
         assert_eq!(parse_utc("2026-11-02T01:23:45"), None); // must be UTC
         assert_eq!(parse_utc("2026-13-02T01:23:45Z"), None);
         assert_eq!(event_time("<TimeCreated/>"), None);
+    }
+
+    const BOOT_FAST: &str = "<Event xmlns='http://schemas.microsoft.com/win/2004/08/events/event'><System><Provider Name='Microsoft-Windows-Kernel-Boot' Guid='{15ca44ff-4d7a-4baa-bba5-0998955e531e}'/><EventID>27</EventID><Version>0</Version><Level>4</Level><TimeCreated SystemTime='2026-11-02T00:58:12.4991350Z'/><Channel>System</Channel></System><EventData><Data Name='BootType'>1</Data><Data Name='LoadOptions'></Data></EventData></Event>";
+    const BOOT_COLD: &str = "<Event><System><Provider Name=\"Microsoft-Windows-Kernel-Boot\"/><EventID>27</EventID><TimeCreated SystemTime=\"2026-10-30T22:00:05.0Z\"/></System><EventData><Data Name=\"BootType\">0x0</Data></EventData></Event>";
+    const GENERAL_12: &str = "<Event><System><Provider Name='Microsoft-Windows-Kernel-General' Guid='{a68ca8b7-004f-d7b6-a698-07e2de0f1f5d}'/><EventID>12</EventID><TimeCreated SystemTime='2026-10-30T22:00:01.5Z'/></System><EventData><Data Name='MajorVersion'>10</Data></EventData></Event>";
+    const WAKE: &str = "<Event><System><Provider Name='Microsoft-Windows-Power-Troubleshooter' Guid='{cdc05e28-c449-49c6-b9d2-88cf761644df}'/><EventID Qualifiers='0'>1</EventID><TimeCreated SystemTime='2026-11-02T08:30:00.0Z'/></System><EventData><Data Name='SleepTime'>2026-11-01T16:00:00.0Z</Data><Data Name='WakeTime'>2026-11-02T08:29:55.0Z</Data></EventData></Event>";
+    const OLD_KERNEL_POWER: &str = "<Event><System><Provider Name='Microsoft-Windows-Kernel-Power'/><EventID>27</EventID><TimeCreated SystemTime='2026-11-02T00:58:12Z'/></System></Event>";
+
+    #[test]
+    fn recognises_start_and_wake_events() {
+        assert_eq!(
+            start_event(BOOT_FAST),
+            Some((
+                parse_utc("2026-11-02T00:58:12Z").unwrap(),
+                StartKind::FastStartup
+            ))
+        );
+        assert_eq!(start_event(BOOT_COLD).map(|e| e.1), Some(StartKind::Cold));
+        assert_eq!(start_event(GENERAL_12).map(|e| e.1), Some(StartKind::Cold));
+        // Waking from sleep is not a start.
+        assert_eq!(start_event(WAKE), None);
+        // The provider v0.5.0 queried by mistake is not a start event.
+        assert_eq!(start_event(OLD_KERNEL_POWER), None);
+        // His case: kernel booted 2 days 21 h ago, Fast Startup resume this morning.
+        let now = parse_utc("2026-11-02T11:00:00Z").unwrap();
+        let kernel_boot = now - (2 * 24 + 21) * 3600;
+        let (t, _) = start_event(BOOT_FAST).unwrap();
+        assert_eq!(started_at(now, kernel_boot, &[t]), t);
+        assert!(now - started_at(now, kernel_boot, &[t]) < 11 * 3600);
     }
 
     #[test]

@@ -49,6 +49,7 @@ const dynamic = {
   ].map((m) => m[1]),
   detail: ["cpu", "gpu", "memory", "disk", "network", "temp"],
   lang: ["auto", "en", "zh"],
+  "uptime.kind": ["cold", "fast", "hibernate"],
 };
 assert.deepEqual(
   [...prefixes].sort(),

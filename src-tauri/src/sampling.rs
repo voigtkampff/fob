@@ -40,9 +40,9 @@ pub struct Extra {
     pub sensors: crate::sensors::SensorReport,
     /// Windows commit charge (used, limit) in bytes.
     pub commit: Option<(u64, u64)>,
-    /// winperf: Unix seconds of the last real start (cold boot or Fast
-    /// Startup resume); `None` = only the kernel uptime is known.
-    pub started_at: Option<u64>,
+    /// winperf: Unix seconds and kind ("cold" | "fast" | "hibernate") of the
+    /// last power-on; `None` = only the kernel uptime is known (see fob.log).
+    pub started: Option<(u64, &'static str)>,
     /// winperf: per-process network rates from the sensor helper (ETW);
     /// `None` when the helper isn't running.
     pub net_apps: Option<Vec<crate::sensors::pipe::NetApp>>,
@@ -277,7 +277,8 @@ impl Hub {
             sensors,
             net_apps,
             commit: commit_charge(),
-            started_at: crate::boot::last_start(now_ms() / 1000, stats.uptime),
+            started: crate::boot::last_start(now_ms() / 1000, stats.uptime)
+                .map(|(at, kind)| (at, kind.as_str())),
         };
         self.sequence += 1;
         Ok(Frame {

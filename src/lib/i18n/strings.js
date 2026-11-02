@@ -9,10 +9,14 @@ export const en = {
   "dur.hours": "{h} hr, {m} min",
   "dur.minutes": "{m} min",
   "uptime.on": "on {d}",
-  "uptime.up": "up {d}",
+  "uptime.up": "kernel up {d}",
   "uptime.titleStart":
-    "Time since Windows last started (power-on or Fast Startup). Kernel uptime, as Task Manager shows it: {d}",
-  "uptime.titleKernel": "Time since the system kernel started",
+    "Time since the last power-on ({how}). Kernel uptime, as Task Manager shows it (it keeps counting through Fast Startup shutdowns): {d}",
+  "uptime.titleKernel":
+    "Kernel uptime, as Task Manager shows it. Fob could not find the last power-on in the System event log (reason in fob.log), so this may include time the PC was shut down with Fast Startup.",
+  "uptime.kind.cold": "full boot",
+  "uptime.kind.fast": "Fast Startup",
+  "uptime.kind.hibernate": "resume from hibernation",
   "steps.legacy":
     "Stop the winperf 0.4 sensor helper and delete its scheduled task “winperf-sensors” and its folder C:\\Program Files\\winperf\\sensors.",
   "steps.pawnio":
@@ -225,10 +229,14 @@ export const zh = {
   "dur.hours": "{h} 小时 {m} 分",
   "dur.minutes": "{m} 分钟",
   "uptime.on": "已开机 {d}",
-  "uptime.up": "运行 {d}",
+  "uptime.up": "内核运行 {d}",
   "uptime.titleStart":
-    "距 Windows 上次启动（开机或快速启动）的时间。任务管理器显示的内核运行时间：{d}",
-  "uptime.titleKernel": "系统内核启动以来的时间",
+    "距上次开机（{how}）的时间。任务管理器显示的内核运行时间（快速启动关机后仍继续累计）：{d}",
+  "uptime.titleKernel":
+    "内核运行时间，与任务管理器一致。Fob 未能在系统事件日志中找到上次开机记录（原因见 fob.log），因此可能包含开启快速启动时关机的时间。",
+  "uptime.kind.cold": "完整启动",
+  "uptime.kind.fast": "快速启动",
+  "uptime.kind.hibernate": "从休眠恢复",
   "steps.legacy":
     "停止 winperf 0.4 的传感器助手，删除其计划任务“winperf-sensors”和文件夹 C:\\Program Files\\winperf\\sensors。",
   "steps.pawnio":
