@@ -153,7 +153,7 @@
 <div class="mini-shell">
   <div class="mini" bind:this={panel}>
     <div class="mini-bar">
-      <img src="/32x32.png" alt="" class="size-4" />
+      <img src="/fob.svg" alt="" class="size-4" />
       <span class="mini-title">{$t("app.name")}</span>
       <span class="mini-status"
         >{data?.paused

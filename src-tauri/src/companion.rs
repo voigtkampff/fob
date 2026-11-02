@@ -84,44 +84,43 @@ pub fn mini_height(content: f64) -> f64 {
     }
 }
 
-// A monochrome pixel ghost, matching the public app's silhouette. macOS treats
-// it as a template so the OS controls menu-bar contrast in either appearance.
-fn ghost() -> tauri::image::Image<'static> {
-    let mut rgba = vec![0; 32 * 32 * 4];
-    for y in 0..32i32 {
-        for x in 0..32i32 {
-            let head = (x - 16).pow(2) + (y - 13).pow(2) <= 100 && y <= 14;
-            let body = (6..26).contains(&x) && (13..26).contains(&y);
-            let hem = (6..26).contains(&x) && (26..29).contains(&y) && ((x - 6) / 4) % 2 == 0;
-            let eye = ((10..13).contains(&x) || (19..22).contains(&x)) && (12..17).contains(&y);
-            if (head || body || hem) && !eye {
-                let i = ((y * 32 + x) * 4) as usize;
-                // White on Windows/Linux; macOS uses alpha as a black template.
-                #[cfg(not(target_os = "macos"))]
-                {
-                    rgba[i..i + 3].fill(255);
-                }
-                rgba[i + 3] = 255;
-            }
-        }
-    }
-    #[cfg(not(target_os = "macos"))]
-    {
-        let original = rgba.clone();
-        for y in 1..31usize {
-            for x in 1..31usize {
-                let i = (y * 32 + x) * 4;
-                if original[i + 3] != 0
-                    && [i - 4, i + 4, i - 128, i + 128]
-                        .iter()
-                        .any(|n| original[n + 3] == 0)
-                {
-                    rgba[i..i + 3].fill(30);
-                }
-            }
-        }
-    }
-    tauri::image::Image::new_owned(rgba, 32, 32)
+// Fob's tray icon: the hand-drawn 16/24/32 px frames of icons/icon.ico
+// (design/fob-icon), so Windows does not have to downscale the large art.
+const TRAY_FRAMES: [(u32, &[u8]); 3] = [
+    (16, include_bytes!("../icons/tray-16.png")),
+    (24, include_bytes!("../icons/tray-24.png")),
+    (32, include_bytes!("../icons/tray-32.png")),
+];
+
+/// Smallest frame that covers the small-icon size at this display scale
+/// (16 px at 100 %, 24 px at 150 %, 32 px at 200 %), else the largest.
+fn tray_frame_size(scale: f64) -> u32 {
+    let want = (16.0
+        * if scale.is_finite() && scale > 0.0 {
+            scale
+        } else {
+            1.0
+        })
+    .round() as u32;
+    TRAY_FRAMES
+        .iter()
+        .map(|(size, _)| *size)
+        .find(|size| *size >= want)
+        .unwrap_or(32)
+}
+
+fn tray_icon(app: &AppHandle) -> tauri::Result<tauri::image::Image<'static>> {
+    let scale = app
+        .primary_monitor()
+        .ok()
+        .flatten()
+        .map_or(1.0, |m| m.scale_factor());
+    let size = tray_frame_size(scale);
+    let bytes = TRAY_FRAMES
+        .iter()
+        .find(|(s, _)| *s == size)
+        .map_or(TRAY_FRAMES[2].1, |(_, b)| *b);
+    Ok(tauri::image::Image::from_bytes(bytes)?.to_owned())
 }
 
 fn configure(
@@ -188,8 +187,7 @@ fn configure(
             });
         }
         TrayIconBuilder::with_id(TRAY_ID)
-            .icon(ghost())
-            .icon_as_template(true)
+            .icon(tray_icon(app).map_err(|e| e.to_string())?)
             .tooltip("Fob — system overview")
             .menu(&menu)
             .menu_on_left_click(false)
@@ -591,6 +589,26 @@ pub async fn quit_app(app: AppHandle) {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn tray_frame_follows_display_scale() {
+        use super::tray_frame_size;
+        assert_eq!(tray_frame_size(1.0), 16);
+        assert_eq!(tray_frame_size(1.25), 24);
+        assert_eq!(tray_frame_size(1.5), 24);
+        assert_eq!(tray_frame_size(1.75), 32);
+        assert_eq!(tray_frame_size(2.0), 32);
+        assert_eq!(tray_frame_size(3.0), 32);
+        assert_eq!(tray_frame_size(f64::NAN), 16);
+    }
+
+    #[test]
+    fn tray_frames_decode_at_their_size() {
+        for (size, bytes) in super::TRAY_FRAMES {
+            let image = tauri::image::Image::from_bytes(bytes).unwrap();
+            assert_eq!((image.width(), image.height()), (size, size));
+        }
+    }
+
     use super::*;
     #[test]
     fn panel_stays_on_scaled_and_negative_displays() {

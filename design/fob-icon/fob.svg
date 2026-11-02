@@ -1,0 +1,43 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#1C1C20"/>
+      <stop offset="1" stop-color="#0D0D0F"/>
+    </linearGradient>
+    <!-- sphere body: light from upper-left -->
+    <radialGradient id="body" cx="0.40" cy="0.18" r="0.70" fx="0.36" fy="0.10">
+      <stop offset="0" stop-color="#FFFFFF"/>
+      <stop offset="0.45" stop-color="#ECECEF"/>
+      <stop offset="0.80" stop-color="#B9BAC1"/>
+      <stop offset="1" stop-color="#8A8C95"/>
+    </radialGradient>
+    <!-- soft specular -->
+    <radialGradient id="spec" cx="0.5" cy="0.5" r="0.5">
+      <stop offset="0" stop-color="#FFFFFF" stop-opacity="0.95"/>
+      <stop offset="1" stop-color="#FFFFFF" stop-opacity="0"/>
+    </radialGradient>
+    <!-- LED glow -->
+    <radialGradient id="glow" cx="0.5" cy="0.5" r="0.5">
+      <stop offset="0.35" stop-color="#3DDC84" stop-opacity="0.45"/>
+      <stop offset="1" stop-color="#3DDC84" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="led" cx="0.38" cy="0.32" r="0.75">
+      <stop offset="0" stop-color="#8BF5B8"/>
+      <stop offset="0.55" stop-color="#3DDC84"/>
+      <stop offset="1" stop-color="#22B566"/>
+    </radialGradient>
+    <clipPath id="tile"><rect x="48" y="48" width="928" height="928" rx="208"/></clipPath>
+  </defs>
+
+  <rect x="48" y="48" width="928" height="928" rx="208" fill="url(#bg)"/>
+  <g clip-path="url(#tile)">
+    <circle cx="512" cy="1010" r="468" fill="url(#body)"/>
+    <ellipse cx="400" cy="640" rx="170" ry="80" fill="url(#spec)" transform="rotate(-24 400 640)"/>
+  </g>
+  <ellipse cx="418" cy="742" rx="56" ry="72" fill="#121215"/>
+  <ellipse cx="606" cy="742" rx="56" ry="72" fill="#121215"/>
+  <circle cx="780" cy="244" r="110" fill="url(#glow)"/>
+  <circle cx="780" cy="244" r="54" fill="url(#led)"/>
+  <!-- hairline rim so the tile separates from dark taskbars -->
+  <rect x="54" y="54" width="916" height="916" rx="202" fill="none" stroke="#FFFFFF" stroke-opacity="0.12" stroke-width="12"/>
+</svg>

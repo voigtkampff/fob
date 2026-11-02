@@ -42,7 +42,7 @@
     class="pointer-events-none flex items-center gap-2"
     data-tauri-drag-region
   >
-    <img src="/32x32.png" alt="" class="size-5" />
+    <img src="/fob.svg" alt="" class="size-5" />
     <h1 class="text-sm font-semibold tracking-tight">{$t("app.name")}</h1>
   </div>
   <div class="h-full min-w-4 flex-1" data-tauri-drag-region></div>

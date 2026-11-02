@@ -307,7 +307,7 @@
 {:else if isLoading}
   <div class="loading-container">
     <div class="loading-content">
-      <img src="128x128.png" alt="NeoHtop Logo" class="logo" />
+      <img src="/fob.svg" alt="Fob" class="logo" />
     </div>
   </div>
 {:else}

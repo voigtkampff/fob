@@ -20,6 +20,8 @@
     <DebugType>none</DebugType>
     <GenerateDocumentationFile>false</GenerateDocumentationFile>
     <ApplicationManifest>app.manifest</ApplicationManifest>
+    <!-- Same icon file as fob.exe (src-tauri/icons/icon.ico). -->
+    <ApplicationIcon>$(MSBuildThisFileDirectory)../../src-tauri/icons/icon.ico</ApplicationIcon>
     <SatelliteResourceLanguages>en</SatelliteResourceLanguages>
   </PropertyGroup>
   <ItemGroup>

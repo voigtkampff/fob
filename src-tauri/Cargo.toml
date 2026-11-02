@@ -23,7 +23,7 @@ base64 = "0.22"
 serde_json = "1.0"
 sha2 = "0.10"
 serde = { version = "1.0", features = ["derive", "rc"] }
-tauri = { version = "2.1.1", features = ["macos-private-api", "tray-icon"] }
+tauri = { version = "2.1.1", features = ["macos-private-api", "tray-icon", "image-png"] }
 sys-locale = "0.3"
 sysinfo = { version = "0.35.2", features = ["disk", "multithread", "network", "system"] }
 listeners = "0.6"

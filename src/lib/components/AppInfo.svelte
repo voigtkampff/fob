@@ -27,7 +27,7 @@
 
 <div class="h-screen space-y-5 overflow-y-auto bg-background p-6">
   <div class="flex items-center gap-3">
-    <img src="/32x32.png" alt="" class="size-10" />
+    <img src="/fob.svg" alt="" class="size-10" />
     <div>
       <h2 class="font-semibold">
         {$t("app.name")}
