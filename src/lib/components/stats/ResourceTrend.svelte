@@ -3,6 +3,8 @@
   import { AreaChart, Area, LinearGradient, Points } from "layerchart";
   import type { ResourceSample } from "$lib/types";
   import { formatBytes } from "$lib/utils";
+  import ChartCursor from "$lib/components/charts/ChartCursor.svelte";
+  import { percentText } from "$lib/utils/chart-cursor.js";
   import {
     RESOURCE_WINDOW_MS,
     networkCeiling,
@@ -111,24 +113,6 @@
                 ? `2m · 0–${formatBytes(ceiling)}/s`
                 : "2m · 0–100%",
   );
-  function point(event: PointerEvent) {
-    if (!history.length) return;
-    keyboard = false;
-    const rect =
-      event.currentTarget instanceof HTMLElement
-        ? event.currentTarget.getBoundingClientRect()
-        : null;
-    if (!rect) return;
-    const ratio = Math.max(
-      0,
-      Math.min(1, (event.clientX - rect.left) / rect.width),
-    );
-    selectedStamp =
-      nearestResourceSample(
-        history,
-        end - RESOURCE_WINDOW_MS + ratio * RESOURCE_WINDOW_MS,
-      )?.timestamp ?? null;
-  }
   function key(event: KeyboardEvent) {
     if (
       !["ArrowLeft", "ArrowRight", "Home", "End", "Escape"].includes(event.key)
@@ -158,94 +142,105 @@
 </script>
 
 <div class="mt-auto min-w-0 space-y-1">
-  <Chart.Container
-    {config}
-    class={`${expanded ? "h-28" : "h-12"} w-full rounded-sm aspect-auto focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring`}
-    role="slider"
-    tabindex={history.length ? 0 : -1}
-    aria-label={`${label} history, last two minutes. Use Left and Right arrows to inspect samples.`}
-    aria-valuemin={0}
-    aria-valuemax={Math.max(0, history.length - 1)}
-    aria-valuenow={selectedIndex}
-    aria-valuetext={describe(selected)}
-    title={describe(selected)}
-    aria-disabled={!history.length}
-    onkeydown={key}
-    onpointermove={point}
-    onpointerleave={() => {
-      if (!keyboard) selectedStamp = null;
-    }}
-    onfocus={() => {
-      keyboard = true;
-      selectedStamp = history.at(-1)?.timestamp ?? null;
-    }}
-    onblur={() => {
-      keyboard = false;
-      selectedStamp = null;
-    }}
+  <ChartCursor
+    {history}
+    end={end || undefined}
+    windowMs={RESOURCE_WINDOW_MS}
+    max={ceiling}
+    format={(n) =>
+      metric === "network" ? `${formatBytes(n)}/s` : percentText(n)}
+    lines={series.map((s) => ({
+      pick: (p: ResourceSample) => p[s.key] ?? null,
+      color: s.color,
+      label:
+        metric === "network" ? (s.key === "received" ? "↓" : "↑") : undefined,
+    }))}
+    inset={{ left: 2, right: 3, top: 3, bottom: 2 }}
   >
-    {#if history.length}
-      <AreaChart
-        data={history}
-        x="timestamp"
-        y={series[0].key}
-        {series}
-        seriesLayout="overlap"
-        xDomain={[end - RESOURCE_WINDOW_MS, end]}
-        yDomain={[0, ceiling]}
-        yNice={false}
-        axis={false}
-        grid={false}
-        rule={false}
-        legend={false}
-        highlight={false}
-        tooltipContext={false}
-        motion={{ type: "none" }}
-        padding={{ left: 2, right: 3, top: 3, bottom: 2 }}
-      >
-        {#snippet marks()}
-          {#each series as s}
-            <LinearGradient vertical>
-              {#snippet stopsContent()}<stop
-                  offset="0%"
-                  stop-color={s.color}
-                  stop-opacity=".32"
-                /><stop
-                  offset="100%"
-                  stop-color={s.color}
-                  stop-opacity=".01"
-                />{/snippet}
-              {#snippet children({ gradient })}<Area
-                  seriesKey={s.key}
-                  fill={gradient}
-                  fillOpacity={1}
-                  defined={(d: ResourceSample) => d[s.key] != null}
-                  line={{
-                    stroke: s.color,
-                    "stroke-width": 1.5,
-                    "stroke-dasharray": s.key === "sent" ? "3 2" : undefined,
-                    "stroke-linecap": "round",
-                    "stroke-linejoin": "round",
-                  }}
-                  motion={{ type: "none" }}
-                />{/snippet}
-            </LinearGradient>
-            {#if selected && selected[s.key] != null}<Points
-                data={[selected]}
-                x="timestamp"
-                y={s.key}
-                r={2}
-                fill={s.color}
-                stroke="var(--card)"
-                strokeWidth={1}
-              />{/if}
-          {/each}
-        {/snippet}
-      </AreaChart>
-    {:else}<div class="flex h-full w-full items-end">
-        <div class="w-full border-b border-border/60"></div>
-      </div>{/if}
-  </Chart.Container>
+    <Chart.Container
+      {config}
+      class={`${expanded ? "h-28" : "h-12"} w-full rounded-sm aspect-auto focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring`}
+      role="slider"
+      tabindex={history.length ? 0 : -1}
+      aria-label={`${label} history, last two minutes. Use Left and Right arrows to inspect samples.`}
+      aria-valuemin={0}
+      aria-valuemax={Math.max(0, history.length - 1)}
+      aria-valuenow={selectedIndex}
+      aria-valuetext={describe(selected)}
+      aria-disabled={!history.length}
+      onkeydown={key}
+      onfocus={() => {
+        keyboard = true;
+        selectedStamp = history.at(-1)?.timestamp ?? null;
+      }}
+      onblur={() => {
+        keyboard = false;
+        selectedStamp = null;
+      }}
+    >
+      {#if history.length}
+        <AreaChart
+          data={history}
+          x="timestamp"
+          y={series[0].key}
+          {series}
+          seriesLayout="overlap"
+          xDomain={[end - RESOURCE_WINDOW_MS, end]}
+          yDomain={[0, ceiling]}
+          yNice={false}
+          axis={false}
+          grid={false}
+          rule={false}
+          legend={false}
+          highlight={false}
+          tooltipContext={false}
+          motion={{ type: "none" }}
+          padding={{ left: 2, right: 3, top: 3, bottom: 2 }}
+        >
+          {#snippet marks()}
+            {#each series as s}
+              <LinearGradient vertical>
+                {#snippet stopsContent()}<stop
+                    offset="0%"
+                    stop-color={s.color}
+                    stop-opacity=".32"
+                  /><stop
+                    offset="100%"
+                    stop-color={s.color}
+                    stop-opacity=".01"
+                  />{/snippet}
+                {#snippet children({ gradient })}<Area
+                    seriesKey={s.key}
+                    fill={gradient}
+                    fillOpacity={1}
+                    defined={(d: ResourceSample) => d[s.key] != null}
+                    line={{
+                      stroke: s.color,
+                      "stroke-width": 1.5,
+                      "stroke-dasharray": s.key === "sent" ? "3 2" : undefined,
+                      "stroke-linecap": "round",
+                      "stroke-linejoin": "round",
+                    }}
+                    motion={{ type: "none" }}
+                  />{/snippet}
+              </LinearGradient>
+              {#if selected && selected[s.key] != null}<Points
+                  data={[selected]}
+                  x="timestamp"
+                  y={s.key}
+                  r={2}
+                  fill={s.color}
+                  stroke="var(--card)"
+                  strokeWidth={1}
+                />{/if}
+            {/each}
+          {/snippet}
+        </AreaChart>
+      {:else}<div class="flex h-full w-full items-end">
+          <div class="w-full border-b border-border/60"></div>
+        </div>{/if}
+    </Chart.Container>
+  </ChartCursor>
   <div
     class="min-h-3 truncate text-[10px] leading-3 text-muted-foreground tabular-nums"
     title={`${label}: ${caption}. History stays in memory. Pauses and missed reads stay disconnected.`}

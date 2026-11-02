@@ -26,6 +26,8 @@
     sparklinePath,
   } from "$lib/utils/dashboard.js";
   import { ChevronLeft } from "@lucide/svelte";
+  import ChartCursor from "$lib/components/charts/ChartCursor.svelte";
+  import { percentText as pct1 } from "$lib/utils/chart-cursor.js";
   import SensorSetup from "./SensorSetup.svelte";
   import { sensorSetup } from "$lib/stores/sensorSetup";
   import { t } from "$lib/i18n";
@@ -85,6 +87,7 @@
   $: memAvail = systemStats.memory_total - systemStats.memory_used;
   const pct = (part: number, total: number) =>
     total > 0 ? Math.min(100, Math.max(0, (part / total) * 100)) : 0;
+  const gpuPick = (id: string) => (s: ResourceSample) => s.gpus?.[id] ?? null;
   const rate = (v: number | null | undefined) => {
     const r = formatRate(v);
     return `${r.value} ${r.unit}`.trim();
@@ -115,16 +118,23 @@
           )}</span
         >
       </div>
-      <svg viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none" class="graph">
-        <path
-          d={sparklinePath(history, (s) => s.cpu, {
-            width: W,
-            height: H,
-            max: 100,
-          })}
-          class="line green"
-        />
-      </svg>
+      <ChartCursor
+        {history}
+        max={100}
+        format={pct1}
+        lines={[{ pick: (s) => s.cpu, color: "var(--green)" }]}
+      >
+        <svg viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none" class="graph">
+          <path
+            d={sparklinePath(history, (s) => s.cpu, {
+              width: W,
+              height: H,
+              max: 100,
+            })}
+            class="line green"
+          />
+        </svg>
+      </ChartCursor>
       <div class="cores">
         {#each cores as core, i}
           <div
@@ -172,6 +182,27 @@
             ? ` · ${$t("detail.fanPct", { v: g.fan_percent.toFixed(0) })}`
             : ""}
         </div>
+        <ChartCursor
+          {history}
+          max={100}
+          format={pct1}
+          lines={[{ pick: gpuPick(g.id), color: "var(--peach)" }]}
+        >
+          <svg
+            viewBox={`0 0 ${W} ${H}`}
+            preserveAspectRatio="none"
+            class="graph"
+          >
+            <path
+              d={sparklinePath(history, gpuPick(g.id), {
+                width: W,
+                height: H,
+                max: 100,
+              })}
+              class="line peach"
+            />
+          </svg>
+        </ChartCursor>
         {#each g.engines ?? [] as [engine, load]}
           <div class="meter">
             <span class="label">{engine}</span>
@@ -206,16 +237,23 @@
           )}<small>%</small></span
         >
       </div>
-      <svg viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none" class="graph">
-        <path
-          d={sparklinePath(history, (s) => s.memory, {
-            width: W,
-            height: H,
-            max: 100,
-          })}
-          class="line yellow"
-        />
-      </svg>
+      <ChartCursor
+        {history}
+        max={100}
+        format={pct1}
+        lines={[{ pick: (s) => s.memory, color: "var(--yellow)" }]}
+      >
+        <svg viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none" class="graph">
+          <path
+            d={sparklinePath(history, (s) => s.memory, {
+              width: W,
+              height: H,
+              max: 100,
+            })}
+            class="line yellow"
+          />
+        </svg>
+      </ChartCursor>
       <div class="kv">
         <span>{$t("detail.used")}</span><span
           >{formatGB(systemStats.memory_used, 2)}</span
@@ -303,24 +341,34 @@
           <div class="big">{rate(systemStats.network_tx_bytes)}</div>
         </div>
       </div>
-      <svg viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none" class="graph">
-        <path
-          d={sparklinePath(history, (s) => s.sent, {
-            width: W,
-            height: H,
-            max: netMax,
-          })}
-          class="line green"
-        />
-        <path
-          d={sparklinePath(history, (s) => s.received, {
-            width: W,
-            height: H,
-            max: netMax,
-          })}
-          class="line blue"
-        />
-      </svg>
+      <ChartCursor
+        {history}
+        max={netMax}
+        format={rate}
+        lines={[
+          { pick: (s) => s.received, color: "var(--blue)", label: "↓" },
+          { pick: (s) => s.sent, color: "var(--green)", label: "↑" },
+        ]}
+      >
+        <svg viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none" class="graph">
+          <path
+            d={sparklinePath(history, (s) => s.sent, {
+              width: W,
+              height: H,
+              max: netMax,
+            })}
+            class="line green"
+          />
+          <path
+            d={sparklinePath(history, (s) => s.received, {
+              width: W,
+              height: H,
+              max: netMax,
+            })}
+            class="line blue"
+          />
+        </svg>
+      </ChartCursor>
     </div>
     {#if netApps}
       <div class="panel">
@@ -591,6 +639,9 @@
   }
   .line.yellow {
     stroke: var(--yellow);
+  }
+  .line.peach {
+    stroke: var(--peach);
   }
   .dot {
     display: inline-block;

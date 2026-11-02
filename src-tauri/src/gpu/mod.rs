@@ -82,11 +82,40 @@ impl GpuMonitor {
         };
         #[cfg(not(any(target_os = "macos", target_os = "linux", target_os = "windows")))]
         let mut devices: Vec<GpuDevice> = Vec::new();
+        #[cfg(debug_assertions)]
+        devices.extend(fake_gpu());
         devices.sort_by(|a, b| a.id.cmp(&b.id));
         devices.dedup_by(|a, b| a.id == b.id);
         devices.truncate(8);
         devices
     }
+}
+
+/// Debug builds only (screenshots on a machine without a GPU):
+/// `WINPERF_FAKE_GPU=1` adds one adapter with a slowly varying load.
+#[cfg(debug_assertions)]
+fn fake_gpu() -> Option<GpuDevice> {
+    std::env::var_os("WINPERF_FAKE_GPU")?;
+    let t = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .ok()?
+        .as_secs_f64();
+    Some(GpuDevice {
+        id: "fake-gpu".into(),
+        name: "NVIDIA Example GPU".into(),
+        vendor: "NVIDIA".into(),
+        utilization: Some((35.0 + 25.0 * (t / 9.0).sin() + 10.0 * (t / 2.3).sin()).max(0.0)),
+        memory_used: Some(1_700_000_000),
+        memory_total: Some(24 * 1024 * 1024 * 1024),
+        memory_kind: "dedicated".into(),
+        temperature: Some(40.0),
+        fan_percent: Some(0.0),
+        power_watts: None,
+        core_clock_mhz: None,
+        cores: None,
+        source: "fake".into(),
+        engines: Vec::new(),
+    })
 }
 
 #[cfg(test)]

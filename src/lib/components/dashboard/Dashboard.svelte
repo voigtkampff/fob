@@ -32,6 +32,8 @@
   import { MINI, fixedRows } from "$lib/utils/mini-layout.js";
   import { onMount } from "svelte";
   import { t } from "$lib/i18n";
+  import ChartCursor from "$lib/components/charts/ChartCursor.svelte";
+  import { percentText as pct1 } from "$lib/utils/chart-cursor.js";
   import { sensorSetup, refreshSensorSetup } from "$lib/stores/sensorSetup";
   import {
     Cpu,
@@ -107,6 +109,10 @@
   $: pickGpu = (s: ResourceSample) =>
     gpuId ? (s.gpus?.[gpuId] ?? null) : null;
   $: netMax = chartMax([series(history, "received"), series(history, "sent")]);
+  const rateText = (v: number) => {
+    const r = formatRate(v);
+    return `${r.value} ${r.unit}`.trim();
+  };
   $: down = formatRate(systemStats.network_rx_bytes);
   $: up = formatRate(systemStats.network_tx_bytes);
   $: volume = systemVolume(systemStats.details.volumes);
@@ -221,16 +227,27 @@
               >%</small
             >{/if}
         </div>
-        <svg viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none" class="spark">
-          <path
-            d={sparklinePath(history, pickGpu, {
-              width: W,
-              height: H,
-              max: 100,
-            })}
-            class="line peach"
-          />
-        </svg>
+        <ChartCursor
+          {history}
+          max={100}
+          format={pct1}
+          lines={[{ pick: pickGpu, color: "var(--peach)" }]}
+        >
+          <svg
+            viewBox={`0 0 ${W} ${H}`}
+            preserveAspectRatio="none"
+            class="spark"
+          >
+            <path
+              d={sparklinePath(history, pickGpu, {
+                width: W,
+                height: H,
+                max: 100,
+              })}
+              class="line peach"
+            />
+          </svg>
+        </ChartCursor>
         <div class="foot">
           {gpu.percent == null
             ? gpus.length
@@ -259,16 +276,27 @@
           >
         </div>
         <div class="big">{formatPercent(memPct, $t)}<small>%</small></div>
-        <svg viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none" class="spark">
-          <path
-            d={sparklinePath(history, (s) => s.memory, {
-              width: W,
-              height: H,
-              max: 100,
-            })}
-            class="line yellow"
-          />
-        </svg>
+        <ChartCursor
+          {history}
+          max={100}
+          format={pct1}
+          lines={[{ pick: (s) => s.memory, color: "var(--yellow)" }]}
+        >
+          <svg
+            viewBox={`0 0 ${W} ${H}`}
+            preserveAspectRatio="none"
+            class="spark"
+          >
+            <path
+              d={sparklinePath(history, (s) => s.memory, {
+                width: W,
+                height: H,
+                max: 100,
+              })}
+              class="line yellow"
+            />
+          </svg>
+        </ChartCursor>
         <div class="foot">
           {formatGB(systemStats.memory_used, 2)} / {formatGB(
             systemStats.memory_total,
@@ -332,24 +360,38 @@
           >
         </div>
         <div class="big">{down.value}<small>{down.unit}</small></div>
-        <svg viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none" class="spark">
-          <path
-            d={sparklinePath(history, (s) => s.sent, {
-              width: W,
-              height: H,
-              max: netMax,
-            })}
-            class="line green"
-          />
-          <path
-            d={sparklinePath(history, (s) => s.received, {
-              width: W,
-              height: H,
-              max: netMax,
-            })}
-            class="line blue"
-          />
-        </svg>
+        <ChartCursor
+          {history}
+          max={netMax}
+          format={rateText}
+          lines={[
+            { pick: (s) => s.received, color: "var(--blue)", label: "↓" },
+            { pick: (s) => s.sent, color: "var(--green)", label: "↑" },
+          ]}
+        >
+          <svg
+            viewBox={`0 0 ${W} ${H}`}
+            preserveAspectRatio="none"
+            class="spark"
+          >
+            <path
+              d={sparklinePath(history, (s) => s.sent, {
+                width: W,
+                height: H,
+                max: netMax,
+              })}
+              class="line green"
+            />
+            <path
+              d={sparklinePath(history, (s) => s.received, {
+                width: W,
+                height: H,
+                max: netMax,
+              })}
+              class="line blue"
+            />
+          </svg>
+        </ChartCursor>
         <div class="foot">↑ {up.value} {up.unit}</div>
       </div>
 
