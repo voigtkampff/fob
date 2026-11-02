@@ -76,6 +76,9 @@ export interface ResourceSample {
   sent: number | null;
   gpus: Record<string, number | null>;
   gpu?: number | null;
+  /** Fob: Temp & fan card headline readings, °C. */
+  cpu_temp?: number | null;
+  gpu_temp?: number | null;
 }
 
 export interface ProcessTreeRow {
@@ -95,7 +98,10 @@ export interface Column {
   label: string;
   visible: boolean;
   required?: boolean;
-  format?: (value: any) => string;
+  format?: (
+    value: any,
+    t?: (key: string, vars?: Record<string, string | number>) => string,
+  ) => string;
 }
 
 export interface Theme {

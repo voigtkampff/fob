@@ -7,38 +7,16 @@
   import { processStore } from "$lib/stores/processes";
   import type { SystemStats, ResourceSample } from "$lib/types";
   import ResourceDetailsContent from "./ResourceDetailsContent.svelte";
+  import { t } from "$lib/i18n";
+  import { clockTime } from "$lib/utils/chart-cursor.js";
   const panels = {
-    cpu: {
-      title: "CPU",
-      label: "CPU details",
-      description: "Overall utilization and activity on each core.",
-    },
-    memory: {
-      title: "Memory",
-      label: "Memory details",
-      description: "Physical RAM, allocation, and swap.",
-    },
-    storage: {
-      title: "Storage",
-      label: "Storage details",
-      description: "Mounted volumes and their available capacity.",
-    },
-    system: {
-      title: "System",
-      label: "System details",
-      description: "Operating system, uptime, and system load.",
-    },
-    network: {
-      title: "Network",
-      label: "Network details",
-      description: "Traffic across this machine’s network interfaces.",
-    },
-    gpu: {
-      title: "Graphics",
-      label: "GPU details",
-      description: "Driver-reported readings from this machine.",
-    },
-  };
+    cpu: 0,
+    memory: 0,
+    storage: 0,
+    system: 0,
+    network: 0,
+    gpu: 0,
+  } as const;
   let {
     kind,
     stats,
@@ -46,6 +24,7 @@
     isFrozen = false,
     unavailable = false,
     capturedAt = 0,
+    started = null,
     children,
   }: {
     kind: keyof typeof panels;
@@ -54,9 +33,43 @@
     isFrozen?: boolean;
     unavailable?: boolean;
     capturedAt?: number;
+    started?: [number, string] | null;
     children?: Snippet;
   } = $props();
-  const panel = $derived(panels[kind]);
+  // Literal keys so the i18n check can see every one.
+  const texts = $derived({
+    cpu: {
+      title: $t("rd.cpu.title"),
+      label: $t("rd.cpu.label"),
+      description: $t("rd.cpu.description"),
+    },
+    memory: {
+      title: $t("rd.memory.title"),
+      label: $t("rd.memory.label"),
+      description: $t("rd.memory.description"),
+    },
+    storage: {
+      title: $t("rd.storage.title"),
+      label: $t("rd.storage.label"),
+      description: $t("rd.storage.description"),
+    },
+    system: {
+      title: $t("rd.system.title"),
+      label: $t("rd.system.label"),
+      description: $t("rd.system.description"),
+    },
+    network: {
+      title: $t("rd.network.title"),
+      label: $t("rd.network.label"),
+      description: $t("rd.network.description"),
+    },
+    gpu: {
+      title: $t("rd.gpu.title"),
+      label: $t("rd.gpu.label"),
+      description: $t("rd.gpu.description"),
+    },
+  });
+  const panel = $derived(texts[kind]);
   const headingId = $derived(`resource-details-${kind}`);
   const triggerId = $derived(`resource-trigger-${kind}`);
 </script>
@@ -88,16 +101,18 @@
       >
       <Sheet.Description>{panel.description}</Sheet.Description>
       <div class="mt-1 flex items-center gap-2 text-xs text-muted-foreground">
-        {#if unavailable}<Badge variant="destructive">Updates unavailable</Badge
-          >{:else if isFrozen}<Badge variant="secondary">Paused</Badge
+        {#if unavailable}<Badge variant="destructive"
+            >{$t("trend.unavailable")}</Badge
+          >{:else if isFrozen}<Badge variant="secondary"
+            >{$t("mini.paused")}</Badge
           >{:else}<span
             class="size-1.5 rounded-full bg-[var(--status-running)]"
             aria-hidden="true"
           ></span>{/if}
         <span
           >{capturedAt
-            ? `Reading from ${new Date(capturedAt).toLocaleTimeString()}`
-            : "Waiting for a reading"}</span
+            ? $t("rd.readingFrom", { v: clockTime(capturedAt) })
+            : $t("rd.waiting")}</span
         >
       </div>
     </Sheet.Header>
@@ -108,6 +123,7 @@
           {history}
           {isFrozen}
           {unavailable}
+          {started}
         />{/if}
     </div>
     <Sheet.Footer
@@ -116,15 +132,19 @@
       <Button
         variant="outline"
         size="sm"
-        aria-label={isFrozen ? "Resume monitoring" : "Pause monitoring"}
+        aria-label={isFrozen
+          ? $t("rd.resumeMonitoring")
+          : $t("rd.pauseMonitoring")}
         onclick={() => processStore.setIsFrozen(!isFrozen)}
-        >{#if isFrozen}<Play />Resume{:else}<Pause />Pause{/if}</Button
+        >{#if isFrozen}<Play />{$t("rd.resume")}{:else}<Pause />{$t(
+            "rd.pause",
+          )}{/if}</Button
       >
       <Sheet.Close
         >{#snippet child({ props })}<Button
             {...props}
             variant="secondary"
-            size="sm">Done</Button
+            size="sm">{$t("rd.done")}</Button
           >{/snippet}</Sheet.Close
       >
     </Sheet.Footer>

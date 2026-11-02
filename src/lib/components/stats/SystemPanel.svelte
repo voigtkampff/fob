@@ -1,74 +1,77 @@
 <script lang="ts">
+  // Fob: uptime from the same source as the dashboard and the mini window
+  // (the last real power-on from the boot log, else the kernel uptime).
+  // Load average is gone: Windows has none.
   import ResourceDetails from "./ResourceDetails.svelte";
+  import StatCard from "./StatCard.svelte";
+  import StatItem from "./StatItem.svelte";
   import type { SystemStats } from "$lib/types";
+  import { Server } from "@lucide/svelte";
+  import { formatDuration, uptimeInfo } from "$lib/utils/dashboard.js";
+  import { clockTime } from "$lib/utils/chart-cursor.js";
+  import { t } from "$lib/i18n";
   export let stats: SystemStats;
   export let capturedAt = 0;
   export let isFrozen = false;
   export let unavailable = false;
-  import * as Card from "$lib/components/ui/card/index.js";
-  import { Badge } from "$lib/components/ui/badge/index.js";
-  import { onMount } from "svelte";
-  import { platform } from "@tauri-apps/plugin-os";
-  import { Server } from "@lucide/svelte";
-  import { formatUptime } from "$lib/utils";
-  export let uptime: number;
-  export let loadAvg: [number, number, number];
-  let loadSupported: boolean | null = null;
-  onMount(() => {
-    try {
-      loadSupported = platform() !== "windows";
-    } catch {
-      loadSupported = null;
-    }
-  });
+  /** [Unix seconds, kind] of the last power-on (Extra.started). */
+  export let started: [number, string] | null = null;
+  $: since = uptimeInfo(
+    stats.uptime,
+    started?.[0],
+    (capturedAt || Date.now()) / 1000,
+  );
+  $: bootedAt = started
+    ? new Date(started[0] * 1000)
+    : new Date((capturedAt || Date.now()) - stats.uptime * 1000);
 </script>
 
-<Card.Root size="sm" class="h-60 gap-3">
-  <Card.Header class="grid-cols-[1fr_auto] items-center gap-2">
-    <Card.Title
-      class="flex items-center gap-2 text-sm font-medium text-muted-foreground"
-      ><Badge
-        variant="secondary"
-        class="size-5 rounded-md border-0 p-0 bg-muted text-muted-foreground [&>svg]:size-3!"
-        aria-hidden="true"><Server /></Badge
-      >System</Card.Title
-    ><ResourceDetails
+<StatCard title={$t("dash.system")}>
+  {#snippet icon()}<Server />{/snippet}
+  {#snippet action()}<ResourceDetails
       kind="system"
       {stats}
       {capturedAt}
       {isFrozen}
       {unavailable}
-    /></Card.Header
-  >
-  <Card.Content class="min-h-0 flex-1 gap-2">
-    <div>
-      <div
-        class="whitespace-nowrap text-xl leading-8 font-semibold tracking-tight tabular-nums"
-        title={formatUptime(uptime)}
-      >
-        {Number.isFinite(uptime) ? formatUptime(uptime) : "—"}
-      </div>
-      <p class="text-xs leading-4 text-muted-foreground">Uptime</p>
-    </div>
+      {started}
+    />{/snippet}
+  {#snippet value()}
     <div
-      class="mt-auto border-t border-border/60 pt-3"
-      title="System load averaged over 1, 5, and 15 minutes. These values are not CPU utilization percentages."
+      class="truncate text-xl leading-8 font-semibold tracking-tight tabular-nums"
     >
-      <p class="mb-2 text-[11px] text-muted-foreground">Load average</p>
-      {#if loadSupported}<dl class="grid grid-cols-3 gap-2">
-          {#each loadAvg as value, index}<div>
-              <dt class="text-[10px] text-muted-foreground">
-                {[1, 5, 15][index]} min
-              </dt>
-              <dd class="mt-0.5 text-sm font-medium tabular-nums">
-                {Number.isFinite(value) ? value.toFixed(2) : "—"}
-              </dd>
-            </div>{/each}
-        </dl>{:else}<p class="text-xs text-muted-foreground">
-          {loadSupported === false
-            ? "Not provided on Windows."
-            : "Unavailable on this system."}
-        </p>{/if}
-    </div></Card.Content
-  ></Card.Root
->
+      {Number.isFinite(since.seconds) ? formatDuration(since.seconds, $t) : "—"}
+    </div>
+    <p class="truncate text-xs leading-4 text-muted-foreground">
+      {since.sinceStart && started
+        ? $t("stats.sincePowerOn", { how: $t(`uptime.kind.${started[1]}`) })
+        : $t("stats.kernelUptime")}
+    </p>
+  {/snippet}
+  {#snippet middle()}
+    {#if stats.details.identity.os_version}<StatItem
+        label={$t("stats.os")}
+        value={stats.details.identity.os_version}
+      />{/if}
+    {#if since.sinceStart}<StatItem
+        label={$t("stats.kernel")}
+        value={formatDuration(since.kernel, $t)}
+      />{/if}
+  {/snippet}
+  {#snippet band()}
+    <div
+      class="min-h-3 truncate text-[10px] leading-3 text-muted-foreground"
+      title={`${bootedAt.toLocaleDateString()} ${clockTime(bootedAt.getTime())}`}
+    >
+      {$t("stats.bootedAt", {
+        d: bootedAt.toLocaleString(undefined, {
+          month: "numeric",
+          day: "numeric",
+          hour: "2-digit",
+          minute: "2-digit",
+          hourCycle: "h23",
+        }),
+      })}
+    </div>
+  {/snippet}
+</StatCard>

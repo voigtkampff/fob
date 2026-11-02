@@ -1,4 +1,5 @@
 <script lang="ts">
+  import CoreGrid from "$lib/components/stats/CoreGrid.svelte";
   // winperf: one detail view for any card (back button / Esc returns).
   import type {
     GpuDevice,
@@ -57,6 +58,12 @@
   const H = 70;
   $: n = compact ? 8 : 10;
   $: cores = systemStats.cpu_usage;
+  $: memoryKind = (kind: string) =>
+    kind === "shared"
+      ? $t("gpu.kindShared")
+      : kind === "dedicated"
+        ? $t("gpu.kindDedicated")
+        : $t("gpu.kindUnknown");
   $: netMax = chartMax([series(history, "received"), series(history, "sent")]);
   $: interfaces = [...systemStats.details.interfaces]
     .filter((i) => i.received_total + i.sent_total > 0)
@@ -135,20 +142,7 @@
           />
         </svg>
       </ChartCursor>
-      <div class="cores">
-        {#each cores as core, i}
-          <div
-            class="core"
-            title={$t("detail.thread", { i, v: core.toFixed(0) })}
-          >
-            <div class="core-bar">
-              <span style={`height:${Math.max(3, Math.min(100, core))}%`}
-              ></span>
-            </div>
-            <small>{i}</small>
-          </div>
-        {/each}
-      </div>
+      <CoreGrid usage={cores} where="detail" />
     </div>
     <div class="panel">
       <div class="list-head">
@@ -175,8 +169,8 @@
         </div>
         <div class="muted small">
           {g.memory_total
-            ? `${g.memory_used != null ? formatGB(g.memory_used, 1) + " / " : ""}${formatGB(g.memory_total, 0)} ${g.memory_kind}`
-            : g.memory_kind}
+            ? `${g.memory_used != null ? formatGB(g.memory_used, 1) + " / " : ""}${formatGB(g.memory_total, 0)} ${memoryKind(g.memory_kind)}`
+            : memoryKind(g.memory_kind)}
           {g.temperature != null ? ` · ${g.temperature.toFixed(0)} °C` : ""}
           {g.fan_percent != null
             ? ` · ${$t("detail.fanPct", { v: g.fan_percent.toFixed(0) })}`
@@ -655,34 +649,6 @@
   }
   .dot.green {
     background: var(--green);
-  }
-  .cores {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(18px, 1fr));
-    gap: 4px;
-  }
-  .core {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 2px;
-  }
-  .core-bar {
-    width: 100%;
-    height: 40px;
-    display: flex;
-    align-items: flex-end;
-    border-radius: 3px;
-    background: color-mix(in oklab, var(--foreground) 7%, transparent);
-    overflow: hidden;
-  }
-  .core-bar span {
-    width: 100%;
-    background: var(--green);
-  }
-  .core small {
-    font-size: 9px;
-    color: var(--muted-foreground);
   }
   .list-head {
     display: flex;

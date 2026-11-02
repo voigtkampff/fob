@@ -146,9 +146,8 @@
 }
 .resource-grid {
   display: grid;
-  grid-template-columns:
-    minmax(0, 1.5fr) repeat(3, minmax(0, 1fr)) minmax(0, 1.05fr)
-    minmax(0, 1.2fr);
+  /* Seven equal cards on one row from 1024 px up (Fob's narrowest window). */
+  grid-template-columns: repeat(7, minmax(0, 1fr));
   gap: 12px;
   padding: 16px;
 }
@@ -157,7 +156,7 @@
 }
 .resource-grid [data-slot="card-header"],
 .resource-grid [data-slot="card-content"] {
-  padding-inline: 16px;
+  padding-inline: 12px;
 }
 .process-table-region {
   flex: 1;
@@ -247,23 +246,10 @@
   .resource-grid {
     gap: 8px;
     padding: 12px;
-    grid-template-columns:
-      minmax(0, 1.5fr) repeat(3, minmax(0, 1fr)) minmax(0, 1.05fr)
-      minmax(0, 1.2fr);
   }
   .resource-grid [data-slot="card-header"],
   .resource-grid [data-slot="card-content"] {
-    padding-inline: 12px;
-  }
-}
-@media (max-width: 900px) {
-  .resource-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    max-height: 330px;
-    overflow: auto;
-  }
-  .resource-grid > [data-slot="card"]:first-child {
-    grid-column: 1/-1;
+    padding-inline: 10px;
   }
 }
 @media (prefers-reduced-motion: reduce) {

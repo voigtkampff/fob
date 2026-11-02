@@ -1,18 +1,17 @@
 <script lang="ts">
   import ResourceDetails from "./ResourceDetails.svelte";
-  import type { SystemStats } from "$lib/types";
+  import StatCard from "./StatCard.svelte";
+  import StatItem from "./StatItem.svelte";
+  import ResourceTrend from "./ResourceTrend.svelte";
+  import type { SystemStats, ResourceSample } from "$lib/types";
+  import { MemoryStick } from "@lucide/svelte";
+  import { formatMemorySize } from "$lib/utils";
+  import { t } from "$lib/i18n";
   export let stats: SystemStats;
   export let capturedAt = 0;
-  import * as Card from "$lib/components/ui/card/index.js";
-  import { Badge } from "$lib/components/ui/badge/index.js";
-  import type { ResourceSample } from "$lib/types";
-  import ResourceTrend from "./ResourceTrend.svelte";
   export let history: ResourceSample[] = [];
   export let isFrozen = false;
   export let unavailable = false;
-  import { MemoryStick } from "@lucide/svelte";
-  import StatItem from "./StatItem.svelte";
-  import { formatMemorySize } from "$lib/utils";
   export let memoryTotal: number;
   export let memoryUsed: number;
   export let memoryFree: number;
@@ -25,48 +24,43 @@
     : null;
 </script>
 
-<Card.Root size="sm" class="h-60 gap-3">
-  <Card.Header class="grid-cols-[1fr_auto] items-center gap-2">
-    <Card.Title
-      class="flex items-center gap-2 text-sm font-medium text-muted-foreground"
-      ><Badge
-        variant="secondary"
-        class="size-5 rounded-md border-0 p-0 bg-primary/10 text-primary [&>svg]:size-3!"
-        style="--primary:var(--chart-3)"
-        aria-hidden="true"><MemoryStick /></Badge
-      >Memory</Card.Title
-    ><ResourceDetails
+<StatCard title={$t("dash.memory")} color="var(--chart-3)">
+  {#snippet icon()}<MemoryStick />{/snippet}
+  {#snippet action()}<ResourceDetails
       kind="memory"
       {stats}
       {capturedAt}
       {isFrozen}
       {unavailable}
       {history}
-    /></Card.Header
-  >
-  <Card.Content class="min-h-0 flex-1 gap-2">
-    <div>
-      <div class="text-2xl leading-8 font-semibold tracking-tight tabular-nums">
-        {ready ? formatMemorySize(memoryUsed) : "—"}
-      </div>
-      <p class="text-xs leading-4 text-muted-foreground">
-        used of {ready ? formatMemorySize(memoryTotal) : "unknown total"}
-      </p>
+    />{/snippet}
+  {#snippet value()}
+    <div class="text-2xl leading-8 font-semibold tracking-tight tabular-nums">
+      {ready ? formatMemorySize(memoryUsed) : "—"}
     </div>
+    <p class="truncate text-xs leading-4 text-muted-foreground">
+      {ready
+        ? $t("stats.usedOf", { v: formatMemorySize(memoryTotal) })
+        : $t("stats.unknownTotal")}
+    </p>
+  {/snippet}
+  {#snippet middle()}
     <StatItem
-      label="Not in use"
-      value={ready ? formatMemorySize(memoryFree) : "Unavailable"}
+      label={$t("stats.notInUse")}
+      value={ready ? formatMemorySize(memoryFree) : $t("common.na")}
     />
     <StatItem
-      label="Utilization"
-      value={percentage === null ? "Unavailable" : `${percentage.toFixed(1)}%`}
+      label={$t("stats.utilization")}
+      value={percentage === null
+        ? $t("common.na")
+        : `${percentage.toFixed(1)}%`}
     />
-    <ResourceTrend
+  {/snippet}
+  {#snippet band()}<ResourceTrend
       {history}
       metric="memory"
-      label="Memory utilization"
+      label={$t("stats.memUtil")}
       {isFrozen}
       {unavailable}
-    />
-  </Card.Content></Card.Root
->
+    />{/snippet}
+</StatCard>

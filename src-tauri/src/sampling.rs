@@ -75,6 +75,41 @@ pub struct Sample {
     pub received: Option<u64>,
     pub sent: Option<u64>,
     pub gpus: BTreeMap<String, Option<f64>>,
+    /// Fob: the Temp & fan card's headline readings (°C), picked like the
+    /// frontend's sensorSummary (CPU package first, then any CPU sensor).
+    pub cpu_temp: Option<f64>,
+    pub gpu_temp: Option<f64>,
+}
+/// Fob: same rules as sensorSummary() in src/lib/utils/dashboard.js.
+fn headline_temps(sensors: &[crate::sensors::Sensor]) -> (Option<f64>, Option<f64>) {
+    use crate::sensors::SensorKind;
+    let has = |text: &str, words: &[&str]| words.iter().any(|w| text.contains(w));
+    const GPU: &[&str] = &["gpu", "nvidia", "radeon", "geforce"];
+    let temps: Vec<(String, String, f64)> = sensors
+        .iter()
+        .filter(|s| s.kind == SensorKind::Temperature && s.value.is_finite())
+        .map(|s| {
+            let name = s.name.to_lowercase();
+            (
+                format!("{} {}", s.hardware.to_lowercase(), name),
+                name,
+                s.value,
+            )
+        })
+        .collect();
+    let is_cpu = |both: &str| {
+        has(both, &["cpu", "core", "ryzen", "intel", "package", "tctl"]) && !has(both, GPU)
+    };
+    let cpu = temps
+        .iter()
+        .find(|(both, name, _)| has(name, &["package", "tctl", "tdie"]) && is_cpu(both))
+        .or_else(|| temps.iter().find(|(both, _, _)| is_cpu(both)))
+        .map(|t| t.2);
+    let gpu = temps
+        .iter()
+        .find(|(both, _, _)| has(both, GPU))
+        .map(|t| t.2);
+    (cpu, gpu)
 }
 impl Sample {
     fn gap(timestamp: u64, interval: u64) -> Self {
@@ -86,10 +121,13 @@ impl Sample {
             received: None,
             sent: None,
             gpus: BTreeMap::new(),
+            cpu_temp: None,
+            gpu_temp: None,
         }
     }
     fn from_frame(frame: &Frame, interval: u64) -> Self {
         let stats = &frame.stats;
+        let temps = headline_temps(&frame.extra.sensors.sensors);
         let cpu = if stats.cpu_usage.is_empty() || stats.cpu_usage.iter().any(|v| !v.is_finite()) {
             None
         } else {
@@ -111,6 +149,8 @@ impl Sample {
                 .iter()
                 .map(|g| (g.id.clone(), g.utilization))
                 .collect(),
+            cpu_temp: temps.0,
+            gpu_temp: temps.1,
             ..Self::gap(frame.captured_at, interval)
         }
     }
@@ -429,6 +469,48 @@ pub async fn set_monitor_interval(
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn headline_temps_pick_the_cpu_package_and_the_gpu() {
+        use crate::sensors::{Sensor, SensorKind};
+        let s = |hardware: &str, name: &str, kind, value| Sensor {
+            hardware: hardware.into(),
+            id: String::new(),
+            name: name.into(),
+            kind,
+            value,
+            source: "test".into(),
+        };
+        let list = vec![
+            s(
+                "Example Chip",
+                "Temperature #1",
+                SensorKind::Temperature,
+                30.0,
+            ),
+            s(
+                "Example Hybrid CPU",
+                "Core #1",
+                SensorKind::Temperature,
+                48.0,
+            ),
+            s(
+                "Example Hybrid CPU",
+                "CPU Package",
+                SensorKind::Temperature,
+                53.0,
+            ),
+            s(
+                "NVIDIA Example GPU",
+                "GPU Core",
+                SensorKind::Temperature,
+                40.0,
+            ),
+            s("Example Chip", "Fan #1", SensorKind::Fan, 1100.0),
+        ];
+        assert_eq!(headline_temps(&list), (Some(53.0), Some(40.0)));
+        assert_eq!(headline_temps(&list[..2]), (Some(48.0), None));
+        assert_eq!(headline_temps(&[]), (None, None));
+    }
     #[test]
     fn history_is_sampled_from_app_start() {
         let main = include_str!("main.rs");

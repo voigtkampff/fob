@@ -265,7 +265,7 @@
           else
             processStore.update((state) => ({
               ...state,
-              error: "This process is no longer available.",
+              error: get(t)("proc.gone"),
             }));
         },
       );
@@ -350,6 +350,12 @@
             history={resourceHistory}
             {isFrozen}
             unavailable={!!error}
+            sensors={$processStore.extra?.sensors?.sensors ?? []}
+            started={$processStore.extra?.started ?? null}
+            onOpenTemp={() => {
+              tab = "dashboard";
+              detail = "temp";
+            }}
           />
         {/if}
 
@@ -399,12 +405,12 @@
             ? tree.rootCount
             : cachedFilteredProcesses.length}
           resultLabel={processView === "tree"
-            ? tree.rootCount === 1
-              ? "family"
-              : "families"
-            : cachedFilteredProcesses.length === 1
-              ? "process"
-              : "processes"}
+            ? $t(tree.rootCount === 1 ? "page.family" : "page.families", {
+                n: tree.rootCount.toLocaleString(),
+              })
+            : $t("page.processes", {
+                n: cachedFilteredProcesses.length.toLocaleString(),
+              })}
         />
       </main>
     {/if}

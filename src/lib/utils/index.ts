@@ -16,13 +16,6 @@ export function formatPercentage(value: number): string {
   return `${value.toFixed(1)}%`;
 }
 
-export function formatUptime(seconds: number): string {
-  const days = Math.floor(seconds / 86400);
-  const hours = Math.floor((seconds % 86400) / 3600);
-  const minutes = Math.floor((seconds % 3600) / 60);
-  return `${days}d ${hours}h ${minutes}m`;
-}
-
 export function getUsageClass(percentage: number): string {
   if (percentage >= 90) return "critical";
   if (percentage >= 60) return "high";

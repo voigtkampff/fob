@@ -10,8 +10,17 @@
     networkCeiling,
     nearestResourceSample,
   } from "$lib/utils/resource-history.js";
-  type Metric = "cpu" | "memory" | "network" | "gpu";
-  type Key = "cpu" | "memory" | "received" | "sent" | "gpu";
+  import { clockTime } from "$lib/utils/chart-cursor.js";
+  import { t } from "$lib/i18n";
+  type Metric = "cpu" | "memory" | "network" | "gpu" | "temp";
+  type Key =
+    | "cpu"
+    | "memory"
+    | "received"
+    | "sent"
+    | "gpu"
+    | "cpu_temp"
+    | "gpu_temp";
   let {
     history: rawHistory = [],
     gpuId = "",
@@ -41,24 +50,37 @@
       ? [
           {
             key: "received" as Key,
-            label: "Received",
+            label: $t("stats.received"),
             color: "var(--chart-1)",
           },
-          { key: "sent" as Key, label: "Sent", color: "var(--chart-4)" },
-        ]
-      : [
           {
-            key: metric as Key,
-            label:
-              metric === "cpu" ? "CPU" : metric === "gpu" ? "GPU" : "RAM used",
-            color:
-              metric === "cpu"
-                ? "var(--chart-1)"
-                : metric === "gpu"
-                  ? "var(--chart-2)"
-                  : "var(--chart-3)",
+            key: "sent" as Key,
+            label: $t("stats.sent"),
+            color: "var(--chart-4)",
           },
-        ],
+        ]
+      : metric === "temp"
+        ? [
+            { key: "cpu_temp" as Key, label: "CPU", color: "var(--chart-1)" },
+            { key: "gpu_temp" as Key, label: "GPU", color: "var(--chart-2)" },
+          ]
+        : [
+            {
+              key: metric as Key,
+              label:
+                metric === "cpu"
+                  ? "CPU"
+                  : metric === "gpu"
+                    ? "GPU"
+                    : $t("stats.ramUsed"),
+              color:
+                metric === "cpu"
+                  ? "var(--chart-1)"
+                  : metric === "gpu"
+                    ? "var(--chart-2)"
+                    : "var(--chart-3)",
+            },
+          ],
   );
   const config = $derived(
     Object.fromEntries(
@@ -67,7 +89,14 @@
   );
   const end = $derived(history.at(-1)?.timestamp ?? 0);
   const ceiling = $derived(
-    metric === "network" ? networkCeiling(history) : 100,
+    metric === "network"
+      ? networkCeiling(history)
+      : metric === "temp"
+        ? Math.max(
+            100,
+            ...history.flatMap((p) => [p.cpu_temp ?? 0, p.gpu_temp ?? 0]),
+          )
+        : 100,
   );
   const selected = $derived(
     selectedStamp === null
@@ -80,44 +109,43 @@
   const validCount = $derived(
     history.filter((p) => series.some((s) => p[s.key] != null)).length,
   );
-  const time = (stamp: number) =>
-    new Date(stamp).toLocaleTimeString(undefined, {
-      hour: "2-digit",
-      minute: "2-digit",
-      second: "2-digit",
-    });
+  const time = clockTime;
   const value = (n: number | null) =>
     n === null
-      ? "Unavailable"
+      ? $t("common.na")
       : metric === "network"
         ? `${formatBytes(n)}/s`
-        : `${n.toFixed(1)}%`;
+        : metric === "temp"
+          ? `${n.toFixed(0)} °C`
+          : `${n.toFixed(1)}%`;
   const describe = (p: ResourceSample | undefined) =>
     p
       ? `${time(p.timestamp)} · ${series.map((s) => `${s.label} ${value(p[s.key] ?? null)}`).join(" · ")}`
-      : "Collecting history";
+      : $t("trend.collecting");
   const caption = $derived(
     selectedStamp !== null
       ? metric === "network" && selected
         ? `↓ ${value(selected.received)} · ↑ ${value(selected.sent)}`
         : describe(selected)
       : isFrozen
-        ? "Paused"
+        ? $t("mini.paused")
         : unavailable
-          ? "Updates unavailable"
+          ? $t("trend.unavailable")
           : unsupported
-            ? "Driver counter unavailable"
+            ? metric === "temp"
+              ? $t("trend.noSensor")
+              : $t("trend.noCounter")
             : validCount < 2
-              ? "Collecting history…"
+              ? $t("trend.collecting")
               : metric === "network"
                 ? `2m · 0–${formatBytes(ceiling)}/s`
-                : "2m · 0–100%",
+                : metric === "temp"
+                  ? `2m · 0–${ceiling.toFixed(0)} °C`
+                  : "2m · 0–100%",
   );
+  const KEYS = ["ArrowLeft", "ArrowRight", "Home", "End", "Escape"]; // i18n-ignore
   function key(event: KeyboardEvent) {
-    if (
-      !["ArrowLeft", "ArrowRight", "Home", "End", "Escape"].includes(event.key)
-    )
-      return;
+    if (!KEYS.includes(event.key)) return;
     event.preventDefault();
     if (event.key === "Escape") {
       selectedStamp = null;
@@ -148,12 +176,22 @@
     windowMs={RESOURCE_WINDOW_MS}
     max={ceiling}
     format={(n) =>
-      metric === "network" ? `${formatBytes(n)}/s` : percentText(n)}
+      metric === "network"
+        ? `${formatBytes(n)}/s`
+        : metric === "temp"
+          ? `${n.toFixed(0)} °C`
+          : percentText(n)}
     lines={series.map((s) => ({
       pick: (p: ResourceSample) => p[s.key] ?? null,
       color: s.color,
       label:
-        metric === "network" ? (s.key === "received" ? "↓" : "↑") : undefined,
+        metric === "network"
+          ? s.key === "received"
+            ? "↓"
+            : "↑"
+          : metric === "temp"
+            ? s.label
+            : undefined,
     }))}
     inset={{ left: 2, right: 3, top: 3, bottom: 2 }}
   >
@@ -162,7 +200,7 @@
       class={`${expanded ? "h-28" : "h-12"} w-full rounded-sm aspect-auto focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring`}
       role="slider"
       tabindex={history.length ? 0 : -1}
-      aria-label={`${label} history, last two minutes. Use Left and Right arrows to inspect samples.`}
+      aria-label={$t("trend.aria", { label })}
       aria-valuemin={0}
       aria-valuemax={Math.max(0, history.length - 1)}
       aria-valuenow={selectedIndex}
@@ -243,7 +281,7 @@
   </ChartCursor>
   <div
     class="min-h-3 truncate text-[10px] leading-3 text-muted-foreground tabular-nums"
-    title={`${label}: ${caption}. History stays in memory. Pauses and missed reads stay disconnected.`}
+    title={$t("trend.title", { label, caption })}
   >
     {caption}
   </div>

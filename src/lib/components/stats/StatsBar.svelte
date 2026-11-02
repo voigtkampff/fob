@@ -1,7 +1,14 @@
 <script lang="ts">
   import GpuPanel from "./GpuPanel.svelte";
+  import TempPanel from "./TempPanel.svelte";
+  import { t } from "$lib/i18n";
   import * as Tooltip from "$lib/components/ui/tooltip/index.js";
-  import type { SystemStats, ResourceSample, GpuDevice } from "$lib/types";
+  import type {
+    SystemStats,
+    ResourceSample,
+    GpuDevice,
+    Sensor,
+  } from "$lib/types";
   import {
     CpuPanel,
     MemoryPanel,
@@ -15,10 +22,13 @@
   export let capturedAt = 0;
   export let isFrozen = false;
   export let unavailable = false;
+  export let sensors: Sensor[] = [];
+  export let started: [number, string] | null = null;
+  export let onOpenTemp: () => void = () => {};
 </script>
 
 {#if systemStats}<Tooltip.Provider delayDuration={150}
-    ><section class="resource-grid shrink-0" aria-label="System resources">
+    ><section class="resource-grid shrink-0" aria-label={$t("stats.aria")}>
       <CpuPanel
         stats={systemStats}
         {capturedAt}
@@ -55,8 +65,7 @@
         {capturedAt}
         {isFrozen}
         {unavailable}
-        uptime={systemStats.uptime}
-        loadAvg={systemStats.load_avg}
+        {started}
       /><NetworkPanel
         stats={systemStats}
         {capturedAt}
@@ -65,6 +74,12 @@
         {unavailable}
         networkRxBytes={systemStats.network_rx_bytes}
         networkTxBytes={systemStats.network_tx_bytes}
+      /><TempPanel
+        {sensors}
+        {history}
+        {isFrozen}
+        {unavailable}
+        onOpen={onOpenTemp}
       />
     </section></Tooltip.Provider
   >{/if}

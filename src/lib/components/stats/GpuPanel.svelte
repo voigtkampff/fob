@@ -1,15 +1,15 @@
 <script lang="ts">
   import * as Card from "$lib/components/ui/card/index.js";
   import ResourceDetails from "./ResourceDetails.svelte";
-  import type { SystemStats } from "$lib/types";
-  export let stats: SystemStats;
-  export let capturedAt = 0;
+  import StatCard from "./StatCard.svelte";
+  import ResourceTrend from "./ResourceTrend.svelte";
+  import type { SystemStats, GpuDevice, ResourceSample } from "$lib/types";
   import * as NativeSelect from "$lib/components/ui/native-select/index.js";
-  import { Badge } from "$lib/components/ui/badge/index.js";
   import { Gpu } from "@lucide/svelte";
   import { formatBytes } from "$lib/utils";
-  import type { GpuDevice, ResourceSample } from "$lib/types";
-  import ResourceTrend from "./ResourceTrend.svelte";
+  import { t } from "$lib/i18n";
+  export let stats: SystemStats;
+  export let capturedAt = 0;
   export let gpus: GpuDevice[] = [];
   export let history: ResourceSample[] = [];
   export let isFrozen = false;
@@ -27,26 +27,59 @@
     gpus[0];
   const percent = (v: number | null | undefined) =>
     v == null ? "—" : `${v.toFixed(1)}%`;
-  const bytes = (v: number | null | undefined) =>
-    v == null ? "Unavailable" : formatBytes(v);
+  $: na = $t("common.na");
+  $: bytes = (v: number | null | undefined) =>
+    v == null ? na : formatBytes(v);
+  $: rows = device
+    ? [
+        [
+          $t("gpu.utilization"),
+          device.utilization === null ? na : percent(device.utilization),
+        ],
+        [
+          device.memory_kind === "shared"
+            ? $t("gpu.sharedInUse")
+            : $t("gpu.memInUse"),
+          bytes(device.memory_used),
+        ],
+        [
+          $t("gpu.memCapacity"),
+          device.memory_kind === "shared"
+            ? $t("gpu.usesSystem")
+            : bytes(device.memory_total),
+        ],
+        [
+          $t("gpu.temperature"),
+          device.temperature === null
+            ? na
+            : `${device.temperature.toFixed(0)} °C`,
+        ],
+        [
+          $t("gpu.power"),
+          device.power_watts == null
+            ? na
+            : `${device.power_watts.toFixed(1)} W`,
+        ],
+        [
+          $t("gpu.clock"),
+          device.core_clock_mhz == null ? na : `${device.core_clock_mhz} MHz`,
+        ],
+      ]
+    : [];
 </script>
 
-<Card.Root size="sm" class="h-60 gap-3">
-  <Card.Header class="grid-cols-[1fr_auto] items-center gap-2">
-    <Card.Title
-      class="flex items-center gap-2 text-sm font-medium text-muted-foreground"
-      ><Badge
-        variant="secondary"
-        class="size-5 rounded-md border-0 p-0 bg-primary/10 text-primary [&>svg]:size-3!"
-        style="--primary:var(--chart-2)"
-        aria-hidden="true"><Gpu /></Badge
-      >GPU</Card.Title
-    >
-    <ResourceDetails kind="gpu" {stats} {capturedAt} {isFrozen} {unavailable}
+<StatCard title="GPU" color="var(--chart-2)">
+  {#snippet icon()}<Gpu />{/snippet}
+  {#snippet action()}<ResourceDetails
+      kind="gpu"
+      {stats}
+      {capturedAt}
+      {isFrozen}
+      {unavailable}
       >{#snippet children()}
         {#if gpus.length > 1}<div class="space-y-2">
             <label for="gpu-device" class="text-sm font-medium"
-              >Graphics adapter</label
+              >{$t("gpu.adapter")}</label
             ><NativeSelect.Root
               id="gpu-device"
               value={device?.id ?? ""}
@@ -61,13 +94,13 @@
             <h3 class="text-lg font-semibold">{device.name}</h3>
             <p class="text-sm text-muted-foreground">
               {device.vendor}{device.cores
-                ? ` · ${device.cores} graphics cores`
+                ? ` · ${$t("gpu.cores", { n: device.cores })}`
                 : ""}
             </p>
           </div>
           <Card.Root size="sm"
             ><Card.Content class="divide-y divide-border">
-              {#each [["GPU utilization", device.utilization === null ? "Unavailable" : percent(device.utilization)], [device.memory_kind === "shared" ? "Shared memory in use" : "GPU memory in use", bytes(device.memory_used)], ["GPU memory capacity", device.memory_kind === "shared" ? "Uses system memory" : bytes(device.memory_total)], ["Temperature", device.temperature === null ? "Unavailable" : `${device.temperature.toFixed(0)} °C`], ["Power", device.power_watts == null ? "Unavailable" : `${device.power_watts.toFixed(1)} W`], ["Core clock", device.core_clock_mhz == null ? "Unavailable" : `${device.core_clock_mhz} MHz`]] as [label, value]}<div
+              {#each rows as [label, value]}<div
                   class="flex justify-between gap-4 py-3 first:pt-0 last:pb-0"
                 >
                   <span class="text-muted-foreground">{label}</span><span
@@ -80,7 +113,7 @@
             {history}
             metric="gpu"
             expanded
-            label={`${device.name} utilization`}
+            label={$t("stats.gpuUtilOf", { name: device.name })}
             gpuId={device.id}
             {isFrozen}
             {unavailable}
@@ -89,62 +122,53 @@
           <div
             class="rounded-lg border border-border bg-muted/40 p-4 text-sm leading-relaxed space-y-2"
           >
-            <p class="font-medium">About these readings</p>
+            <p class="font-medium">{$t("gpu.about")}</p>
             <p class="text-muted-foreground">
               {device.source}. {device.memory_kind === "shared"
-                ? "Shared GPU memory is part of your system memory, not additional VRAM. "
-                : ""}Unavailable counters are not reported as zero. Support
-              depends on the GPU and its driver.
+                ? $t("gpu.sharedNote")
+                : ""}{$t("gpu.counterNote")}
             </p>
             <p class="text-xs text-muted-foreground">
-              {isFrozen
-                ? "Updates paused in both windows."
-                : "History covers the last two minutes and stays in memory."}
+              {isFrozen ? $t("details.pausedBoth") : $t("details.historyNote")}
             </p>
           </div>
         {:else}<div class="space-y-3 py-6">
             <Gpu class="size-8 text-muted-foreground" />
-            <h3 class="font-semibold">GPU readings unavailable</h3>
+            <h3 class="font-semibold">{$t("gpu.unavailable")}</h3>
             <p class="text-sm leading-relaxed text-muted-foreground">
-              NeoHtop reads macOS graphics drivers, NVIDIA NVML, and Linux AMD
-              driver counters. Other adapters may provide inventory only. No
-              elevated permissions or extra monitoring agent is required.
+              {$t("gpu.unavailableNote")}
             </p>
           </div>{/if}
       {/snippet}</ResourceDetails
-    >
-  </Card.Header>
-  <Card.Content class="min-h-0 flex-1 gap-2">
-    <div>
-      <div class="text-2xl leading-8 font-semibold tracking-tight tabular-nums">
-        {percent(device?.utilization)}
-      </div>
-      <p
-        class="truncate text-xs leading-4 text-muted-foreground"
-        title={device?.name}
-      >
-        {device?.name ?? "No supported GPU detected"}
-      </p>
+    >{/snippet}
+  {#snippet value()}
+    <div class="text-2xl leading-8 font-semibold tracking-tight tabular-nums">
+      {percent(device?.utilization)}
     </div>
     <p
-      class="text-xs leading-4 text-muted-foreground"
-      title="GPU memory in use. Shared memory is part of system memory."
+      class="truncate text-xs leading-4 text-muted-foreground"
+      title={device?.name}
     >
+      {device?.name ?? $t("dash.noGpu")}
+    </p>
+  {/snippet}
+  {#snippet middle()}
+    <p class="text-xs leading-4 text-muted-foreground">
       {#if device?.memory_used != null}{device.memory_kind === "shared"
-          ? "Shared"
-          : "Memory"} ·
+          ? $t("gpu.shared")
+          : $t("gpu.memory")} ·
         <span class="font-medium text-foreground"
           >{formatBytes(device.memory_used)}</span
-        >{:else}Live counters vary by driver{/if}
+        >{:else}{$t("gpu.countersVary")}{/if}
     </p>
-    <ResourceTrend
+  {/snippet}
+  {#snippet band()}<ResourceTrend
       {history}
       metric="gpu"
-      label={`${device?.name ?? "GPU"} utilization`}
+      label={$t("stats.gpuUtilOf", { name: device?.name ?? "GPU" })}
       gpuId={device?.id}
       {isFrozen}
       {unavailable}
       unsupported={device?.utilization == null}
-    />
-  </Card.Content>
-</Card.Root>
+    />{/snippet}
+</StatCard>
