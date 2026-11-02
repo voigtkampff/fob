@@ -8,6 +8,7 @@
   import Dashboard from "./dashboard/Dashboard.svelte";
   import type { DetailKind } from "./dashboard/detail";
   import { themeStore } from "$lib/stores/theme";
+  import { t } from "$lib/i18n";
   import type { OverviewSnapshot } from "$lib/types";
   let data: OverviewSnapshot | null = null;
   let error = "";
@@ -153,22 +154,22 @@
   <div class="mini" bind:this={panel}>
     <div class="mini-bar">
       <img src="/32x32.png" alt="" class="size-4" />
-      <span class="mini-title">winperf</span>
+      <span class="mini-title">{$t("app.name")}</span>
       <span class="mini-status"
         >{data?.paused
-          ? "Paused"
+          ? $t("mini.paused")
           : stale
-            ? `Last reading ${age}s ago`
+            ? $t("mini.lastReading", { s: age })
             : data
-              ? "Live"
-              : "Reading…"}</span
+              ? $t("mini.live")
+              : $t("mini.reading")}</span
       >
       <span class="flex-1"></span>
       <Button
         variant="ghost"
         size="icon-sm"
-        aria-label={data?.paused ? "Resume updates" : "Pause updates"}
-        title={data?.paused ? "Resume updates" : "Pause updates"}
+        aria-label={data?.paused ? $t("mini.resume") : $t("mini.pause")}
+        title={data?.paused ? $t("mini.resume") : $t("mini.pause")}
         onclick={pause}
         disabled={!data}
         >{#if data?.paused}<Play />{:else}<Pause />{/if}</Button
@@ -176,21 +177,23 @@
       <Button
         variant="ghost"
         size="icon-sm"
-        aria-label="Open full window"
-        title="Open full window"
+        aria-label={$t("mini.openFull")}
+        title={$t("mini.openFull")}
         onclick={() => open()}><Maximize2 /></Button
       >
       <Button
         variant="ghost"
         size="icon-sm"
-        aria-label="Quit winperf"
-        title="Quit winperf"
+        aria-label={$t("mini.quit")}
+        title={$t("mini.quit")}
         onclick={() => invoke("quit_app")}><Power /></Button
       >
     </div>
     <div bind:this={body}>
       {#if error}<div role="alert" class="mini-error">
-          {error}<Button variant="link" size="sm" onclick={read}>Retry</Button>
+          {error}<Button variant="link" size="sm" onclick={read}
+            >{$t("mini.retry")}</Button
+          >
         </div>{/if}
       {#if data}
         <Dashboard
@@ -207,7 +210,9 @@
           processes={data.processes}
         />
       {:else}
-        <p class="p-4 text-xs text-muted-foreground">Reading this machine…</p>
+        <p class="p-4 text-xs text-muted-foreground">
+          {$t("mini.readingMachine")}
+        </p>
       {/if}
     </div>
   </div>

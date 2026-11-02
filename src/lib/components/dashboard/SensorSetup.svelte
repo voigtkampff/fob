@@ -4,6 +4,7 @@
   import type { SensorSetupStatus } from "$lib/types";
   import { setupState, setupSteps } from "$lib/utils/dashboard.js";
   import { changeSensorSetup } from "$lib/stores/sensorSetup";
+  import { t } from "$lib/i18n";
 
   export let status: SensorSetupStatus | null;
 
@@ -12,13 +13,13 @@
   let error = "";
 
   $: state = setupState(status);
-  $: steps = status ? setupSteps(status) : [];
+  $: steps = status ? setupSteps(status, $t) : [];
   $: action =
     state === "update"
-      ? "Update sensor helper"
+      ? $t("dash.updateHelper")
       : state === "repair" || state === "starting"
-        ? "Repair fan/temperature"
-        : "Enable fan/temperature";
+        ? $t("dash.repair")
+        : $t("dash.enable");
 
   async function run(enable: boolean) {
     busy = true;
@@ -36,84 +37,72 @@
 
 {#if state === "missing-files"}
   <div class="setup">
-    <p class="note">
-      Fan and temperature readings need the <b>sensors</b> and <b>PawnIO</b>
-      folders that came with winperf. Keep the whole winperf folder together, next
-      to winperf.exe.
-    </p>
+    <!-- Fixed strings from the locale tables (only <b>), no user data. -->
+    <!-- eslint-disable-next-line svelte/no-at-html-tags -->
+    <p class="note">{@html $t("setup.missingFiles")}</p>
   </div>
 {:else if confirm === "enable" && status}
   <div class="setup">
     <p class="lead">{action}</p>
-    <p class="note">winperf will do the following:</p>
+    <p class="note">{$t("setup.willDo")}</p>
     <ol class="steps">
       {#each steps as step}<li>{step}</li>{/each}
     </ol>
-    <p class="note">
-      Windows shows one permission (UAC) prompt for all of it; winperf itself
-      keeps running without administrator rights. The helper only reads sensors,
-      never changes fan speeds, and works alongside FanControl or other
-      monitoring tools. You can undo it here with Disable.
-    </p>
+    <p class="note">{$t("setup.uacNote")}</p>
     {#if error}<p class="error" role="alert">{error}</p>{/if}
     <div class="buttons">
       <button class="primary" disabled={busy} onclick={() => run(true)}
-        >{busy ? "Waiting for Windows…" : "Continue"}</button
+        >{busy ? $t("setup.waiting") : $t("setup.continue")}</button
       >
       <button disabled={busy} onclick={() => ((confirm = null), (error = ""))}
-        >Cancel</button
+        >{$t("setup.cancel")}</button
       >
     </div>
   </div>
 {:else if confirm === "disable"}
   <div class="setup">
-    <p class="lead">Disable fan/temperature</p>
-    <p class="note">
-      Stops the helper, deletes the “winperf-sensors” scheduled task and removes
-      C:\Program Files\winperf\sensors. Windows shows one permission prompt. The
-      PawnIO driver stays installed; other tools such as FanControl may use it.
-      You can uninstall it from Settings › Apps.
-    </p>
+    <p class="lead">{$t("setup.disableTitle")}</p>
+    <p class="note">{$t("setup.disableNote")}</p>
     {#if error}<p class="error" role="alert">{error}</p>{/if}
     <div class="buttons">
       <button class="primary" disabled={busy} onclick={() => run(false)}
-        >{busy ? "Waiting for Windows…" : "Disable"}</button
+        >{busy ? $t("setup.waiting") : $t("setup.disable")}</button
       >
       <button disabled={busy} onclick={() => ((confirm = null), (error = ""))}
-        >Cancel</button
+        >{$t("setup.cancel")}</button
       >
     </div>
   </div>
 {:else if state === "enable" || state === "repair" || state === "update"}
   <div class="setup">
     <p class="note">
-      {#if state === "enable"}CPU, motherboard and fan sensors need winperf's
-        read-only sensor helper. It is set up once, with your permission.
-      {:else if state === "update"}This winperf comes with a newer sensor helper
-        than the installed one.
-      {:else}The sensor helper setup is incomplete or points somewhere else.{/if}
+      {state === "enable"
+        ? $t("setup.needHelper")
+        : state === "update"
+          ? $t("setup.newer")
+          : $t("setup.incomplete")}
     </p>
     <div class="buttons">
       <button class="primary" onclick={() => (confirm = "enable")}
         >{action}…</button
       >
       {#if state !== "enable"}<button onclick={() => (confirm = "disable")}
-          >Disable…</button
+          >{$t("setup.disableMore")}</button
         >{/if}
     </div>
   </div>
 {:else if state === "starting" || state === "ready"}
   <div class="setup row">
     <p class="note">
-      {state === "ready"
-        ? "Sensor helper is running."
-        : "Sensor helper is installed but not answering yet; winperf asked it to start."}
+      {state === "ready" ? $t("setup.running") : $t("setup.starting")}
     </p>
     <div class="buttons">
       {#if state === "starting"}<button onclick={() => (confirm = "enable")}
-          >Repair…</button
+          >{$t("setup.repairMore")}</button
         >{/if}
-      <button onclick={() => (confirm = "disable")}>Disable…</button>
+      <button onclick={() => (confirm = "disable")}
+        >{$t("setup.disableMore")}</button
+      >
     </div>
   </div>
 {/if}

@@ -1,3 +1,7 @@
+import { tEn } from "../i18n/strings.js";
+
+/** @typedef {(key: string, vars?: Record<string, string | number>) => string} Translate */
+
 // winperf card dashboard: pure formatting and series helpers (tested in tests/dashboard.mjs).
 const GB = 1024 ** 3;
 
@@ -40,21 +44,23 @@ export function formatPercent(value) {
 
 /** Seconds -> "up 1 day, 2 hr" / "up 3 hr, 4 min" / "up 5 min".
  * @param {number} seconds
+ * @param {Translate} [t]
  */
-export function formatUptimeShort(seconds) {
-  return `up ${formatDuration(seconds)}`;
+export function formatUptimeShort(seconds, t = tEn) {
+  return t("uptime.up", { d: formatDuration(seconds, t) });
 }
 
-/** "2 days, 21 hr" / "3 hr, 4 min" / "5 min".
+/** "2 days, 21 hr" / "3 hr, 4 min" / "5 min" (or the locale's form).
  * @param {number} seconds
+ * @param {Translate} [t]
  */
-export function formatDuration(seconds) {
+export function formatDuration(seconds, t = tEn) {
   const d = Math.floor(seconds / 86400);
   const h = Math.floor((seconds % 86400) / 3600);
   const m = Math.floor((seconds % 3600) / 60);
-  if (d > 0) return `${d} day${d === 1 ? "" : "s"}, ${h} hr`;
-  if (h > 0) return `${h} hr, ${m} min`;
-  return `${m} min`;
+  if (d > 0) return t(d === 1 ? "dur.days" : "dur.daysPlural", { d, h });
+  if (h > 0) return t("dur.hours", { h, m });
+  return t("dur.minutes", { m });
 }
 
 /** What the uptime chip shows. With Windows Fast Startup the kernel uptime
@@ -310,23 +316,13 @@ export function setupState(status) {
 
 /** The steps the elevated setup will take, shown before anything runs.
  * @param {{ pawnio_installed: boolean, installed: boolean, task: string }} status
+ * @param {Translate} [t]
  */
-export function setupSteps(status) {
+export function setupSteps(status, t = tEn) {
   const steps = [];
-  if (!status.pawnio_installed)
-    steps.push(
-      "Install the PawnIO driver from the bundled PawnIO_setup.exe (version 2.2.0, signed by its author namazso, GPL-2.0). Its own installer window opens; Windows needs it so programs can read CPU and motherboard sensors.",
-    );
-  steps.push(
-    status.installed
-      ? "Replace the sensor helper in C:\\Program Files\\winperf\\sensors with the one bundled with this winperf."
-      : "Copy the read-only sensor helper (winperf-sensors.exe, built on LibreHardwareMonitorLib) to C:\\Program Files\\winperf\\sensors.",
-  );
-  steps.push(
-    status.task === "missing"
-      ? "Create the scheduled task \u201cwinperf-sensors\u201d that starts the helper with administrator rights when you sign in, without asking again, and start it now."
-      : "Re-create the scheduled task \u201cwinperf-sensors\u201d so it starts that helper when you sign in, and start it now.",
-  );
+  if (!status.pawnio_installed) steps.push(t("steps.pawnio"));
+  steps.push(t(status.installed ? "steps.replace" : "steps.copy"));
+  steps.push(t(status.task === "missing" ? "steps.task" : "steps.retask"));
   return steps;
 }
 

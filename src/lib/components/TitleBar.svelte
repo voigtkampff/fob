@@ -5,6 +5,7 @@
   import { Button } from "$lib/components/ui/button/index.js";
   import * as DropdownMenu from "$lib/components/ui/dropdown-menu/index.js";
   import ThemeSwitcher from "./ThemeSwitcher.svelte";
+  import { t } from "$lib/i18n";
   import {
     Pause,
     Play,
@@ -42,7 +43,7 @@
     data-tauri-drag-region
   >
     <img src="/32x32.png" alt="" class="size-5" />
-    <h1 class="text-sm font-semibold tracking-tight">winperf</h1>
+    <h1 class="text-sm font-semibold tracking-tight">{$t("app.name")}</h1>
   </div>
   <div class="h-full min-w-4 flex-1" data-tauri-drag-region></div>
   <div class="flex items-center gap-1">
@@ -52,14 +53,19 @@
       ><span
         class={`size-1.5 rounded-full ${isFrozen ? "bg-muted-foreground" : "bg-[var(--status-running)]"}`}
       ></span>{isFrozen
-        ? "Paused"
-        : `Live · ${$settingsStore.behavior.refreshRate === 1000 ? 1.5 : $settingsStore.behavior.refreshRate / 1000}s`}</span
+        ? $t("mini.paused")
+        : $t("title.liveEvery", {
+            s:
+              $settingsStore.behavior.refreshRate === 1000
+                ? 1.5
+                : $settingsStore.behavior.refreshRate / 1000,
+          })}</span
     >
     <Button
       variant={isFrozen ? "secondary" : "ghost"}
       size="icon-sm"
-      aria-label={isFrozen ? "Resume updates" : "Pause updates"}
-      title={isFrozen ? "Resume updates" : "Pause updates"}
+      aria-label={isFrozen ? $t("mini.resume") : $t("mini.pause")}
+      title={isFrozen ? $t("mini.resume") : $t("mini.pause")}
       aria-pressed={isFrozen}
       onclick={() => onPause(!isFrozen)}
       >{#if isFrozen}<Play />{:else}<Pause />{/if}</Button
@@ -67,15 +73,15 @@
     <Button
       variant="ghost"
       size="icon-sm"
-      aria-label="Open mini window"
-      title="Mini window"
+      aria-label={$t("title.openMini")}
+      title={$t("title.mini")}
       onclick={() => command("show_companion")}><PanelsTopLeft /></Button
     >
     <Button
       variant="ghost"
       size="icon-sm"
-      aria-label="Collapse to tray"
-      title="Collapse to tray (mini window mode)"
+      aria-label={$t("title.collapse")}
+      title={$t("title.collapseTitle")}
       onclick={() => command("collapse_to_tray")}><Minimize2 /></Button
     >
     <div class="mx-1 h-4 w-px bg-border"></div>
@@ -86,25 +92,25 @@
             {...props}
             variant="ghost"
             size="icon-sm"
-            aria-label="winperf menu"><Ellipsis /></Button
+            aria-label={$t("title.menu")}><Ellipsis /></Button
           >{/snippet}</DropdownMenu.Trigger
       >
       <DropdownMenu.Content align="end" class="w-60">
         <DropdownMenu.Item onclick={() => command("open_settings")}
-          ><Settings2 />Settings…<DropdownMenu.Shortcut
+          ><Settings2 />{$t("title.settings")}<DropdownMenu.Shortcut
             >{settingsShortcut}</DropdownMenu.Shortcut
           ></DropdownMenu.Item
         >
         <DropdownMenu.Separator />
         <DropdownMenu.Item
           onclick={() => command("open_about", { check: false })}
-          ><Info />About winperf</DropdownMenu.Item
+          ><Info />{$t("title.about")}</DropdownMenu.Item
         >
         <DropdownMenu.Separator /><DropdownMenu.Item
           onclick={() => command("collapse_to_tray")}
-          ><Minimize2 />Collapse to tray</DropdownMenu.Item
+          ><Minimize2 />{$t("title.collapse")}</DropdownMenu.Item
         ><DropdownMenu.Item onclick={() => command("quit_app")}
-          >Quit winperf</DropdownMenu.Item
+          >{$t("mini.quit")}</DropdownMenu.Item
         >
       </DropdownMenu.Content>
     </DropdownMenu.Root>
@@ -117,6 +123,6 @@
     <span>{actionError}</span><Button
       variant="ghost"
       size="sm"
-      onclick={() => (actionError = "")}>Dismiss</Button
+      onclick={() => (actionError = "")}>{$t("title.dismiss")}</Button
     >
   </div>{/if}

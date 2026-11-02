@@ -9,6 +9,7 @@ mod commands;
 mod companion;
 mod desktop;
 mod gpu;
+mod i18n;
 mod monitoring;
 mod native_icons;
 mod preferences;

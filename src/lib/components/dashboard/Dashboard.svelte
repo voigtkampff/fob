@@ -31,6 +31,7 @@
     setupState,
   } from "$lib/utils/dashboard.js";
   import { onMount } from "svelte";
+  import { t } from "$lib/i18n";
   import { sensorSetup, refreshSensorSetup } from "$lib/stores/sensorSetup";
   import {
     Cpu,
@@ -131,16 +132,18 @@
     extra?.started_at,
     systemStats && Date.now() / 1000,
   );
-  $: upText = `${since.sinceStart ? "on" : "up"} ${formatDuration(since.seconds)}`;
+  $: upText = $t(since.sinceStart ? "uptime.on" : "uptime.up", {
+    d: formatDuration(since.seconds, $t),
+  });
   $: upTitle = since.sinceStart
-    ? `Time since Windows last started (power-on or Fast Startup). Kernel uptime, as Task Manager shows it: ${formatDuration(since.kernel)}`
-    : "Time since the system kernel started";
+    ? $t("uptime.titleStart", { d: formatDuration(since.kernel, $t) })
+    : $t("uptime.titleKernel");
 
   function level(p: number | null) {
-    if (p == null) return "idle";
-    if (p >= 85) return "busy";
-    if (p >= 50) return "active";
-    return "idle";
+    if (p == null) return $t("level.idle");
+    if (p >= 85) return $t("level.busy");
+    if (p >= 50) return $t("level.active");
+    return $t("level.idle");
   }
 </script>
 
@@ -162,7 +165,7 @@
   {:else}
     <header class="dash-header">
       <div class="title" class:hidden={compact}>
-        <Activity class="size-5 text-[var(--green)]" />System
+        <Activity class="size-5 text-[var(--green)]" />{$t("dash.system")}
       </div>
       <div class="chips">
         {#each chips as chip}<span class="chip">{chip}</span>{/each}
@@ -170,7 +173,7 @@
       </div>
     </header>
 
-    <section class="grid" aria-label="System cards">
+    <section class="grid" aria-label={$t("dash.cards")}>
       <div
         class="card"
         class:clickable={expandable}
@@ -181,10 +184,10 @@
       >
         <div class="card-head">
           <span class="label"><Cpu class="size-3.5" />CPU</span>
-          <span class="chip">{cores.length} threads</span>
+          <span class="chip">{$t("dash.threads", { n: cores.length })}</span>
         </div>
         <div class="big">{formatPercent(cpu)}<small>%</small></div>
-        <div class="bars" aria-label="Per-core usage">
+        <div class="bars" aria-label={$t("dash.perCore")}>
           {#each cores as core}
             <span
               class="bar"
@@ -194,7 +197,9 @@
           {/each}
         </div>
         <div class="foot">
-          {level(cpu)} · {identity.physical_cores ?? "?"} cores
+          {level(cpu)} · {$t("dash.cores", {
+            n: identity.physical_cores ?? "?",
+          })}
         </div>
       </div>
 
@@ -230,8 +235,8 @@
         <div class="foot">
           {gpu.percent == null
             ? gpus.length
-              ? "no live counter for this adapter yet"
-              : "no GPU detected"
+              ? $t("dash.gpuNoCounter")
+              : $t("dash.noGpu")
             : level(gpu.percent)}
         </div>
       </div>
@@ -245,9 +250,13 @@
         onkeydown={(e) => openKey(e, "memory")}
       >
         <div class="card-head">
-          <span class="label"><MemoryStick class="size-3.5" />Memory</span>
+          <span class="label"
+            ><MemoryStick class="size-3.5" />{$t("dash.memory")}</span
+          >
           <span class="chip"
-            >{memPct != null && memPct >= 85 ? "High" : "Normal"}</span
+            >{memPct != null && memPct >= 85
+              ? $t("dash.memHigh")
+              : $t("dash.memNormal")}</span
           >
         </div>
         <div class="big">{formatPercent(memPct)}<small>%</small></div>
@@ -279,7 +288,9 @@
         onkeydown={(e) => openKey(e, "disk")}
       >
         <div class="card-head">
-          <span class="label"><HardDrive class="size-3.5" />Free space</span>
+          <span class="label"
+            ><HardDrive class="size-3.5" />{$t("dash.freeSpace")}</span
+          >
           {#if volume}<span class="chip"
               >{compact ? "" : `${volume.mount} · `}{formatGB(
                 volume.total,
@@ -295,13 +306,13 @@
             <span class="fill" style={`width:${usedPct ?? 0}%`}></span>
           </div>
           <div class="foot">
-            {formatGB(volume.total - volume.available, 0)} used · {formatPercent(
-              usedPct,
-            )}%
+            {$t("dash.used", {
+              v: formatGB(volume.total - volume.available, 0),
+            })} · {formatPercent(usedPct)}%
           </div>
         {:else}
-          <div class="big">n/a</div>
-          <div class="foot">no volumes reported</div>
+          <div class="big">{$t("common.na")}</div>
+          <div class="foot">{$t("dash.noVolumes")}</div>
         {/if}
       </div>
 
@@ -314,10 +325,12 @@
         onkeydown={(e) => openKey(e, "network")}
       >
         <div class="card-head">
-          <span class="label"><Globe class="size-3.5" />Network</span>
+          <span class="label"
+            ><Globe class="size-3.5" />{$t("dash.network")}</span
+          >
           <span class="legend"
-            ><i class="dot blue"></i>{compact ? "↓" : "down"}
-            <i class="dot green"></i>{compact ? "↑" : "up"}</span
+            ><i class="dot blue"></i>{compact ? "↓" : $t("dash.down")}
+            <i class="dot green"></i>{compact ? "↑" : $t("dash.up")}</span
           >
         </div>
         <div class="big">{down.value}<small>{down.unit}</small></div>
@@ -354,9 +367,11 @@
       >
         <div class="card-head">
           <span class="label"
-            ><Thermometer class="size-3.5" />Temp &amp; fan</span
+            ><Thermometer class="size-3.5" />{$t("dash.temp")}</span
           >
-          <span class="chip">{summary.count ? summary.count : "n/a"}</span>
+          <span class="chip"
+            >{summary.count ? summary.count : $t("common.na")}</span
+          >
         </div>
         {#if summary.cpuTemp || summary.gpuTemp}
           <div class="big">
@@ -370,9 +385,11 @@
                 ? `GPU ${formatSensor(summary.gpuTemp)}`
                 : "",
               fansLine
-                ? `${compact ? "" : "Fans "}${fansLine}`
+                ? compact
+                  ? fansLine
+                  : $t("dash.fans", { v: fansLine })
                 : summary.fan
-                  ? `fan ${formatSensor(summary.fan)}`
+                  ? $t("dash.fan", { v: formatSensor(summary.fan) })
                   : "",
             ]
               .filter(Boolean)
@@ -384,29 +401,27 @@
         {:else if !offerSetup}
           <div class="big muted">—</div>
           <p class="note">
-            {#if compact}No sensor source found. Open for details.{:else}
-              No temperature or fan source found. Open this card for details; no
-              readings are faked.{/if}
+            {compact ? $t("dash.noSensorShort") : $t("dash.noSensor")}
           </p>
         {/if}
         {#if offerSetup}
           <div class="big muted">—</div>
           <span class="enable"
             >{setup === "update"
-              ? "Update sensor helper"
+              ? $t("dash.updateHelper")
               : setup === "repair"
-                ? "Repair fan/temperature"
-                : "Enable fan/temperature"} ›</span
+                ? $t("dash.repair")
+                : $t("dash.enable")} ›</span
           >
         {/if}
       </div>
     </section>
 
-    <section class="card procs" aria-label="Top processes by memory">
+    <section class="card procs" aria-label={$t("dash.topByMemory")}>
       <div class="proc-row head">
-        <span>Top processes</span><span class="num">Memory</span><span
-          class="num">% CPU</span
-        >
+        <span>{$t("dash.topProcs")}</span><span class="num"
+          >{$t("dash.memory")}</span
+        ><span class="num">{$t("dash.cpuPct")}</span>
       </div>
       {#each top as p (p.pid)}
         <div class="proc-row">
@@ -417,8 +432,7 @@
       {/each}
     </section>
   {/if}
-  <!-- TODO(winperf): per-process network speed needs ETW (admin); battery,
-       health score and speed test are out of scope for v0.2. -->
+  <!-- TODO(winperf): battery, health score and speed test are out of scope. -->
 </div>
 
 <style>

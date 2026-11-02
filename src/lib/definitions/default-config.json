@@ -25,6 +25,7 @@
     "menuBarEnabled": true,
     "keepRunning": true,
     "startInTray": true,
+    "language": "auto",
     "defaultStatusFilter": "all",
     "processView": "flat"
   }

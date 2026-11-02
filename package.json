@@ -11,6 +11,7 @@
     "check:watch": "svelte-kit sync && svelte-check --tsconfig ./jsconfig.json --watch",
     "test:metrics": "node tests/format-usage-percentage.mjs",
     "test:dashboard": "node tests/dashboard.mjs",
+    "test:i18n": "node tests/i18n.mjs",
     "tauri": "tauri",
     "format": "prettier --write ./src ./scripts ./docs ./site .github/workflows && cargo fmt --manifest-path src-tauri/Cargo.toml",
     "format:check": "prettier --check ./src ./scripts ./docs ./site .github/workflows && cargo fmt --manifest-path src-tauri/Cargo.toml -- --check",

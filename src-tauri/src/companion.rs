@@ -5,7 +5,7 @@ use std::{
     time::{Duration, Instant},
 };
 use tauri::{
-    menu::{CheckMenuItem, Menu, MenuItem, PredefinedMenuItem},
+    menu::{CheckMenuItem, Menu, MenuItem, PredefinedMenuItem, Submenu},
     tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
 };
 use tauri::{AppHandle, Emitter, Manager, PhysicalPosition, Rect, WindowEvent};
@@ -21,6 +21,53 @@ pub struct CompanionState {
     pub anchor: Option<(f64, f64, f64, f64)>,
     /// winperf: tray menu "Start in tray only" item, kept in sync with settings.
     pub start_item: Option<CheckMenuItem<tauri::Wry>>,
+    /// winperf: tray items whose text follows the UI language.
+    pub items: Option<TrayItems>,
+}
+
+pub struct TrayItems {
+    overview: MenuItem<tauri::Wry>,
+    open: MenuItem<tauri::Wry>,
+    start: CheckMenuItem<tauri::Wry>,
+    language: Submenu<tauri::Wry>,
+    /// Auto / English / 中文, in that order.
+    languages: [CheckMenuItem<tauri::Wry>; 3],
+    quit: MenuItem<tauri::Wry>,
+}
+
+const LANGUAGES: [&str; 3] = ["auto", "en", "zh"];
+
+/// Set the tray texts for `pref` ("auto" | "en" | "zh") and tick it.
+fn relabel(app: &AppHandle, pref: &str) {
+    let locale = crate::i18n::resolve(Some(pref), crate::i18n::system_locale().as_deref());
+    let text = crate::i18n::tray(locale);
+    let service = app.state::<Mutex<CompanionState>>();
+    let Ok(state) = service.lock() else {
+        return;
+    };
+    let Some(items) = &state.items else { return };
+    let _ = items.overview.set_text(text.show_mini);
+    let _ = items.open.set_text(text.open_full);
+    let _ = items.start.set_text(text.start_in_tray);
+    let _ = items.language.set_text(text.language);
+    let _ = items.languages[0].set_text(text.auto);
+    let _ = items.quit.set_text(text.quit);
+    for (item, id) in items.languages.iter().zip(LANGUAGES) {
+        let _ = item.set_checked(id == pref);
+    }
+    if let Some(tray) = app.tray_by_id(TRAY_ID) {
+        let _ = tray.set_tooltip(Some(text.tooltip));
+    }
+}
+
+/// A language was picked in the tray: save it (the UI and the tray follow).
+fn set_language(app: &AppHandle, pref: &'static str) {
+    relabel(app, pref);
+    let app = app.clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        let patch = serde_json::json!({ "behavior": { "language": pref } });
+        let _ = crate::preferences::apply_patch(&app, &patch);
+    });
 }
 
 /// winperf mini window: fixed width, height follows its content.
@@ -82,9 +129,31 @@ fn configure(
     enabled: bool,
     keep_running: bool,
     start_in_tray: Option<bool>,
+    language: Option<&str>,
 ) -> Result<(), String> {
     // Called only on the main thread: native menus and tray destruction require it.
     if enabled && app.tray_by_id(TRAY_ID).is_none() {
+        let lang = |id: &str, text: &str| {
+            CheckMenuItem::with_id(app, format!("lang-{id}"), text, true, false, None::<&str>)
+                .map_err(|e| e.to_string())
+        };
+        let languages = [
+            lang("auto", "Automatic (Windows)")?,
+            lang("en", "English")?,
+            lang("zh", "中文")?,
+        ];
+        let language = Submenu::with_items(
+            app,
+            "Language",
+            true,
+            &[
+                &languages[0],
+                &PredefinedMenuItem::separator(app).map_err(|e| e.to_string())?,
+                &languages[1],
+                &languages[2],
+            ],
+        )
+        .map_err(|e| e.to_string())?;
         let overview = MenuItem::with_id(app, "overview", "Show mini window", true, None::<&str>)
             .map_err(|e| e.to_string())?;
         let open = MenuItem::with_id(app, "open-main", "Open full window", true, None::<&str>)
@@ -102,10 +171,21 @@ fn configure(
         .map_err(|e| e.to_string())?;
         let line = || PredefinedMenuItem::separator(app).map_err(|e| e.to_string());
         let (first, second) = (line()?, line()?);
-        let menu = Menu::with_items(app, &[&overview, &open, &first, &start, &second, &quit])
-            .map_err(|e| e.to_string())?;
+        let menu = Menu::with_items(
+            app,
+            &[&overview, &open, &first, &start, &language, &second, &quit],
+        )
+        .map_err(|e| e.to_string())?;
         if let Ok(mut state) = app.state::<Mutex<CompanionState>>().lock() {
-            state.start_item = Some(start);
+            state.start_item = Some(start.clone());
+            state.items = Some(TrayItems {
+                overview,
+                open,
+                start,
+                language,
+                languages,
+                quit,
+            });
         }
         TrayIconBuilder::with_id(TRAY_ID)
             .icon(ghost())
@@ -123,6 +203,18 @@ fn configure(
                     }
                     "quit" => {
                         app.exit(0);
+                        Ok(())
+                    }
+                    "lang-auto" => {
+                        set_language(app, "auto");
+                        Ok(())
+                    }
+                    "lang-en" => {
+                        set_language(app, "en");
+                        Ok(())
+                    }
+                    "lang-zh" => {
+                        set_language(app, "zh");
                         Ok(())
                     }
                     _ => Ok(()),
@@ -159,6 +251,13 @@ fn configure(
             .map_err(|e| e.to_string())?;
     } else if !enabled {
         drop(app.remove_tray_by_id(TRAY_ID));
+        if let Ok(mut state) = app.state::<Mutex<CompanionState>>().lock() {
+            state.items = None;
+            state.start_item = None;
+        }
+    }
+    if enabled {
+        relabel(app, language.unwrap_or("auto"));
     }
     if let (Some(checked), Ok(state)) = (start_in_tray, app.state::<Mutex<CompanionState>>().lock())
     {
@@ -201,7 +300,10 @@ fn set_start_in_tray(app: &AppHandle) {
 pub fn launch(app: &AppHandle) -> Result<(), String> {
     let startup = crate::preferences::startup(app);
     // No tray (or it can't be created): the main window must appear.
-    if startup.tray && startup.start_in_tray && configure(app, true, true, Some(true)).is_ok() {
+    if startup.tray
+        && startup.start_in_tray
+        && configure(app, true, true, Some(true), startup.language.as_deref()).is_ok()
+    {
         if startup.first_launch {
             show(app, None)?;
         }
@@ -419,11 +521,18 @@ pub async fn configure_companion(
     enabled: bool,
     keep_running: bool,
     start_in_tray: Option<bool>,
+    language: Option<String>,
 ) -> Result<(), String> {
     let (sender, mut receiver) = tauri::async_runtime::channel(1);
     let handle = app.clone();
     app.run_on_main_thread(move || {
-        let result = configure(&handle, enabled, keep_running, start_in_tray);
+        let result = configure(
+            &handle,
+            enabled,
+            keep_running,
+            start_in_tray,
+            language.as_deref(),
+        );
         let _ = sender.try_send(result);
     })
     .map_err(|e| e.to_string())?;

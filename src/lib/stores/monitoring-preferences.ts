@@ -13,6 +13,7 @@ function apply() {
     behavior.menuBarEnabled,
     behavior.keepRunning,
     behavior.startInTray,
+    behavior.language,
   ]);
   if (key === applied) return queue;
   applied = key;
@@ -25,6 +26,7 @@ function apply() {
         enabled: behavior.menuBarEnabled,
         keepRunning: behavior.keepRunning,
         startInTray: behavior.startInTray,
+        language: behavior.language ?? "auto",
       });
       monitoringPreferencesError.set("");
     } catch (error) {

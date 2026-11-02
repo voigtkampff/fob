@@ -139,6 +139,8 @@ export interface AppConfig {
     keepRunning: boolean;
     /** winperf: launch with only the tray icon (mini window mode). */
     startInTray: boolean;
+    /** "auto" follows the Windows display language. */
+    language: "auto" | "en" | "zh";
   };
 }
 

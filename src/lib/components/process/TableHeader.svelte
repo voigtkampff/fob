@@ -4,6 +4,7 @@
   import { Button } from "$lib/components/ui/button/index.js";
   import * as Table from "$lib/components/ui/table/index.js";
   import { ArrowDown, ArrowUp, ArrowDownUp } from "@lucide/svelte";
+  import { t } from "$lib/i18n";
   export let columns: Column[];
   export let sortConfig: { field: keyof Process; direction: "asc" | "desc" };
   export let onToggleSort: (field: keyof Process) => void;
@@ -34,16 +35,16 @@
           class={`h-8 max-w-full px-1 text-xs ${sortConfig.field === column.id ? "text-primary" : "text-muted-foreground"}`}
           onclick={() => onToggleSort(column.id)}
           title={treeView && column.id === "memory_usage"
-            ? "Sum of resident memory for each family; shared pages can be counted more than once."
+            ? $t("col.familyRamTitle")
             : treeView && column.id === "cpu_usage"
-              ? "Combined family CPU; may exceed 100% across cores."
-              : `Sort by ${column.label}`}
+              ? $t("col.familyCpuTitle")
+              : $t("col.sortBy", { v: $t(`col.${column.id}`) })}
           ><span
             >{treeView && column.id === "cpu_usage"
-              ? "Family CPU"
+              ? $t("col.familyCpu")
               : treeView && column.id === "memory_usage"
-                ? "Family RAM"
-                : column.label}</span
+                ? $t("col.familyRam")
+                : $t(`col.${column.id}`)}</span
           >{#if sortConfig.field === column.id}{#if sortConfig.direction === "asc"}<ArrowUp
                 class="size-3"
               />{:else}<ArrowDown class="size-3" />{/if}{:else}<ArrowDownUp
@@ -51,7 +52,7 @@
             />{/if}</Button
         ></Table.Head
       >{/each}<Table.Head class="actions-heading w-28 pr-4 text-right"
-      >Actions</Table.Head
+      >{$t("col.actions")}</Table.Head
     ></Table.Row
   ></Table.Header
 >

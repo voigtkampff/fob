@@ -51,6 +51,7 @@ fn merge(config: &mut Value, patch: &Value) {
                 "refreshRate" => value.as_u64().is_some_and(|n| (1000..=30000).contains(&n)),
                 "menuBarEnabled" | "keepRunning" | "startInTray" => value.is_boolean(),
                 "processView" => matches!(value.as_str(), Some("flat" | "tree")),
+                "language" => matches!(value.as_str(), Some("auto" | "en" | "zh")),
                 "defaultStatusFilter" => matches!(
                     value.as_str(),
                     Some("all" | "running" | "sleeping" | "idle" | "unknown")
@@ -163,6 +164,8 @@ pub struct Startup {
     pub first_launch: bool,
     pub tray: bool,
     pub start_in_tray: bool,
+    /// "auto" | "en" | "zh" (validated by `merge`).
+    pub language: Option<String>,
 }
 pub fn startup_from(saved: Option<&Value>) -> Startup {
     let mut config = defaults();
@@ -174,6 +177,7 @@ pub fn startup_from(saved: Option<&Value>) -> Startup {
         first_launch: saved.is_none(),
         tray: flag("menuBarEnabled"),
         start_in_tray: flag("startInTray"),
+        language: config["behavior"]["language"].as_str().map(str::to_owned),
     }
 }
 pub fn startup(app: &AppHandle) -> Startup {
@@ -213,7 +217,8 @@ mod tests {
             Startup {
                 first_launch: true,
                 tray: true,
-                start_in_tray: true
+                start_in_tray: true,
+                language: Some("auto".into()),
             }
         );
         // v0.3 settings files have no startInTray key: still on.
@@ -223,6 +228,11 @@ mod tests {
             &json!({"behavior":{"startInTray":false,"menuBarEnabled":false}}),
         ));
         assert!(!off.start_in_tray && !off.tray);
+        // Language: valid values kept, anything else falls back to "auto".
+        let zh = startup_from(Some(&json!({"behavior":{"language":"zh"}})));
+        assert_eq!(zh.language.as_deref(), Some("zh"));
+        let bad = startup_from(Some(&json!({"behavior":{"language":"klingon"}})));
+        assert_eq!(bad.language.as_deref(), Some("auto"));
         // Unreadable file: treat as existing with defaults.
         assert!(startup_from(Some(&Value::Null)).start_in_tray);
     }

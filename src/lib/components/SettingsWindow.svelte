@@ -12,6 +12,7 @@
   import * as NativeSelect from "$lib/components/ui/native-select/index.js";
   import * as ToggleGroup from "$lib/components/ui/toggle-group/index.js";
   import { Settings2, Palette } from "@lucide/svelte";
+  import { t } from "$lib/i18n";
   let pane = "general";
   let runtimeError = "";
   $: rate = $settingsStore.behavior.refreshRate;
@@ -28,8 +29,13 @@
     }
   }
   function save(
-    key: "refreshRate" | "menuBarEnabled" | "keepRunning" | "startInTray",
-    value: number | boolean,
+    key:
+      | "refreshRate"
+      | "menuBarEnabled"
+      | "keepRunning"
+      | "startInTray"
+      | "language",
+    value: number | boolean | string,
   ) {
     settingsStore.updateConfig({
       behavior: { ...$settingsStore.behavior, [key]: value },
@@ -78,31 +84,34 @@
       value={pane}
       onValueChange={select}
       variant="outline"
-      aria-label="Settings section"
+      aria-label={$t("settings.section")}
     >
       <ToggleGroup.Item value="general" class="px-5"
-        ><Settings2 />General</ToggleGroup.Item
+        ><Settings2 />{$t("settings.general")}</ToggleGroup.Item
       >
       <ToggleGroup.Item value="appearance" class="px-5"
-        ><Palette />Appearance</ToggleGroup.Item
+        ><Palette />{$t("settings.appearance")}</ToggleGroup.Item
       >
     </ToggleGroup.Root>
   </header>
   <div class="min-h-0 flex-1 overflow-y-auto p-6">
     {#if pane === "general"}
-      <h1 class="text-lg font-semibold tracking-tight">General</h1>
+      <h1 class="text-lg font-semibold tracking-tight">
+        {$t("settings.general")}
+      </h1>
       <p class="mt-1 mb-5 text-sm text-muted-foreground">
-        Choose how winperf monitors your system.
+        {$t("settings.generalLead")}
       </p>
       <fieldset disabled={!$settingsStatus.ready} class="space-y-5">
         <Card.Root size="sm"
-          ><Card.Header><Card.Title>Monitoring</Card.Title></Card.Header
+          ><Card.Header
+            ><Card.Title>{$t("settings.monitoring")}</Card.Title></Card.Header
           ><Card.Content>
             <div class="flex items-center justify-between gap-6">
               <div>
-                <Label for="refresh-interval">Refresh interval</Label>
+                <Label for="refresh-interval">{$t("settings.refresh")}</Label>
                 <p class="mt-1 text-xs leading-relaxed text-muted-foreground">
-                  Applies to the app and menu-bar overview.
+                  {$t("settings.refreshNote")}
                 </p>
               </div>
               <NativeSelect.Root
@@ -118,13 +127,38 @@
               </NativeSelect.Root>
             </div>
             <p class="mt-1 text-xs text-muted-foreground">
-              Longer intervals reduce background activity. Pause and resume from
-              the app bar.
+              {$t("settings.refreshMore")}
             </p>
           </Card.Content></Card.Root
         >
         <Card.Root size="sm"
-          ><Card.Header><Card.Title>Tray mini window</Card.Title></Card.Header
+          ><Card.Header
+            ><Card.Title>{$t("settings.language")}</Card.Title></Card.Header
+          ><Card.Content>
+            <div class="flex items-center justify-between gap-6">
+              <div>
+                <Label for="language">{$t("settings.languageLabel")}</Label>
+                <p class="mt-1 text-xs leading-relaxed text-muted-foreground">
+                  {$t("settings.languageNote")}
+                </p>
+              </div>
+              <NativeSelect.Root
+                id="language"
+                class="w-44"
+                value={$settingsStore.behavior.language ?? "auto"}
+                onchange={(event) =>
+                  save("language", event.currentTarget.value)}
+              >
+                {#each ["auto", "en", "zh"] as option}<option value={option}
+                    >{$t(`lang.${option}`)}</option
+                  >{/each}
+              </NativeSelect.Root>
+            </div>
+          </Card.Content></Card.Root
+        >
+        <Card.Root size="sm"
+          ><Card.Header
+            ><Card.Title>{$t("settings.tray")}</Card.Title></Card.Header
           ><Card.Content class="gap-5">
             <div class="flex items-start gap-3">
               <Checkbox
@@ -134,9 +168,9 @@
                 onCheckedChange={(value) => save("menuBarEnabled", value)}
               />
               <div>
-                <Label for="show-menu-icon">Show tray icon</Label>
+                <Label for="show-menu-icon">{$t("settings.showTray")}</Label>
                 <p class="mt-1 text-xs leading-relaxed text-muted-foreground">
-                  Keep CPU, memory, graphics and network readings close at hand.
+                  {$t("settings.showTrayNote")}
                 </p>
               </div>
             </div>
@@ -149,27 +183,24 @@
                 onCheckedChange={(value) => save("startInTray", value)}
               />
               <div>
-                <Label for="start-in-tray"
-                  >Start in tray only (mini window mode)</Label
-                >
+                <Label for="start-in-tray">{$t("settings.startInTray")}</Label>
                 <p class="mt-1 text-xs leading-relaxed text-muted-foreground">
-                  winperf starts with just the tray icon; click it for the mini
-                  window. Open the full window from the tray menu or the mini
-                  window.
+                  {$t("settings.startInTrayNote")}
                 </p>
               </div>
             </div>
             <p class="text-xs leading-relaxed text-muted-foreground">
-              With the tray icon on, closing the main window keeps winperf
-              running in the tray. Choose Quit from the tray menu to exit.
+              {$t("settings.closeNote")}
             </p>
           </Card.Content></Card.Root
         >
       </fieldset>
     {:else}
-      <h1 class="text-lg font-semibold tracking-tight">Appearance</h1>
+      <h1 class="text-lg font-semibold tracking-tight">
+        {$t("settings.appearance")}
+      </h1>
       <p class="mt-1 mb-5 text-sm text-muted-foreground">
-        All your winperf themes, across every window.
+        {$t("settings.appearanceLead")}
       </p>
       <ThemeGallery embedded />
     {/if}
@@ -186,15 +217,15 @@
           onclick={() => {
             void settingsStore.retry();
             void emit("preferences-runtime-retry");
-          }}>Retry</Button
+          }}>{$t("settings.retry")}</Button
         >
       </div>
     {:else}<p role="status" class="text-xs text-muted-foreground">
         {!$settingsStatus.ready
-          ? "Loading settings…"
+          ? $t("settings.loading")
           : $settingsStatus.saving
-            ? "Saving changes…"
-            : "Changes are saved automatically."}
+            ? $t("settings.saving")
+            : $t("settings.saved")}
       </p>{/if}
   </footer>
 </div>

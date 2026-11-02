@@ -3,6 +3,7 @@
   import AppInfo from "$lib/components/AppInfo.svelte";
   import { emit } from "@tauri-apps/api/event";
   import { invoke } from "@tauri-apps/api/core";
+  import { t } from "$lib/i18n";
   import { getCurrentWindow } from "@tauri-apps/api/window";
   import { get } from "svelte/store";
   import { settingsStatus } from "$lib/stores/settings";
@@ -217,6 +218,9 @@
   onMount(() => {
     if (auxiliary) {
       if (!companion) themeStore.init();
+      // Language (and other settings) for the mini and About windows; the
+      // settings window initialises its own store.
+      if (view !== "settings") void settingsStore.init();
       return;
     }
     themeStore.init();
@@ -309,16 +313,16 @@
 {:else}
   <div class="app-container">
     <TitleBar {isFrozen} onPause={processStore.setIsFrozen} />
-    <nav class="tabs" aria-label="Views">
+    <nav class="tabs" aria-label={$t("tabs.views")}>
       <button
         class:active={tab === "dashboard"}
         aria-pressed={tab === "dashboard"}
-        onclick={() => (tab = "dashboard")}>Dashboard</button
+        onclick={() => (tab = "dashboard")}>{$t("tabs.dashboard")}</button
       >
       <button
         class:active={tab === "processes"}
         aria-pressed={tab === "processes"}
-        onclick={() => (tab = "processes")}>Processes</button
+        onclick={() => (tab = "processes")}>{$t("tabs.processes")}</button
       >
     </nav>
     {#if tab === "dashboard"}

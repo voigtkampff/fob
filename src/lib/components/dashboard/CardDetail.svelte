@@ -29,6 +29,7 @@
   import { ChevronLeft } from "@lucide/svelte";
   import SensorSetup from "./SensorSetup.svelte";
   import { sensorSetup } from "$lib/stores/sensorSetup";
+  import { t } from "$lib/i18n";
 
   type Row = {
     pid: number;
@@ -50,14 +51,7 @@
   export let compact = false;
   export let onBack: () => void;
 
-  const titles: Record<DetailKind, string> = {
-    cpu: "CPU",
-    gpu: "GPU",
-    memory: "Memory",
-    disk: "Drives",
-    network: "Network",
-    temp: "Temperatures & fans",
-  };
+  $: title = $t(`detail.${kind}`);
   const W = 300;
   const H = 70;
   const SLOTS = 40;
@@ -98,12 +92,12 @@
   };
 </script>
 
-<section class="detail" class:compact aria-label={`${titles[kind]} details`}>
+<section class="detail" class:compact aria-label={$t("detail.aria", { title })}>
   <header class="head">
-    <button class="back" onclick={onBack} aria-label="Back to cards"
-      ><ChevronLeft class="size-4" />Back</button
+    <button class="back" onclick={onBack} aria-label={$t("detail.backAria")}
+      ><ChevronLeft class="size-4" />{$t("detail.back")}</button
     >
-    <h2>{titles[kind]}</h2>
+    <h2>{title}</h2>
   </header>
 
   {#if kind === "cpu"}
@@ -113,8 +107,13 @@
           >{formatPercent(averageCpu(cores))}<small>%</small></span
         >
         <span class="muted"
-          >{systemStats.details.identity.cpu_model ?? ""} · {systemStats.details
-            .identity.physical_cores ?? "?"} cores / {cores.length} threads</span
+          >{systemStats.details.identity.cpu_model ?? ""} · {$t(
+            "detail.coresThreads",
+            {
+              c: systemStats.details.identity.physical_cores ?? "?",
+              n: cores.length,
+            },
+          )}</span
         >
       </div>
       <svg viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none" class="graph">
@@ -130,7 +129,10 @@
       </svg>
       <div class="cores">
         {#each cores as core, i}
-          <div class="core" title={`Thread ${i}: ${core.toFixed(0)}%`}>
+          <div
+            class="core"
+            title={$t("detail.thread", { i, v: core.toFixed(0) })}
+          >
             <div class="core-bar">
               <span style={`height:${Math.max(3, Math.min(100, core))}%`}
               ></span>
@@ -141,7 +143,9 @@
       </div>
     </div>
     <div class="panel">
-      <div class="list-head"><span>Top processes</span><span>% CPU</span></div>
+      <div class="list-head">
+        <span>{$t("detail.topProcs")}</span><span>% CPU</span>
+      </div>
       {#each lists.cpu.slice(0, n) as p (p.pid)}
         <div class="item">
           <span class="name">{p.name}</span><span class="num"
@@ -157,7 +161,7 @@
           <span class="name strong">{g.name}</span>
           <span class="num strong"
             >{g.utilization == null
-              ? "n/a"
+              ? $t("common.na")
               : `${g.utilization.toFixed(0)} %`}</span
           >
         </div>
@@ -166,7 +170,9 @@
             ? `${g.memory_used != null ? formatGB(g.memory_used, 1) + " / " : ""}${formatGB(g.memory_total, 0)} ${g.memory_kind}`
             : g.memory_kind}
           {g.temperature != null ? ` · ${g.temperature.toFixed(0)} °C` : ""}
-          {g.fan_percent != null ? ` · fan ${g.fan_percent.toFixed(0)} %` : ""}
+          {g.fan_percent != null
+            ? ` · ${$t("detail.fanPct", { v: g.fan_percent.toFixed(0) })}`
+            : ""}
         </div>
         {#each g.engines ?? [] as [engine, load]}
           <div class="meter">
@@ -177,10 +183,12 @@
         {/each}
       </div>
     {:else}
-      <p class="note">No GPU detected.</p>
+      <p class="note">{$t("detail.noGpu")}</p>
     {/each}
     <div class="panel">
-      <div class="list-head"><span>Top processes</span><span>% GPU</span></div>
+      <div class="list-head">
+        <span>{$t("detail.topProcs")}</span><span>{$t("detail.gpuPct")}</span>
+      </div>
       {#each lists.gpu.slice(0, n) as p (p.pid)}
         <div class="item">
           <span class="name">{p.name}</span><span class="num"
@@ -188,10 +196,7 @@
           >
         </div>
       {:else}
-        <p class="note">
-          No process is using the GPU right now, or this system doesn't report
-          per-process GPU use (Windows: GPU Engine counters).
-        </p>
+        <p class="note">{$t("detail.noGpuProcs")}</p>
       {/each}
     </div>
   {:else if kind === "memory"}
@@ -215,24 +220,29 @@
         />
       </svg>
       <div class="kv">
-        <span>Used</span><span>{formatGB(systemStats.memory_used, 2)}</span>
+        <span>{$t("detail.used")}</span><span
+          >{formatGB(systemStats.memory_used, 2)}</span
+        >
       </div>
       <div class="kv">
-        <span>Available</span><span>{formatGB(memAvail, 2)}</span>
+        <span>{$t("detail.available")}</span><span>{formatGB(memAvail, 2)}</span
+        >
       </div>
       <div class="kv">
-        <span>Total</span><span>{formatGB(systemStats.memory_total, 1)}</span>
+        <span>{$t("detail.total")}</span><span
+          >{formatGB(systemStats.memory_total, 1)}</span
+        >
       </div>
       {#if commit}
         <div class="kv">
-          <span>Committed</span><span
+          <span>{$t("detail.committed")}</span><span
             >{formatGB(commit[0], 1)} / {formatGB(commit[1], 1)}</span
           >
         </div>
       {/if}
       {#if systemStats.details.swap_total > 0}
         <div class="kv">
-          <span>{commit ? "Page file" : "Swap"}</span><span
+          <span>{commit ? $t("detail.pageFile") : $t("detail.swap")}</span><span
             >{formatGB(systemStats.details.swap_used, 1)} / {formatGB(
               systemStats.details.swap_total,
               1,
@@ -242,7 +252,9 @@
       {/if}
     </div>
     <div class="panel">
-      <div class="list-head"><span>Top processes</span><span>Memory</span></div>
+      <div class="list-head">
+        <span>{$t("detail.topProcs")}</span><span>{$t("detail.memory")}</span>
+      </div>
       {#each lists.memory.slice(0, n) as p (p.pid)}
         <div class="item">
           <span class="name">{p.name}</span><span class="num"
@@ -258,7 +270,10 @@
           <div class="row">
             <span class="name strong">{v.mount}</span>
             <span class="muted small"
-              >{formatGB(v.available, 0)} free of {formatGB(v.total, 0)}</span
+              >{$t("detail.freeOf", {
+                free: formatGB(v.available, 0),
+                total: formatGB(v.total, 0),
+              })}</span
             >
           </div>
           <div class="track wide">
@@ -268,22 +283,26 @@
           <div class="muted small">
             {v.name || v.file_system}{v.file_system && v.name
               ? ` · ${v.file_system}`
-              : ""}{v.read_only ? " · read-only" : ""}
+              : ""}{v.read_only ? ` · ${$t("detail.readOnly")}` : ""}
           </div>
         </div>
       {:else}
-        <p class="note">No drives reported.</p>
+        <p class="note">{$t("detail.noDrives")}</p>
       {/each}
     </div>
   {:else if kind === "network"}
     <div class="panel">
       <div class="row rates">
         <div>
-          <span class="muted small"><i class="dot blue"></i>Download</span>
+          <span class="muted small"
+            ><i class="dot blue"></i>{$t("detail.download")}</span
+          >
           <div class="big">{rate(systemStats.network_rx_bytes)}</div>
         </div>
         <div>
-          <span class="muted small"><i class="dot green"></i>Upload</span>
+          <span class="muted small"
+            ><i class="dot green"></i>{$t("detail.upload")}</span
+          >
           <div class="big">{rate(systemStats.network_tx_bytes)}</div>
         </div>
       </div>
@@ -311,9 +330,8 @@
     {#if netApps}
       <div class="panel">
         <div class="list-head apps-head">
-          <span>App</span><span><i class="dot blue"></i>↓</span><span
-            ><i class="dot green"></i>↑</span
-          >
+          <span>{$t("detail.app")}</span><span><i class="dot blue"></i>↓</span
+          ><span><i class="dot green"></i>↑</span>
         </div>
         {#each appRows as app (app.name)}
           <div class="app" class:idle={app.rx + app.tx === 0}>
@@ -326,23 +344,24 @@
             </div>
           </div>
         {:else}
-          <p class="note">
-            No app has used the network in the last 30 seconds.
-          </p>
+          <p class="note">{$t("detail.noAppTraffic")}</p>
         {/each}
       </div>
     {:else}
       <div class="panel">
         <p class="note">
-          Per-app speeds come from the winperf sensor helper, which reads
-          Windows network events (ETW) with administrator rights.
-          {#if setupState($sensorSetup) === "ready"}Waiting for the helper…{/if}
+          {$t("detail.perAppNeedsHelper")}
+          {#if setupState($sensorSetup) === "ready"}{$t(
+              "detail.waitingHelper",
+            )}{/if}
         </p>
       </div>
       <SensorSetup status={$sensorSetup} />
     {/if}
     <div class="panel">
-      <div class="list-head"><span>Adapter</span><span>↓ / ↑</span></div>
+      <div class="list-head">
+        <span>{$t("detail.adapter")}</span><span>↓ / ↑</span>
+      </div>
       {#each interfaces as i (i.name)}
         <div class="item">
           <span class="name">{i.name}</span><span class="num"
@@ -350,7 +369,7 @@
           >
         </div>
       {:else}
-        <p class="note">No active network adapters.</p>
+        <p class="note">{$t("detail.noAdapters")}</p>
       {/each}
     </div>
   {:else if kind === "temp"}
@@ -358,11 +377,15 @@
     {#if summary.cpuTemp || summary.gpuTemp}
       <div class="panel">
         <div class="temps">
-          {#each [summary.cpuTemp, summary.gpuTemp] as t, i}
-            {#if t}
+          {#each [summary.cpuTemp, summary.gpuTemp] as reading, i}
+            {#if reading}
               <div class="temp">
-                <span class="muted">{i === 0 ? "CPU" : "GPU"} · {t.name}</span>
-                <span class="big">{t.value.toFixed(0)}<small>°C</small></span>
+                <span class="muted"
+                  >{i === 0 ? "CPU" : "GPU"} · {reading.name}</span
+                >
+                <span class="big"
+                  >{reading.value.toFixed(0)}<small>°C</small></span
+                >
               </div>
             {/if}
           {/each}
@@ -373,7 +396,9 @@
       <div class="panel">
         {#each fans as group (group.hardware)}
           <div class="list-head">
-            <span>Fans · {group.hardware}</span><span>RPM</span>
+            <span>{$t("detail.fansOf", { hw: group.hardware })}</span><span
+              >{$t("detail.rpm")}</span
+            >
           </div>
           {#each group.fans as f (f.id || f.name)}
             <div class="item">
@@ -382,7 +407,7 @@
                 class:muted={f.value <= 0}
                 >{f.value > 0
                   ? Math.round(f.value)
-                  : "0 · stopped or unused"}</span
+                  : $t("detail.fanStopped")}</span
               >
             </div>
           {/each}
@@ -395,7 +420,9 @@
         {#each byKind(group.sensors) as s (s.id || `${s.kind}:${s.name}`)}
           <div class="item">
             <span class="name"
-              >{s.name}{s.kind === "control" ? " (duty)" : ""}</span
+              >{s.name}{s.kind === "control"
+                ? ` ${$t("detail.duty")}`
+                : ""}</span
             ><span class="num">{formatSensor(s)}</span>
           </div>
         {/each}
@@ -404,16 +431,14 @@
     {#if !sensors.length}
       <div class="panel">
         <p class="note">
-          {#if setupState($sensorSetup) !== "none"}Until then only NVIDIA GPUs
-            report their temperature and fan here. No numbers are faked.
-          {:else}No temperature or fan readings are available on this system.
-            NVIDIA GPUs report their temperature and fan through the driver;
-            other sensors need a supported sensor source. No numbers are faked.{/if}
+          {setupState($sensorSetup) !== "none"
+            ? $t("detail.untilThen")
+            : $t("detail.noReadings")}
         </p>
       </div>
     {/if}
     {#if sources.length}
-      <p class="note">Source: {sources.join(", ")}</p>
+      <p class="note">{$t("detail.source", { v: sources.join(", ") })}</p>
     {/if}
   {/if}
 </section>
