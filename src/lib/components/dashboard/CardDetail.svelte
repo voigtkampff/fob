@@ -104,7 +104,7 @@
     <div class="panel">
       <div class="row">
         <span class="big"
-          >{formatPercent(averageCpu(cores))}<small>%</small></span
+          >{formatPercent(averageCpu(cores), $t)}<small>%</small></span
         >
         <span class="muted"
           >{systemStats.details.identity.cpu_model ?? ""} · {$t(
@@ -478,7 +478,6 @@
   .bar {
     display: block;
     height: 3px;
-    min-width: 1px;
     border-radius: 2px;
   }
   .bar.blue {

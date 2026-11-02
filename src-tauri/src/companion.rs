@@ -304,7 +304,9 @@ pub fn launch(app: &AppHandle) -> Result<(), String> {
         && startup.start_in_tray
         && configure(app, true, true, Some(true), startup.language.as_deref()).is_ok()
     {
-        if startup.first_launch {
+        // Debug builds: WINPERF_SHOW_MINI=1 pops it every time (screenshots).
+        let forced = cfg!(debug_assertions) && std::env::var_os("WINPERF_SHOW_MINI").is_some();
+        if startup.first_launch || forced {
             show(app, None)?;
         }
         Ok(())

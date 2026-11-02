@@ -194,7 +194,7 @@
           <span class="label"><Cpu class="size-3.5" />CPU</span>
           <span class="chip">{$t("dash.threads", { n: cores.length })}</span>
         </div>
-        <div class="big">{formatPercent(cpu)}<small>%</small></div>
+        <div class="big">{formatPercent(cpu, $t)}<small>%</small></div>
         <div class="bars" aria-label={$t("dash.perCore")}>
           {#each cores as core}
             <span
@@ -226,7 +226,8 @@
             >{/if}
         </div>
         <div class="big">
-          {formatPercent(gpu.percent)}{#if gpu.percent != null}<small>%</small
+          {formatPercent(gpu.percent, $t)}{#if gpu.percent != null}<small
+              >%</small
             >{/if}
         </div>
         <svg viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none" class="spark">
@@ -267,7 +268,7 @@
               : $t("dash.memNormal")}</span
           >
         </div>
-        <div class="big">{formatPercent(memPct)}<small>%</small></div>
+        <div class="big">{formatPercent(memPct, $t)}<small>%</small></div>
         <svg viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none" class="spark">
           <path
             d={sparklinePath(memSeries, {
@@ -316,7 +317,7 @@
           <div class="foot">
             {$t("dash.used", {
               v: formatGB(volume.total - volume.available, 0),
-            })} · {formatPercent(usedPct)}%
+            })} · {formatPercent(usedPct, $t)}%
           </div>
         {:else}
           <div class="big">{$t("common.na")}</div>

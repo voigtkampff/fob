@@ -35,10 +35,13 @@ export function formatGB(bytes, digits = 1) {
   return `${(bytes / GB).toFixed(digits)} GB`;
 }
 
-/** @param {number | null | undefined} value */
-export function formatPercent(value) {
+/**
+ * @param {number | null | undefined} value
+ * @param {Translate} [t]
+ */
+export function formatPercent(value, t = tEn) {
   return value == null || !Number.isFinite(value)
-    ? "n/a"
+    ? t("common.na")
     : String(Math.round(value));
 }
 
