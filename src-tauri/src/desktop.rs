@@ -46,13 +46,13 @@ pub fn open_about(app: AppHandle, check: bool) -> Result<(), String> {
     Ok(())
 }
 pub fn setup(app: &AppHandle) -> tauri::Result<()> {
-    let about = MenuItem::with_id(app, "app-about", "About NeoHtop", true, None::<&str>)?;
+    let about = MenuItem::with_id(app, "app-about", "About winperf", true, None::<&str>)?;
     let updates = MenuItem::with_id(app, "app-updates", "Check for Updates…", true, None::<&str>)?;
     let settings = MenuItem::with_id(app, "app-settings", "Settings…", true, Some("CmdOrCtrl+,"))?;
-    let quit = Stock::quit(app, Some("Quit NeoHtop"))?;
+    let quit = Stock::quit(app, Some("Quit winperf"))?;
     let application = Submenu::with_items(
         app,
-        "NeoHtop",
+        "winperf",
         true,
         &[&about, &updates, &Stock::separator(app)?, &settings],
     )?;

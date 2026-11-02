@@ -12,6 +12,9 @@ mod macos;
 mod nvidia;
 #[cfg(target_os = "windows")]
 mod windows;
+// winperf: PDH GPU engine counter parsing (used on Windows, tested everywhere).
+#[cfg_attr(not(target_os = "windows"), allow(dead_code))]
+mod engine_counters;
 
 #[derive(Clone, Debug, Serialize)]
 pub struct GpuDevice {
@@ -37,6 +40,8 @@ pub fn percent(value: f64) -> Option<f64> {
 pub struct GpuMonitor {
     #[cfg(any(target_os = "linux", target_os = "windows"))]
     nvidia: nvidia::Nvidia,
+    #[cfg(target_os = "windows")]
+    engines: windows::EngineCounters,
 }
 
 impl GpuMonitor {
@@ -54,7 +59,8 @@ impl GpuMonitor {
                     .iter()
                     .map(|d| d.name.trim_start_matches("NVIDIA ").to_lowercase())
                     .collect::<Vec<_>>();
-                for device in windows::collect() {
+                let busy = self.engines.sample();
+                for device in windows::collect(&busy) {
                     if device.vendor == "NVIDIA" {
                         let name = device.name.trim_start_matches("NVIDIA ").to_lowercase();
                         if let Some(index) = covered.iter().position(|n| *n == name) {

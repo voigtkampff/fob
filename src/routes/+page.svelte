@@ -12,6 +12,7 @@
     retryMonitoringPreferences,
   } from "$lib/stores/monitoring-preferences";
   import MenuBarOverview from "$lib/components/MenuBarOverview.svelte";
+  import Dashboard from "$lib/components/dashboard/Dashboard.svelte";
   import { listen, type UnlistenFn } from "@tauri-apps/api/event";
   import { onMount, onDestroy } from "svelte";
   import {
@@ -70,6 +71,8 @@
   let cachedFilteredProcesses: Process[] = [];
   let cachedSortedProcesses: Process[] = [];
   let expandedProcesses = new Set<string>();
+  // winperf: card dashboard is the default tab; NeoHtop's table is "Processes".
+  let tab: "dashboard" | "processes" = "dashboard";
 
   function setProcessView(view: "flat" | "tree") {
     trackUsage("process_view_changed", view);
@@ -301,73 +304,100 @@
 {:else}
   <div class="app-container">
     <TitleBar {isFrozen} onPause={processStore.setIsFrozen} />
-    <main>
-      <AnalyticsNotice />
-      {#if systemStats}
-        <StatsBar
-          {systemStats}
-          {gpus}
-          capturedAt={$processStore.capturedAt}
-          history={resourceHistory}
-          {isFrozen}
-          unavailable={!!error}
+    <nav class="tabs" aria-label="Views">
+      <button
+        class:active={tab === "dashboard"}
+        aria-pressed={tab === "dashboard"}
+        onclick={() => (tab = "dashboard")}>Dashboard</button
+      >
+      <button
+        class:active={tab === "processes"}
+        aria-pressed={tab === "processes"}
+        onclick={() => (tab = "processes")}>Processes</button
+      >
+    </nav>
+    {#if tab === "dashboard"}
+      <main>
+        <AnalyticsNotice />
+        {#if error}<div class="alert" role="alert">{error}</div>{/if}
+        {#if systemStats}
+          <Dashboard
+            {systemStats}
+            {gpus}
+            history={resourceHistory}
+            {processes}
+          />
+        {/if}
+      </main>
+    {:else}
+      <main>
+        <AnalyticsNotice />
+        {#if systemStats}
+          <StatsBar
+            {systemStats}
+            {gpus}
+            capturedAt={$processStore.capturedAt}
+            history={resourceHistory}
+            {isFrozen}
+            unavailable={!!error}
+          />
+        {/if}
+
+        <ToolBar
+          bind:searchTerm={$processStore.searchTerm}
+          totalProcesses={processes.length}
+          matchingProcesses={cachedFilteredProcesses.length}
+          viewMode={processView}
+          expandedCount={expandedProcesses.size}
+          onViewChange={setProcessView}
+          onCollapseAll={() => (expandedProcesses = new Set())}
+          onClearFilters={clearSearchAndFilters}
+          bind:filters
+          {columns}
         />
-      {/if}
 
-      <ToolBar
-        bind:searchTerm={$processStore.searchTerm}
-        totalProcesses={processes.length}
-        matchingProcesses={cachedFilteredProcesses.length}
-        viewMode={processView}
-        expandedCount={expandedProcesses.size}
-        onViewChange={setProcessView}
-        onCollapseAll={() => (expandedProcesses = new Set())}
-        onClearFilters={clearSearchAndFilters}
-        bind:filters
-        {columns}
-      />
+        {#if error || portError || $settingsStatus.error || $monitoringPreferencesError}
+          <div class="alert" role="alert">
+            {error ||
+              portError ||
+              $settingsStatus.error ||
+              $monitoringPreferencesError}
+          </div>
+        {/if}
 
-      {#if error || portError || $settingsStatus.error || $monitoringPreferencesError}
-        <div class="alert" role="alert">
-          {error ||
-            portError ||
-            $settingsStatus.error ||
-            $monitoringPreferencesError}
-        </div>
-      {/if}
-
-      <ProcessTable
-        onClearFilters={clearSearchAndFilters}
-        processes={paginatedProcesses}
-        {columns}
-        {systemStats}
-        {sortConfig}
-        {pinnedProcesses}
-        viewMode={processView}
-        treeRows={treePage.rows}
-        {searchActive}
-        onToggleExpand={toggleExpansion}
-        onToggleSort={processStore.toggleSort}
-        onTogglePin={processStore.togglePin}
-        onShowDetails={processStore.showProcessDetails}
-        onKillProcess={processStore.confirmKillProcess}
-      />
-      <PaginationControls
-        bind:itemsPerPage
-        bind:currentPage={$processStore.currentPage}
-        {totalPages}
-        totalResults={processView === "tree"
-          ? tree.rootCount
-          : cachedFilteredProcesses.length}
-        resultLabel={processView === "tree"
-          ? tree.rootCount === 1
-            ? "family"
-            : "families"
-          : cachedFilteredProcesses.length === 1
-            ? "process"
-            : "processes"}
-      />
-    </main>
+        <ProcessTable
+          onClearFilters={clearSearchAndFilters}
+          processes={paginatedProcesses}
+          {columns}
+          {systemStats}
+          {sortConfig}
+          {pinnedProcesses}
+          viewMode={processView}
+          treeRows={treePage.rows}
+          {searchActive}
+          onToggleExpand={toggleExpansion}
+          onToggleSort={processStore.toggleSort}
+          onTogglePin={processStore.togglePin}
+          onShowDetails={processStore.showProcessDetails}
+          onKillProcess={processStore.confirmKillProcess}
+        />
+        <PaginationControls
+          bind:itemsPerPage
+          bind:currentPage={$processStore.currentPage}
+          {totalPages}
+          totalResults={processView === "tree"
+            ? tree.rootCount
+            : cachedFilteredProcesses.length}
+          resultLabel={processView === "tree"
+            ? tree.rootCount === 1
+              ? "family"
+              : "families"
+            : cachedFilteredProcesses.length === 1
+              ? "process"
+              : "processes"}
+        />
+      </main>
+    {/if}
   </div>
 {/if}
 
@@ -388,6 +418,25 @@
 />
 
 <style>
+  .tabs {
+    display: flex;
+    gap: 4px;
+    padding: 8px 20px 0;
+    flex-shrink: 0;
+  }
+  .tabs button {
+    font-size: 13px;
+    padding: 6px 12px;
+    border-radius: 8px;
+    color: var(--muted-foreground);
+  }
+  .tabs button:hover {
+    color: var(--foreground);
+  }
+  .tabs button.active {
+    background: var(--secondary);
+    color: var(--foreground);
+  }
   main {
     flex: 1;
     display: flex;

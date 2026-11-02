@@ -10,6 +10,18 @@ follows below the line.
   upstream changes can be merged in with `git fetch upstream && git merge upstream/main`.
 - Branch `master` holds the original winperf CLI bootstrap; `egui-wip` the stopped egui attempt.
 
+## What winperf adds
+
+- **Dashboard tab (default):** dark card panel with CPU (% + per-core bars), GPU
+  (% from the Windows PDH counter `\GPU Engine(*)\Utilization Percentage`,
+  per adapter, busiest engine like Task Manager; NVIDIA also via NVML), memory,
+  free space on the system drive, network down/up with a 2-minute graph, and the
+  top 5 processes by memory. NeoHtop's process table is the **Processes** tab.
+- **Temp & fan card is a placeholder:** reading CPU temperature/fan speed on
+  Windows needs a driver (PawnIO) or LibreHardwareMonitor; nothing is faked.
+- Not done yet: battery, health score, speed test, per-process network speed
+  (needs ETW with admin rights).
+
 ## Build the Windows exe (cross-compiled on Linux)
 
 Same approach as tower-rs: plain `cargo xwin build` of the Tauri crate, no

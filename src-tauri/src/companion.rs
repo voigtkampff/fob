@@ -62,15 +62,15 @@ fn configure(app: &AppHandle, enabled: bool, keep_running: bool) -> Result<(), S
     if enabled && app.tray_by_id(TRAY_ID).is_none() {
         let overview = MenuItem::with_id(app, "overview", "Show overview", true, None::<&str>)
             .map_err(|e| e.to_string())?;
-        let open = MenuItem::with_id(app, "open-main", "Open NeoHtop", true, None::<&str>)
+        let open = MenuItem::with_id(app, "open-main", "Open winperf", true, None::<&str>)
             .map_err(|e| e.to_string())?;
-        let quit = MenuItem::with_id(app, "quit", "Quit NeoHtop", true, None::<&str>)
+        let quit = MenuItem::with_id(app, "quit", "Quit winperf", true, None::<&str>)
             .map_err(|e| e.to_string())?;
         let menu = Menu::with_items(app, &[&overview, &open, &quit]).map_err(|e| e.to_string())?;
         TrayIconBuilder::with_id(TRAY_ID)
             .icon(ghost())
             .icon_as_template(true)
-            .tooltip("NeoHtop — system overview")
+            .tooltip("winperf — system overview")
             .menu(&menu)
             .menu_on_left_click(false)
             .on_menu_event(|app, event| {
