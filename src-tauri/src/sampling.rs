@@ -387,6 +387,26 @@ pub async fn read(app: tauri::AppHandle) -> Result<Snapshot, String> {
     .await
     .map_err(|e| e.to_string())?
 }
+/// Fob: sample from app start, not only while a window is reading, so the
+/// 120 s history charts are full when the user first opens a view. Before
+/// this, a tray-only Fob took no readings until a window asked, and every
+/// chart started mid-way. `Hub::read` is interval-gated (and idle while
+/// paused), so polling it here adds no extra captures when windows read too.
+pub fn sample_in_background(app: tauri::AppHandle) {
+    std::thread::Builder::new()
+        .name("fob-sampler".into())
+        .spawn(move || loop {
+            {
+                use tauri::Manager;
+                let state = app.state::<AppState>();
+                if let Ok(mut hub) = state.hub.lock() {
+                    let _ = hub.read(&state);
+                };
+            }
+            std::thread::sleep(Duration::from_millis(500));
+        })
+        .expect("start the sampler thread");
+}
 #[tauri::command]
 pub async fn set_monitor_paused(
     paused: bool,
@@ -409,6 +429,13 @@ pub async fn set_monitor_interval(
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn history_is_sampled_from_app_start() {
+        let main = include_str!("main.rs");
+        let setup = main.split(".setup(").nth(1).unwrap();
+        let setup = &setup[..setup.find("Ok(())").unwrap()];
+        assert!(setup.contains("sampling::sample_in_background(app.handle().clone())"));
+    }
     #[test]
     fn bounded_history_clock_changes_and_missing_reads() {
         let mut h = VecDeque::new();
