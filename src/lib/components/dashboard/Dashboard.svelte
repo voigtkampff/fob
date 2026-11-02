@@ -62,6 +62,8 @@
   /** Cards open a detail view when clicked; `detail` is bindable (Esc handling). */
   export let expandable = false;
   export let detail: DetailKind | null = null;
+  /** Opens the disk space map (a button in the disk detail). */
+  export let onSpace: (() => void) | null = null;
 
   function open(kind: DetailKind) {
     if (expandable) detail = kind;
@@ -166,6 +168,7 @@
       {lists}
       {compact}
       onBack={() => (detail = null)}
+      {onSpace}
     />
   {:else}
     <header class="dash-header">

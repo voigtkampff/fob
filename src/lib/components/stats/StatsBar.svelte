@@ -25,6 +25,7 @@
   export let sensors: Sensor[] = [];
   export let started: [number, string] | null = null;
   export let onOpenTemp: () => void = () => {};
+  export let onOpenSpace: () => void = () => {};
 </script>
 
 {#if systemStats}<Tooltip.Provider delayDuration={150}
@@ -53,13 +54,10 @@
         {isFrozen}
         {unavailable}
       /><StoragePanel
-        stats={systemStats}
-        {capturedAt}
-        {isFrozen}
-        {unavailable}
         diskTotalBytes={systemStats.disk_total_bytes}
         diskUsedBytes={systemStats.disk_used_bytes}
         diskFreeBytes={systemStats.disk_free_bytes}
+        onOpen={onOpenSpace}
       /><SystemPanel
         stats={systemStats}
         {capturedAt}

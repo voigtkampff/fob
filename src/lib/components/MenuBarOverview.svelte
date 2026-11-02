@@ -222,6 +222,11 @@
           gpus={data.gpus}
           history={data.history}
           processes={data.processes}
+          onSpace={() =>
+            void invoke("open_main_window", {
+              process: null,
+              page: "space",
+            }).catch(() => {})}
         />
       {:else}
         <p class="p-4 text-xs text-muted-foreground">

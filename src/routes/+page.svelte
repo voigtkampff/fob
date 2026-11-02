@@ -14,6 +14,7 @@
   } from "$lib/stores/monitoring-preferences";
   import MenuBarOverview from "$lib/components/MenuBarOverview.svelte";
   import Dashboard from "$lib/components/dashboard/Dashboard.svelte";
+  import SpacePage from "$lib/components/space/SpacePage.svelte";
   import type { DetailKind } from "$lib/components/dashboard/detail";
   import { listen, type UnlistenFn } from "@tauri-apps/api/event";
   import { onMount, onDestroy } from "svelte";
@@ -74,7 +75,7 @@
   let cachedSortedProcesses: Process[] = [];
   let expandedProcesses = new Set<string>();
   // winperf: card dashboard is the default tab; NeoHtop's table is "Processes".
-  let tab: "dashboard" | "processes" = "dashboard";
+  let tab: "dashboard" | "processes" | "space" = "dashboard";
   let detail: DetailKind | null = null;
 
   function setProcessView(view: "flat" | "tree") {
@@ -254,6 +255,9 @@
       const stopControl = await listen("monitor-control", () => {
         void processStore.refreshControl();
       });
+      const stopPage = await listen<string>("open-page", ({ payload }) => {
+        if (payload === "space") tab = "space";
+      });
       const stopOpen = await listen<{ pid: number; start_time: number }>(
         "open-process",
         async ({ payload }) => {
@@ -271,10 +275,11 @@
       );
       if (disposed) {
         stopControl();
+        stopPage();
         stopOpen();
         return;
       }
-      listeners.push(stopControl, stopOpen);
+      listeners.push(stopControl, stopPage, stopOpen);
       await processStore.getProcesses();
       if (!disposed) processStore.setIsLoading(false);
     })();
@@ -324,8 +329,15 @@
         aria-pressed={tab === "processes"}
         onclick={() => (tab = "processes")}>{$t("tabs.processes")}</button
       >
+      <button
+        class:active={tab === "space"}
+        aria-pressed={tab === "space"}
+        onclick={() => (tab = "space")}>{$t("space.title")}</button
+      >
     </nav>
-    {#if tab === "dashboard"}
+    {#if tab === "space"}
+      <main class="space-main"><SpacePage /></main>
+    {:else if tab === "dashboard"}
       <main>
         {#if error}<div class="alert" role="alert">{error}</div>{/if}
         {#if systemStats}
@@ -337,6 +349,10 @@
             {gpus}
             history={resourceHistory}
             {processes}
+            onSpace={() => {
+              detail = null;
+              tab = "space";
+            }}
           />
         {/if}
       </main>
@@ -352,6 +368,7 @@
             unavailable={!!error}
             sensors={$processStore.extra?.sensors?.sensors ?? []}
             started={$processStore.extra?.started ?? null}
+            onOpenSpace={() => (tab = "space")}
             onOpenTemp={() => {
               tab = "dashboard";
               detail = "temp";

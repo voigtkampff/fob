@@ -26,7 +26,7 @@
     series,
     sparklinePath,
   } from "$lib/utils/dashboard.js";
-  import { ChevronLeft } from "@lucide/svelte";
+  import { ChevronLeft, ChevronRight, LayoutGrid } from "@lucide/svelte";
   import ChartCursor from "$lib/components/charts/ChartCursor.svelte";
   import { percentText as pct1 } from "$lib/utils/chart-cursor.js";
   import SensorSetup from "./SensorSetup.svelte";
@@ -52,6 +52,7 @@
   export let lists: { cpu: Row[]; gpu: Row[]; memory: Row[] };
   export let compact = false;
   export let onBack: () => void;
+  export let onSpace: (() => void) | null = null;
 
   $: title = $t(`detail.${kind}`);
   const W = 300;
@@ -293,6 +294,11 @@
       {/each}
     </div>
   {:else if kind === "disk"}
+    {#if onSpace}<button class="space-link" onclick={onSpace}
+        ><LayoutGrid class="size-3.5" />{$t("space.title")}<ChevronRight
+          class="ml-auto size-3.5"
+        /></button
+      >{/if}
     <div class="panel">
       {#each volumes as v (v.mount)}
         <div class="drive">
@@ -649,6 +655,21 @@
   }
   .dot.green {
     background: var(--green);
+  }
+  .space-link {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    width: 100%;
+    padding: 8px 12px;
+    border-radius: 10px;
+    border: 1px solid var(--border);
+    background: var(--card);
+    font-size: 12.5px;
+    font-weight: 600;
+  }
+  .space-link:hover {
+    background: color-mix(in oklab, var(--primary) 10%, var(--card));
   }
   .list-head {
     display: flex;

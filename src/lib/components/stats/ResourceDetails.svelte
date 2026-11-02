@@ -12,7 +12,6 @@
   const panels = {
     cpu: 0,
     memory: 0,
-    storage: 0,
     system: 0,
     network: 0,
     gpu: 0,
@@ -47,11 +46,6 @@
       title: $t("rd.memory.title"),
       label: $t("rd.memory.label"),
       description: $t("rd.memory.description"),
-    },
-    storage: {
-      title: $t("rd.storage.title"),
-      label: $t("rd.storage.label"),
-      description: $t("rd.storage.description"),
     },
     system: {
       title: $t("rd.system.title"),

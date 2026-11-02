@@ -7,7 +7,7 @@
   import { Progress } from "$lib/components/ui/progress/index.js";
   import { Input } from "$lib/components/ui/input/index.js";
   import { Button } from "$lib/components/ui/button/index.js";
-  import { ArrowDown, ArrowUp, HardDrive, Network } from "@lucide/svelte";
+  import { ArrowDown, ArrowUp, Network } from "@lucide/svelte";
   import { formatBytes } from "$lib/utils";
   import { formatDuration, uptimeInfo } from "$lib/utils/dashboard.js";
   import CoreGrid from "./CoreGrid.svelte";
@@ -22,7 +22,7 @@
     unavailable,
     started = null,
   }: {
-    kind: "cpu" | "memory" | "storage" | "system" | "network";
+    kind: "cpu" | "memory" | "system" | "network";
     stats: SystemStats;
     history: ResourceSample[];
     isFrozen: boolean;
@@ -33,7 +33,6 @@
   const since = $derived(
     uptimeInfo(stats.uptime, started?.[0], Date.now() / 1000),
   );
-  let volumeMount = $state("");
   let interfaceSearch = $state("");
   let includeUnused = $state(false);
   let interfaceOrder = $state<string[]>([]);
@@ -60,22 +59,6 @@
   const memory = $derived(
     stats.memory_total > 0
       ? Math.min(100, (stats.memory_used / stats.memory_total) * 100)
-      : null,
-  );
-  const volume = $derived(
-    details.volumes.find((v) => v.mount === volumeMount) ??
-      details.volumes.find((v) => v.mount === "/") ??
-      details.volumes[0],
-  );
-  const volumeUsage = $derived(
-    volume && volume.total > 0
-      ? Math.max(
-          0,
-          Math.min(
-            100,
-            ((volume.total - volume.available) / volume.total) * 100,
-          ),
-        )
       : null,
   );
   const interfaceRanks = $derived(
@@ -224,82 +207,6 @@
     </Card.Content></Card.Root
   >
   {@render note($t("details.memNote"))}
-{:else if kind === "storage"}
-  {#if volume}
-    <div class="space-y-2">
-      <label for="resource-volume" class="text-sm font-medium"
-        >{$t("details.volume")}</label
-      ><NativeSelect.Root
-        id="resource-volume"
-        value={volume.mount}
-        onchange={(event) => (volumeMount = event.currentTarget.value)}
-        class="w-full min-w-0"
-        title={volume.mount}
-        >{#each details.volumes as item}<option value={item.mount}
-            >{item.mount} · {item.name || $t("details.volume")}</option
-          >{/each}</NativeSelect.Root
-      >
-    </div>
-    <div>
-      <h3 class="break-words text-lg font-semibold">
-        {volume.name || $t("details.volume")}
-      </h3>
-      <p class="mt-1 break-all text-xs text-muted-foreground" data-selectable>
-        {volume.mount}
-      </p>
-    </div>
-    <Card.Root size="sm"
-      ><Card.Content
-        ><div>
-          <p class="text-3xl font-semibold tracking-tight tabular-nums">
-            {volume.total > 0 ? formatBytes(volume.available) : $t("common.na")}
-          </p>
-          <p class="mt-1 text-sm text-muted-foreground">
-            {$t("details.availableHere")}
-          </p>
-        </div>
-        <Progress
-          value={volumeUsage}
-          aria-label={$t("details.volumeUsed")}
-          aria-valuetext={percent(volumeUsage)}
-          style="--primary:var(--chart-4)"
-        />
-        <div class="flex justify-between text-xs text-muted-foreground">
-          <span>{$t("dash.used", { v: percent(volumeUsage) })}</span><span
-            >{volumeUsage === null
-              ? ""
-              : $t("details.pctAvailable", {
-                  v: (100 - volumeUsage).toFixed(1),
-                })}</span
-          >
-        </div></Card.Content
-      ></Card.Root
-    >
-    {@render facts([
-      [
-        $t("details.capacity"),
-        volume.total > 0 ? formatBytes(volume.total) : $t("common.na"),
-      ],
-      [
-        $t("stats.used"),
-        volume.total > 0
-          ? formatBytes(Math.max(0, volume.total - volume.available))
-          : $t("common.na"),
-      ],
-      [$t("details.fileSystem"), volume.file_system || $t("common.na")],
-      [
-        $t("details.access"),
-        volume.read_only ? $t("details.readOnly") : $t("details.readWrite"),
-      ],
-    ])}
-    {@render note($t("details.storageNote"))}
-  {:else}<div class="space-y-3 py-6">
-      <HardDrive class="size-8 text-muted-foreground" />
-      <h3 class="font-semibold">{$t("details.noVolumes")}</h3>
-      <p class="text-sm text-muted-foreground">
-        {$t("details.noVolumesNote")}
-      </p>
-    </div>{/if}
 {:else if kind === "system"}
   <div>
     <h3 class="break-words text-lg font-semibold">
