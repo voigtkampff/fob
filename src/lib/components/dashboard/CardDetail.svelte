@@ -71,9 +71,11 @@
   let netRows = new Map();
   $: if (kind === "network" && netApps)
     netRows = mergeNetApps(netRows, netApps, Date.now());
-  // Fixed slots so the list (and the window measured for it) keeps its height
-  // while apps come and go; see utils/mini-fit.js.
-  $: appSlots = compact ? 8 : 12;
+  // Fixed slots so the list keeps its height while apps come and go.
+  // The mini window has one fixed height: 7 app rows and the 2 busiest
+  // adapters keep the network detail inside it.
+  $: appSlots = compact ? 7 : 12;
+  $: shownInterfaces = compact ? interfaces.slice(0, 2) : interfaces;
   $: appRows = sortedNetRows(netRows).slice(0, appSlots);
   $: appMax = Math.max(1, ...appRows.map((r) => Math.max(r.rx, r.tx)));
   $: summary = sensorSummary(sensors);
@@ -362,7 +364,7 @@
       <div class="list-head">
         <span>{$t("detail.adapter")}</span><span>↓ / ↑</span>
       </div>
-      {#each interfaces as i (i.name)}
+      {#each shownInterfaces as i (i.name)}
         <div class="item">
           <span class="name">{i.name}</span><span class="num"
             >{rate(i.received)} / {rate(i.sent)}</span

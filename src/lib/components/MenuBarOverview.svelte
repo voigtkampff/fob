@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { onMount, onDestroy, tick } from "svelte";
+  import { onMount, onDestroy } from "svelte";
   import { invoke } from "@tauri-apps/api/core";
   import { listen, type UnlistenFn } from "@tauri-apps/api/event";
   import { getCurrentWindow } from "@tauri-apps/api/window";
@@ -9,7 +9,7 @@
   import type { DetailKind } from "./dashboard/detail";
   import { themeStore } from "$lib/stores/theme";
   import { t } from "$lib/i18n";
-  import { miniView, needsFit } from "$lib/utils/mini-fit.js";
+  import { miniStyle } from "$lib/utils/mini-layout.js";
   import type { OverviewSnapshot } from "$lib/types";
   let data: OverviewSnapshot | null = null;
   let error = "";
@@ -21,37 +21,12 @@
   let poll: ReturnType<typeof setTimeout>;
   let ticker: ReturnType<typeof setInterval>;
   const listeners: UnlistenFn[] = [];
-  // winperf: the window is sized to the panel once per view (cards <-> a
-  // detail), never on data refreshes; see utils/mini-fit.js.
+  // The window has one fixed size for every view (utils/mini-layout.js);
+  // switching views only resets the scroll position.
   let panel: HTMLDivElement;
   let detail: DetailKind | null = null;
-  let fitted: string | null = null;
-  $: view = miniView(!!data, detail);
-  $: if (needsFit(fitted, view)) void fit(view);
-  const frame = () => new Promise((r) => requestAnimationFrame(r));
-  function refitAfterClick() {
-    void tick().then(() => {
-      if (fitted === view) fitted = null; // the reactive fit runs again
-    });
-  }
-  async function fit(target: string) {
-    fitted = target;
-    let asked = 0;
-    // Pass 2 corrects for whatever the native window took off the client
-    // area (frame, DPI rounding), so the cards view never needs a scrollbar.
-    for (let pass = 0; pass < 2; pass++) {
-      await tick();
-      await frame();
-      if (!panel || fitted !== target) return;
-      panel.scrollTop = 0;
-      const content = Math.ceil(panel.scrollHeight);
-      const short = content - window.innerHeight;
-      if (pass === 1 && short <= 0) return;
-      asked = pass === 0 ? content : asked + short;
-      await invoke("fit_companion", { height: asked }).catch(() => {});
-      await new Promise((r) => setTimeout(r, 120));
-    }
-  }
+  const toTop = (_view: DetailKind | null) => panel?.scrollTo(0, 0);
+  $: toTop(detail);
   $: age = data
     ? Math.max(0, Math.floor((clock - data.captured_at) / 1000))
     : 0;
@@ -96,7 +71,6 @@
     visible = value;
     if (!visible) {
       detail = null; // reopen on the cards
-      fitted = null; // and measure them once more while hidden
     }
     clearTimeout(poll);
     clearInterval(ticker);
@@ -168,10 +142,7 @@
 />
 
 <div class="mini-shell">
-  <!-- A click can open or close part of a view (the sensor setup steps):
-       measure once more after it. Data refreshes never resize. -->
-  <!-- svelte-ignore a11y_click_events_have_key_events a11y_no_static_element_interactions -->
-  <div class="mini" bind:this={panel} on:click={refitAfterClick}>
+  <div class="mini" bind:this={panel} style={miniStyle()}>
     <div class="mini-bar">
       <img src="/fob.svg" alt="" class="size-4" />
       <span class="mini-title">{$t("app.name")}</span>
@@ -246,7 +217,8 @@
     height: 100vh;
   }
   .mini {
-    max-height: 100vh;
+    height: 100vh;
+    box-sizing: border-box;
     overflow-y: auto;
     /* Only long detail lists scroll; keep the bar thin and trackless. */
     scrollbar-width: thin;
@@ -257,13 +229,14 @@
       )
       transparent;
     background: var(--background);
-    padding: 8px 10px 10px;
+    padding: var(--mini-padTop) 10px var(--mini-padBottom);
   }
   .mini-bar {
     display: flex;
     align-items: center;
     gap: 6px;
-    margin-bottom: 6px;
+    height: var(--mini-bar);
+    margin-bottom: var(--mini-barGap);
   }
   .mini-title {
     font-size: 13px;

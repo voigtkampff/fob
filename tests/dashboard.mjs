@@ -384,30 +384,74 @@ console.log(
 }
 console.log("PASS: per-app network rows group, stick for 30 s and sort");
 
-// mini window: resize only on a view change, never on a data refresh
+// mini window: one fixed size; the cards view fits it; nothing resizes or moves it
 {
-  const { miniView, needsFit } = await import("../src/lib/utils/mini-fit.js");
-  assert.equal(miniView(false, null), "loading");
-  assert.equal(miniView(true, null), "cards");
-  assert.equal(miniView(true, "network"), "network");
-  let fitted = null;
-  const fits = [];
-  const step = (
-    /** @type {boolean} */ hasData,
-    /** @type {string|null} */ detail,
-  ) => {
-    const view = miniView(hasData, detail);
-    if (needsFit(fitted, view)) {
-      fitted = view;
-      fits.push(view);
+  const {
+    MINI,
+    MINI_HEIGHT,
+    miniCardsHeight,
+    miniProcsHeight,
+    fixedRows,
+    miniStyle,
+  } = await import("../src/lib/utils/mini-layout.js");
+  const { readFileSync, readdirSync, statSync } = await import("node:fs");
+  const { join } = await import("node:path");
+  // The cards view is built only from fixed-height blocks: it fits, with a
+  // few px of slack for DPI rounding, so it never shows a scrollbar.
+  const cards = miniCardsHeight();
+  assert.ok(
+    cards <= MINI_HEIGHT,
+    `cards view ${cards} px > window ${MINI_HEIGHT} px`,
+  );
+  assert.ok(MINI_HEIGHT - cards <= 8, "no large empty band under the cards");
+  assert.equal(miniProcsHeight(), 2 + 8 + MINI.procHead + 5 * MINI.procRow);
+  assert.match(miniStyle(), /--mini-procs:169px/);
+  // Exactly MINI.procRows process rows whatever the data (0..12 processes).
+  for (let n = 0; n <= 12; n++) {
+    const rows = fixedRows(
+      Array.from({ length: n }, (_, pid) => ({ pid })),
+      MINI.procRows,
+    );
+    assert.equal(rows.length, MINI.procRows);
+    assert.equal(rows.filter(Boolean).length, Math.min(n, MINI.procRows));
+  }
+  // 1080p at 150 %: 720 logical px minus a 48 px taskbar and the 8 px gap.
+  assert.ok(MINI_HEIGHT + 8 <= 1080 / 1.5 - 48, "fits a 1080p screen at 150 %");
+  // No frontend code can resize or move the mini window: view changes, data
+  // refreshes and clicks (a blank-area click used to re-measure and call
+  // fit_companion, which moved the whole window) only change the page.
+  const files = [];
+  const walk = (/** @type {string} */ dir) => {
+    for (const name of readdirSync(dir)) {
+      const path = join(dir, name);
+      if (statSync(path).isDirectory()) walk(path);
+      else if (/\.(svelte|ts|js)$/.test(name)) files.push(path);
     }
   };
-  step(false, null); // first paint
-  step(true, null); // first data
-  for (let i = 0; i < 5; i++) step(true, null); // refreshes
-  step(true, "network"); // open a detail
-  for (let i = 0; i < 30; i++) step(true, "network"); // the app list changes every second
-  step(true, null); // back
-  assert.deepEqual(fits, ["loading", "cards", "network", "cards"]);
-  console.log("PASS: mini window resizes only when the view changes");
+  walk("src");
+  for (const path of files) {
+    const text = readFileSync(path, "utf8");
+    for (const banned of [
+      "fit_companion",
+      "setSize(",
+      "setPosition(",
+      "scrollHeight",
+    ])
+      assert.ok(!text.includes(banned), `${path} uses ${banned}`);
+  }
+  const mini = readFileSync(
+    "src/lib/components/MenuBarOverview.svelte",
+    "utf8",
+  );
+  assert.ok(
+    !/class="mini"[^>]*on:click/.test(mini),
+    "no click handler on the panel",
+  );
+  assert.ok(
+    !mini.includes("data-tauri-drag-region"),
+    "the mini window is not draggable",
+  );
+  console.log(
+    "PASS: mini window has one fixed size; cards fit; clicks never resize or move it",
+  );
 }

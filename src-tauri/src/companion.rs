@@ -15,8 +15,6 @@ const TRAY_ID: &str = "neohtop-overview";
 pub struct CompanionState {
     pub keep_running: bool,
     pub hidden_at: Option<Instant>,
-    /// winperf: content height reported by the mini window (logical px).
-    pub height: Option<f64>,
     /// winperf: last tray icon rect (physical px), so resizes stay anchored.
     pub anchor: Option<(f64, f64, f64, f64)>,
     /// winperf: tray menu "Start in tray only" item, kept in sync with settings.
@@ -70,18 +68,20 @@ fn set_language(app: &AppHandle, pref: &'static str) {
     });
 }
 
-/// winperf mini window: fixed width, height follows its content.
+/// Fob mini window: ONE fixed logical size for every view, set only when the
+/// window is shown from the tray. Nothing resizes or moves it afterwards (no
+/// view change, data refresh or click). The height is the sum of the fixed
+/// blocks in src/lib/utils/mini-layout.js (MINI_HEIGHT there; a test checks).
 const MINI_WIDTH: f64 = 360.0;
-const MINI_MIN_HEIGHT: f64 = 240.0;
-const MINI_MAX_HEIGHT: f64 = 720.0;
-const MINI_DEFAULT_HEIGHT: f64 = 640.0;
+const MINI_HEIGHT: f64 = 652.0;
 
-pub fn mini_height(content: f64) -> f64 {
-    if content.is_finite() {
-        content.clamp(MINI_MIN_HEIGHT, MINI_MAX_HEIGHT)
-    } else {
-        MINI_DEFAULT_HEIGHT
-    }
+/// Physical size at a monitor scale. Round up: a pixel lost to rounding at
+/// 125 %/150 % would cut the bottom row.
+fn mini_size(scale: f64) -> tauri::PhysicalSize<u32> {
+    tauri::PhysicalSize::new(
+        (MINI_WIDTH * scale).ceil() as u32,
+        (MINI_HEIGHT * scale).ceil() as u32,
+    )
 }
 
 // Fob's tray icon: the hand-drawn 16/24/32 px frames of icons/icon.ico
@@ -418,20 +418,20 @@ fn show(app: &AppHandle, rect: Option<Rect>) -> Result<(), String> {
     app.emit_to("overview", "companion-visibility", true)
         .map_err(|e| e.to_string())
 }
-/// winperf: size the mini window to its content height and put it next to the
-/// tray icon (above it for a bottom taskbar), clamped to the monitor.
+/// Fob: give the mini window its fixed size and put it next to the tray icon
+/// (above it for a bottom taskbar), clamped to the monitor. Only `show` calls this.
 fn place(
     app: &AppHandle,
     window: &tauri::WebviewWindow,
     anchor: Option<(f64, f64, f64, f64)>,
 ) -> Result<(), String> {
-    let (anchor, height) = {
+    let anchor = {
         let state = app.state::<Mutex<CompanionState>>();
         let mut state = state.lock().map_err(|e| e.to_string())?;
         if anchor.is_some() {
             state.anchor = anchor;
         }
-        (state.anchor, state.height.unwrap_or(MINI_DEFAULT_HEIGHT))
+        state.anchor
     };
     let monitor = anchor
         .and_then(|(x, y, _, _)| window.monitor_from_point(x, y).ok().flatten())
@@ -442,11 +442,7 @@ fn place(
         .or_else(|| window.primary_monitor().ok().flatten())
         .ok_or("No display available")?;
     let scale = monitor.scale_factor();
-    // Round up: a pixel lost to rounding at 125 %/150 % shows a scrollbar.
-    let size = tauri::PhysicalSize::new(
-        (MINI_WIDTH * scale).ceil() as u32,
-        (height * scale).ceil() as u32,
-    );
+    let size = mini_size(scale);
     window
         .set_size(tauri::Size::Physical(size))
         .map_err(|e| e.to_string())?;
@@ -463,23 +459,6 @@ fn place(
             scale,
         ))
         .map_err(|e| e.to_string())
-}
-/// winperf: the mini window reports its content height; resize and re-anchor.
-#[tauri::command]
-pub async fn fit_companion(app: AppHandle, height: f64) -> Result<(), String> {
-    let height = mini_height(height);
-    {
-        let state = app.state::<Mutex<CompanionState>>();
-        let mut state = state.lock().map_err(|e| e.to_string())?;
-        if state.height.is_some_and(|h| (h - height).abs() < 1.0) {
-            return Ok(());
-        }
-        state.height = Some(height);
-    }
-    let window = app
-        .get_webview_window("overview")
-        .ok_or("Overview window unavailable")?;
-    place(&app, &window, None)
 }
 pub fn open_main(app: &AppHandle) -> Result<(), String> {
     hide(app);
@@ -651,10 +630,52 @@ mod tests {
         assert_eq!(pos, PhysicalPosition::new(2340, 648)); // 12 px gap at 150%
     }
     #[test]
-    fn mini_height_is_clamped() {
-        assert_eq!(mini_height(100.0), 240.0);
-        assert_eq!(mini_height(500.0), 500.0);
-        assert_eq!(mini_height(5000.0), 720.0);
-        assert_eq!(mini_height(f64::NAN), 640.0);
+    fn mini_height_matches_the_frontend_layout() {
+        let js = include_str!("../../src/lib/utils/mini-layout.js");
+        let line = js
+            .lines()
+            .find(|l| l.starts_with("export const MINI_HEIGHT = "))
+            .expect("MINI_HEIGHT in mini-layout.js");
+        let value: f64 = line
+            .trim_start_matches("export const MINI_HEIGHT = ")
+            .trim_end_matches(';')
+            .parse()
+            .unwrap();
+        assert_eq!(value, MINI_HEIGHT);
+        assert!(js.contains("width: 360,") && MINI_WIDTH == 360.0);
+    }
+    #[test]
+    fn nothing_but_show_sizes_or_moves_the_mini_window() {
+        // A blank-area click used to re-measure the page and call
+        // fit_companion -> set_size + set_position, moving the whole window.
+        let src = include_str!("companion.rs");
+        let code = src.split("#[cfg(test)]").next().unwrap();
+        let callers = |needle: &str| code.matches(needle).count();
+        assert_eq!(callers(concat!("place", "(")), 2); // the fn and its one call in `show`
+        assert_eq!(callers(concat!(".set_", "size(")), 1);
+        assert_eq!(callers(concat!(".set_", "position(")), 1);
+        assert!(!code.contains(concat!("fit_", "companion")));
+    }
+    #[test]
+    fn mini_window_fits_1080p_up_to_150_percent() {
+        // 1920x1080 physical, bottom taskbar 48 logical px, tray icon at the right.
+        for scale in [1.0, 1.25, 1.5] {
+            let size = mini_size(scale);
+            assert_eq!(size.height, (MINI_HEIGHT * scale).ceil() as u32);
+            let bar = (48.0 * scale).round();
+            let icon = (1800.0, 1080.0 - bar, 24.0 * scale, bar);
+            let pos = placement(
+                (0, 0, 1920, 1080),
+                (size.width, size.height),
+                Some(icon),
+                scale,
+            );
+            assert!(pos.y >= 0, "top cut at {scale}");
+            let bottom = pos.y + size.height as i32;
+            assert!(
+                bottom <= (1080.0 - bar) as i32,
+                "covers the taskbar at {scale}"
+            );
+        }
     }
 }

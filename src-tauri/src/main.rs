@@ -70,7 +70,6 @@ fn main() {
             companion::configure_companion,
             companion::show_companion,
             companion::hide_companion,
-            companion::fit_companion,
             companion::collapse_to_tray,
             companion::open_main_window,
             companion::quit_app,

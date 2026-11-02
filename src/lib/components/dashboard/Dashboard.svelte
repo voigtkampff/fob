@@ -29,6 +29,7 @@
     fanText,
     setupState,
   } from "$lib/utils/dashboard.js";
+  import { MINI, fixedRows } from "$lib/utils/mini-layout.js";
   import { onMount } from "svelte";
   import { t } from "$lib/i18n";
   import { sensorSetup, refreshSensorSetup } from "$lib/stores/sensorSetup";
@@ -113,7 +114,9 @@
     volume && volume.total > 0
       ? ((volume.total - volume.available) / volume.total) * 100
       : null;
-  $: top = topByMemory(processes, 5);
+  $: top = topByMemory(processes, MINI.procRows);
+  // The mini window always shows exactly MINI.procRows rows (fixed height).
+  $: topRows = compact ? fixedRows(top, MINI.procRows) : top;
   $: chips = [
     identity.cpu_model,
     formatGB(systemStats.memory_total, 0),
@@ -372,7 +375,7 @@
               >°C {summary.cpuTemp ? "CPU" : "GPU"}</small
             >
           </div>
-          <div class="foot">
+          <div class="foot wrap2">
             {[
               summary.cpuTemp && summary.gpuTemp
                 ? `GPU ${formatSensor(summary.gpuTemp)}`
@@ -416,12 +419,16 @@
           >{$t("dash.memory")}</span
         ><span class="num">{$t("dash.cpuPct")}</span>
       </div>
-      {#each top as p (p.pid)}
-        <div class="proc-row">
-          <span class="ellipsis" title={p.command || p.name}>{p.name}</span>
-          <span class="num">{formatGB(p.memory_usage, 2)}</span>
-          <span class="num">{p.cpu_usage.toFixed(1)}</span>
-        </div>
+      {#each topRows as p, i (p?.pid ?? `empty-${i}`)}
+        {#if p}
+          <div class="proc-row">
+            <span class="ellipsis" title={p.command || p.name}>{p.name}</span>
+            <span class="num">{formatGB(p.memory_usage, 2)}</span>
+            <span class="num">{p.cpu_usage.toFixed(1)}</span>
+          </div>
+        {:else}
+          <div class="proc-row" aria-hidden="true"></div>
+        {/if}
       {/each}
     </section>
   {/if}
@@ -650,29 +657,60 @@
     border-color: color-mix(in oklab, var(--foreground) 30%, var(--border));
     outline: none;
   }
-  /* winperf mini window: same cards, squeezed into ~340 px. */
+  /* Fob mini window: same cards, squeezed into ~340 px. Every block of the
+     cards view has a fixed height (utils/mini-layout.js), so the window has
+     one size for every view and the cards never overflow it. */
   .dash.compact {
     flex: none;
     overflow: visible;
     padding: 0;
-    gap: 8px;
+    gap: var(--mini-gap, 8px);
     max-width: none;
   }
   .compact .chip {
     font-size: 10.5px;
-    padding: 4px 6px;
+    line-height: var(--mini-chipRow, 18px);
+    height: var(--mini-chipRow, 18px);
+    padding: 0 6px;
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    box-sizing: border-box;
   }
   .compact .chips {
     gap: 4px;
+    height: var(--mini-chips, 40px);
+    overflow: hidden;
+    align-content: flex-start;
   }
   .compact .grid {
-    gap: 8px;
+    gap: var(--mini-cardGap, 8px);
+    grid-auto-rows: var(--mini-card, 118px);
   }
   .compact .card {
     min-height: 0;
+    height: var(--mini-card, 118px);
+    box-sizing: border-box;
+    overflow: hidden;
     padding: 10px 11px;
     gap: 4px;
     border-radius: 12px;
+  }
+  .compact .grid .foot {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    flex-shrink: 0;
+  }
+  /* The temperature card has no graph: its fan line may take two lines. */
+  .compact .grid .foot.wrap2,
+  .compact .grid .note {
+    white-space: normal;
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+    line-clamp: 2;
   }
   .compact .label {
     font-size: 12px;
@@ -707,15 +745,22 @@
     gap: 4px;
   }
   .compact .procs {
-    padding: 4px 11px;
+    padding: var(--mini-procPad, 4px) 11px;
+    box-sizing: border-box;
+    height: var(--mini-procs, 169px);
+    gap: 0;
+    overflow: hidden;
   }
   .compact .proc-row {
     grid-template-columns: minmax(0, 1fr) 72px 44px;
     gap: 8px;
-    padding: 5px 0;
+    padding: 0;
+    height: var(--mini-procRow, 27px);
+    align-items: center;
     font-size: 12.5px;
   }
   .compact .proc-row.head {
+    height: var(--mini-procHead, 24px);
     font-size: 11.5px;
   }
 </style>
