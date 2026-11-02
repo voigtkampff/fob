@@ -28,7 +28,7 @@
   let lastHeight = 0;
   function fit() {
     if (!panel) return;
-    const h = Math.ceil(panel.scrollHeight + 14);
+    const h = Math.ceil(panel.scrollHeight);
     if (Math.abs(h - lastHeight) < 2) return;
     lastHeight = h;
     void invoke("fit_companion", { height: h }).catch(() => {});
@@ -214,23 +214,17 @@
 </div>
 
 <style>
-  /* winperf mini window: transparent webview, rounded dark panel inside. */
-  :global(html[data-companion="true"]),
-  :global(html[data-companion="true"] body) {
-    background: transparent;
-  }
+  /* winperf mini window: the panel is the whole (opaque) window. Corners and
+     shadow come from Windows 11 (DWM), so there is no CSS radius, border or
+     shadow here; see companion::native_frame. */
   .mini-shell {
     height: 100vh;
-    padding: 6px;
   }
   .mini {
-    max-height: calc(100vh - 12px);
+    max-height: 100vh;
     overflow-y: auto;
     background: var(--background);
-    border: 1px solid var(--border);
-    border-radius: 16px;
     padding: 8px 10px 10px;
-    box-shadow: 0 8px 24px rgb(0 0 0 / 0.35);
   }
   .mini-bar {
     display: flex;

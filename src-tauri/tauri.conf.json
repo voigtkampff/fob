@@ -57,11 +57,11 @@
         "height": 640,
         "visible": false,
         "decorations": false,
-        "transparent": true,
+        "transparent": false,
         "resizable": false,
         "alwaysOnTop": true,
         "skipTaskbar": true,
-        "shadow": false
+        "shadow": true
       },
       {
         "label": "settings",

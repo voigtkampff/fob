@@ -268,10 +268,12 @@
   }
 }
 
-/* The transparent webview supplies native rounded companion edges. */
+/* winperf mini window: an opaque panel that fills the window. Windows 11
+   rounds the corners and draws the shadow natively (DWM); no CSS radius or
+   shadow, which a window's rectangular bounds would clip. */
 html[data-companion],
 html[data-companion] body {
-  background: transparent !important;
+  background: var(--background) !important;
 }
 html[data-companion] body {
   overflow: hidden;

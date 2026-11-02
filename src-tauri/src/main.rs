@@ -48,6 +48,7 @@ fn main() {
             if let Some(mini) = app.get_webview_window("overview") {
                 let _ = mini.remove_menu();
             }
+            companion::native_frame(app.handle());
             // winperf: tray-only start (default) or the main window.
             companion::launch(app.handle())?;
             Ok(())

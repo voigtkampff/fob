@@ -227,6 +227,33 @@ pub async fn collapse_to_tray(app: AppHandle) -> Result<(), String> {
     }
 }
 
+/// winperf: Windows 11 rounds the opaque, frameless mini window and gives it
+/// the native shadow, which follows the rounded corners (unlike a CSS shadow,
+/// which the rectangular window would clip). Windows 10 ignores the
+/// attribute: square corners with the native shadow.
+pub fn native_frame(app: &AppHandle) {
+    #[cfg(target_os = "windows")]
+    if let Some(window) = app.get_webview_window("overview") {
+        use windows::Win32::Foundation::HWND;
+        use windows::Win32::Graphics::Dwm::{
+            DwmSetWindowAttribute, DWMWA_WINDOW_CORNER_PREFERENCE, DWMWCP_ROUND,
+        };
+        if let Ok(hwnd) = window.hwnd() {
+            let preference = DWMWCP_ROUND;
+            unsafe {
+                let _ = DwmSetWindowAttribute(
+                    HWND(hwnd.0 as _),
+                    DWMWA_WINDOW_CORNER_PREFERENCE,
+                    &preference as *const _ as *const std::ffi::c_void,
+                    std::mem::size_of_val(&preference) as u32,
+                );
+            }
+        }
+    }
+    #[cfg(not(target_os = "windows"))]
+    let _ = app;
+}
+
 pub fn hide(app: &AppHandle) {
     if let Some(window) = app.get_webview_window("overview") {
         let _ = window.hide();
@@ -252,10 +279,12 @@ fn placement(
     let bottom = top.saturating_add(height as i32);
     let (x, y) = if let Some((ax, ay, aw, ah)) = anchor {
         let x = (ax + aw / 2.0 - pw as f64 / 2.0).round() as i32;
-        let y = if ay + ah + ph as f64 <= bottom as f64 {
-            (ay + ah).round() as i32
+        // A small gap to the taskbar: the native shadow needs room.
+        let gap = margin as f64;
+        let y = if ay + ah + gap + ph as f64 <= bottom as f64 {
+            (ay + ah + gap).round() as i32
         } else {
-            (ay - ph as f64).round() as i32
+            (ay - gap - ph as f64).round() as i32
         };
         (x, y)
     } else {
@@ -462,7 +491,7 @@ mod tests {
                 Some((2800.0, 0.0, 40.0, 48.0)),
                 2.0
             ),
-            PhysicalPosition::new(2080, 48)
+            PhysicalPosition::new(2080, 64) // below a top menu bar, 16 px gap at 200%
         );
         assert_eq!(
             placement(
@@ -471,7 +500,7 @@ mod tests {
                 Some((-1900.0, 1040.0, 24.0, 40.0)),
                 1.0
             ),
-            PhysicalPosition::new(-1920, 440)
+            PhysicalPosition::new(-1920, 432) // 8 px above the icon
         );
         assert_eq!(
             placement((0, 0, 300, 400), (400, 600), None, 1.0),
@@ -487,7 +516,7 @@ mod tests {
             Some((2600.0, 1560.0, 36.0, 60.0)),
             1.5,
         );
-        assert_eq!(pos, PhysicalPosition::new(2340, 660));
+        assert_eq!(pos, PhysicalPosition::new(2340, 648)); // 12 px gap at 150%
     }
     #[test]
     fn mini_height_is_clamped() {
