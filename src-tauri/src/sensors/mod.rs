@@ -9,6 +9,8 @@ use std::fmt::Debug;
 pub mod lhm;
 pub mod pipe;
 pub mod setup;
+#[cfg(target_os = "windows")]
+mod task;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "lowercase")]

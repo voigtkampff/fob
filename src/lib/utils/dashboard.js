@@ -315,7 +315,7 @@ export function setupSteps(status) {
   const steps = [];
   if (!status.pawnio_installed)
     steps.push(
-      "Install the PawnIO driver from the bundled PawnIO_setup.exe (version 2.2.0, signed by its author namazso, GPL-2.0). Windows needs it so programs can read CPU and motherboard sensors.",
+      "Install the PawnIO driver from the bundled PawnIO_setup.exe (version 2.2.0, signed by its author namazso, GPL-2.0). Its own installer window opens; Windows needs it so programs can read CPU and motherboard sensors.",
     );
   steps.push(
     status.installed

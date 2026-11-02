@@ -157,9 +157,13 @@ mod client {
 
     fn pump(latest: Latest) {
         let mut last_kick = 0u64;
+        // Back off: 1 min, 2, 4, ... up to 30 min while the helper stays away;
+        // reset once it connects. Normally the logon trigger starts it.
+        let mut wait = 60_000u64;
         loop {
             match std::fs::OpenOptions::new().read(true).open(PIPE_PATH) {
                 Ok(pipe) => {
+                    wait = 60_000;
                     for line in BufReader::new(pipe).lines() {
                         let Ok(line) = line else { break };
                         if let Some(parsed) = parse_line(&line) {
@@ -173,11 +177,14 @@ mod client {
                 Err(_) => {
                     // Helper installed but not running (crashed, or the logon
                     // trigger hasn't fired yet): ask the task to start it. The
-                    // task runs elevated without a prompt; at most once a minute.
+                    // task runs elevated without a prompt (Task Scheduler COM
+                    // call, no child process), with backoff.
                     let now = now_ms();
-                    if now - last_kick > 60_000
-                        && crate::sensors::setup::installed_helper().exists()
+                    if now - last_kick > wait && crate::sensors::setup::installed_helper().exists()
                     {
+                        if last_kick != 0 {
+                            wait = (wait * 2).min(30 * 60_000);
+                        }
                         last_kick = now;
                         crate::sensors::setup::run_task();
                     }

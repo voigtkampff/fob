@@ -25,12 +25,19 @@ Temp & fan card. winperf explains each step and Windows asks for permission
 (UAC) once before anything is installed:
   - PawnIO driver (only if it is not installed yet),
   - the read-only helper copied to C:\Program Files\winperf\sensors,
-  - the scheduled task "winperf-sensors" that starts it when you sign in.
+  - the scheduled task "winperf-sensors" that starts it when you sign in
+    (it also counts per-app network traffic for the Network detail).
+PawnIO's own installer window opens for the driver step.
 "Disable..." in the same place removes the task and the helper again.
+
+SHA256SUMS.txt lists the hash of every program file in this folder.
 
 Licenses and sources: licenses\NOTICE.txt
 TXT
+(cd "$OUT" && find . -type f \( -iname '*.exe' -o -iname '*.dll' \) | sort | sed 's|^\./||' |
+  xargs -d '\n' sha256sum > SHA256SUMS.txt)
 mkdir -p dist
+cp "$OUT/SHA256SUMS.txt" "dist/$NAME-SHA256SUMS.txt"
 python3 - "$STAGE" "$NAME" "dist/$NAME-x86_64-windows.zip" <<'PY'
 import os, sys, zipfile
 stage, name, out = sys.argv[1:]

@@ -20,6 +20,8 @@ use std::path::{Path, PathBuf};
 
 pub const TASK_NAME: &str = "winperf-sensors";
 pub const HELPER_EXE: &str = "winperf-sensors.exe";
+/// The helper's ETW session name (sensors-helper/src/NetTrace.cs).
+pub const NET_SESSION: &str = "winperf-net";
 pub const PAWNIO_SETUP: &str = "PawnIO/PawnIO_setup.exe";
 /// `sha256  relative/path` lines; empty when the helper wasn't staged at build time.
 pub const MANIFEST: &str = include_str!(concat!(env!("OUT_DIR"), "/sensors-manifest.sha256"));
@@ -101,7 +103,7 @@ pub fn verify(root: &Path, manifest: &str, prefix: &str) -> Result<usize, String
     Ok(entries.len())
 }
 
-/// `<Command>` of a task's XML (as printed by `schtasks /Query /XML`).
+/// `<Command>` of a task's XML (as returned by IRegisteredTask::Xml).
 pub fn task_command(xml: &str) -> Option<String> {
     let start = xml.find("<Command>")? + "<Command>".len();
     let end = start + xml[start..].find("</Command>")?;
@@ -266,7 +268,7 @@ pub use win::{handle_cli, run_task, status};
 #[cfg(target_os = "windows")]
 mod win {
     use super::*;
-    use std::os::windows::process::CommandExt;
+    use crate::sensors::task;
     use std::process::Command;
     use windows::core::{w, HSTRING, PCWSTR};
     use windows::Win32::Foundation::{CloseHandle, ERROR_CANCELLED};
@@ -277,24 +279,10 @@ mod win {
     use windows::Win32::UI::Shell::{ShellExecuteExW, SEE_MASK_NOCLOSEPROCESS, SHELLEXECUTEINFOW};
     use windows::Win32::UI::WindowsAndMessaging::SW_HIDE;
 
-    const CREATE_NO_WINDOW: u32 = 0x0800_0000;
-
-    fn system32(exe: &str) -> PathBuf {
-        let root = std::env::var_os("SystemRoot")
-            .map(PathBuf::from)
-            .unwrap_or_else(|| PathBuf::from(r"C:\Windows"));
-        root.join("System32").join(exe)
-    }
-
-    fn schtasks(args: &[&str]) -> std::io::Result<std::process::Output> {
-        Command::new(system32("schtasks.exe"))
-            .args(args)
-            .creation_flags(CREATE_NO_WINDOW)
-            .output()
-    }
-
+    /// Ask Task Scheduler to start the helper (it runs elevated without a
+    /// prompt because the task was registered elevated). No child process.
     pub fn run_task() {
-        let _ = schtasks(&["/Run", "/TN", TASK_NAME]);
+        let _ = task::run(TASK_NAME);
     }
 
     pub fn pawnio_installed() -> bool {
@@ -319,18 +307,10 @@ mod win {
     }
 
     fn query_task() -> Result<String, bool> {
-        match schtasks(&["/Query", "/TN", TASK_NAME, "/XML"]) {
-            Ok(out) if out.status.success() => {
-                Ok(String::from_utf8_lossy(&out.stdout).into_owned())
-            }
-            Ok(out) => {
-                // "ERROR: The system cannot find the file specified." -> missing.
-                // Localized Windows: fall back to "no such task" when access
-                // denied isn't mentioned.
-                let err = String::from_utf8_lossy(&out.stderr).to_ascii_lowercase();
-                Err(!err.contains("denied"))
-            }
-            Err(_) => Err(false),
+        match task::query(TASK_NAME) {
+            task::Query::Xml(xml) => Ok(xml),
+            task::Query::Missing => Err(true),
+            task::Query::Unknown => Err(false),
         }
     }
 
@@ -405,8 +385,10 @@ mod win {
     }
 
     fn stop_task() {
-        let _ = schtasks(&["/End", "/TN", TASK_NAME]);
+        let _ = task::stop(TASK_NAME);
         std::thread::sleep(std::time::Duration::from_millis(1500));
+        // A killed helper can't stop its ETW session; we're elevated here.
+        task::stop_trace_session(NET_SESSION);
     }
 
     fn setup() -> Result<(), i32> {
@@ -431,7 +413,9 @@ mod win {
                 let _ = std::fs::remove_file(&setup);
                 return Err(10);
             }
-            let ran = Command::new(&setup).args(["-install", "-silent"]).status();
+            // PawnIO's own installer window (not silent): the user sees what
+            // is installed, and nothing runs hidden.
+            let ran = Command::new(&setup).arg("-install").status();
             let _ = std::fs::remove_file(&setup);
             if ran.is_err() || !pawnio_installed() {
                 return Err(11);
@@ -465,30 +449,14 @@ mod win {
             _ => return Err(13),
         };
         let xml = task_xml(&user, &target.join(HELPER_EXE));
-        let file = std::env::temp_dir().join(format!("winperf-sensors-{}.xml", std::process::id()));
-        // Task Scheduler expects UTF-16 (LE with BOM) to match the declaration.
-        let mut bytes = vec![0xFF, 0xFE];
-        bytes.extend(xml.encode_utf16().flat_map(u16::to_le_bytes));
-        std::fs::write(&file, bytes).map_err(|_| 13)?;
-        let created = schtasks(&[
-            "/Create",
-            "/TN",
-            TASK_NAME,
-            "/XML",
-            &file.to_string_lossy(),
-            "/F",
-        ]);
-        let _ = std::fs::remove_file(&file);
-        if !created.map(|o| o.status.success()).unwrap_or(false) {
-            return Err(13);
-        }
+        task::register(TASK_NAME, &xml).map_err(|_| 13)?;
         run_task();
         Ok(())
     }
 
     fn remove() -> Result<(), i32> {
         stop_task();
-        let deleted = schtasks(&["/Delete", "/TN", TASK_NAME, "/F"]);
+        let deleted = task::delete(TASK_NAME);
         let target = install_dir();
         for _ in 0..3 {
             if !target.exists() || std::fs::remove_dir_all(&target).is_ok() {
@@ -500,7 +468,7 @@ mod win {
             let _ = std::fs::remove_dir(base); // only if empty
         }
         let gone = query_task() == Err(true);
-        if deleted.map(|o| o.status.success()).unwrap_or(false) || gone {
+        if deleted.is_ok() || gone {
             Ok(())
         } else {
             Err(14)

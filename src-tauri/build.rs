@@ -10,5 +10,10 @@ fn main() {
     let out = std::env::var("OUT_DIR").expect("OUT_DIR");
     std::fs::write(Path::new(&out).join("sensors-manifest.sha256"), text)
         .expect("write sensors manifest");
-    tauri_build::build()
+    // asInvoker: winperf itself never asks for admin; only the explicit
+    // "enable sensors" step relaunches it elevated (one UAC prompt).
+    let windows =
+        tauri_build::WindowsAttributes::new().app_manifest(include_str!("winperf.manifest"));
+    tauri_build::try_build(tauri_build::Attributes::new().windows_attributes(windows))
+        .expect("tauri build")
 }
