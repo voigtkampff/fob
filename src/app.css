@@ -105,6 +105,14 @@
   select {
     font: inherit;
   }
+  /* Native <select> popups (WebView2/Chromium) take the option colours, not
+     the select's transparent background: paint them from the theme so dark
+     themes don't get light text on a light list. */
+  select option,
+  select optgroup {
+    background-color: var(--popover);
+    color: var(--popover-foreground);
+  }
   button {
     cursor: pointer;
   }
