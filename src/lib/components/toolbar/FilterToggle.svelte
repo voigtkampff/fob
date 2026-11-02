@@ -7,6 +7,8 @@
   import * as NativeSelect from "$lib/components/ui/native-select/index.js";
   import * as Popover from "$lib/components/ui/popover/index.js";
   import { SlidersHorizontal, RotateCcw } from "@lucide/svelte";
+  import { t } from "$lib/i18n";
+  import { FILTER_STATUSES, statusLabel } from "$lib/utils/process-status";
   export let filters: {
     cpu: { operator: string; value: number; enabled: boolean };
     gpu: { operator: string; value: number; enabled: boolean };
@@ -15,20 +17,17 @@
     status: { values: string[]; enabled: boolean };
   };
   $: count = Object.values(filters).filter((f) => f.enabled).length;
-  const numeric = [
-    { id: "cpu" as const, label: "CPU usage", unit: "%" },
-    { id: "gpu" as const, label: "GPU engine activity", unit: "%" },
-    { id: "ram" as const, label: "Memory", unit: "MB" },
-    { id: "runtime" as const, label: "Run time", unit: "min" },
+  $: numeric = [
+    { id: "cpu" as const, label: $t("filter.cpu"), unit: "%" },
+    { id: "gpu" as const, label: $t("filter.gpu"), unit: "%" },
+    { id: "ram" as const, label: $t("filter.ram"), unit: "MB" },
+    {
+      id: "runtime" as const,
+      label: $t("filter.runtime"),
+      unit: $t("filter.min"),
+    },
   ];
-  const statuses = [
-    "Running",
-    "Sleeping",
-    "Stopped",
-    "Zombie",
-    "Idle",
-    "Unknown",
-  ];
+  const statuses = FILTER_STATUSES;
   function setStatus(value: string, enabled: boolean) {
     filters = {
       ...filters,
@@ -60,8 +59,10 @@
         variant="outline"
         size="sm"
         class="h-9"
-        aria-label={count ? `Filters, ${count} active` : "Filters"}
-        ><SlidersHorizontal />Filters{#if count}<Badge
+        aria-label={count
+          ? $t("filter.ariaActive", { n: count })
+          : $t("filter.filters")}
+        ><SlidersHorizontal />{$t("filter.filters")}{#if count}<Badge
             class="ml-1 size-4 justify-center rounded-sm p-0 text-[10px]"
             >{count}</Badge
           >{/if}</Button
@@ -70,9 +71,9 @@
     align="start"
     class="w-96 max-w-[calc(100vw-2rem)] space-y-5"
     ><div>
-      <h2 class="text-sm font-medium">Filter processes</h2>
+      <h2 class="text-sm font-medium">{$t("filter.title")}</h2>
       <p class="mt-1 text-xs text-muted-foreground">
-        Combine conditions with name, command or PID search.
+        {$t("filter.note")}
       </p>
     </div>
     <div class="space-y-3">
@@ -85,7 +86,7 @@
             />{rule.label}</Label
           ><NativeSelect.Root
             bind:value={filters[rule.id].operator}
-            aria-label={`${rule.label} comparison`}
+            aria-label={$t("filter.comparison", { v: rule.label })}
             disabled={!filters[rule.id].enabled}
             size="sm"
             ><option value=">">&gt;</option><option value="<">&lt;</option
@@ -98,27 +99,27 @@
             step="any"
             bind:value={filters[rule.id].value}
             disabled={!filters[rule.id].enabled}
-            aria-label={`${rule.label} threshold`}
+            aria-label={$t("filter.threshold", { v: rule.label })}
             class="h-8 text-xs"
           /><span class="text-xs text-muted-foreground">{rule.unit}</span>
         </div>{/each}
     </div>
     <div class="space-y-3 border-t border-border pt-4">
-      <h3 class="text-xs font-medium">Status</h3>
+      <h3 class="text-xs font-medium">{$t("col.status")}</h3>
       <div class="grid grid-cols-2 gap-3">
         {#each statuses as status}<Label class="gap-2 text-xs font-normal"
             ><Checkbox
               checked={filters.status.values.includes(status)}
               onCheckedChange={(checked) => setStatus(status, checked)}
-            />{status}</Label
+            />{statusLabel(status, $t)}</Label
           >{/each}
       </div>
     </div>
     <div class="flex items-center justify-between border-t border-border pt-3">
       <span class="text-xs text-muted-foreground"
-        >{count ? `${count} active conditions` : "No filters applied"}</span
+        >{count ? $t("filter.nActive", { n: count }) : $t("filter.none")}</span
       ><Button variant="ghost" size="sm" disabled={!count} onclick={reset}
-        ><RotateCcw />Reset filters</Button
+        ><RotateCcw />{$t("filter.reset")}</Button
       >
     </div></Popover.Content
   ></Popover.Root

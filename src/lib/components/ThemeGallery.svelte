@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { t } from "$lib/i18n";
   import { onMount } from "svelte";
   import { platform } from "@tauri-apps/plugin-os";
   import { themeStore } from "$lib/stores";
@@ -20,9 +21,21 @@
       /* Native-only effects are absent in browser builds. */
     }
   });
+  // Group headings: THEME_GROUPS labels plus the native Glassy group.
+  $: groupName = (label: string) =>
+    ({
+      Dark: $t("theme.dark"),
+      Light: $t("theme.light"),
+      Warm: $t("theme.warm"),
+      Cool: $t("theme.cool"),
+      Fun: $t("theme.fun"),
+      Retro: $t("theme.retro"),
+      Accessibility: $t("theme.a11y"),
+      glassy: $t("theme.glassy"),
+    })[label] ?? label;
   $: groups = [
     ...THEME_GROUPS,
-    ...(glassySupported ? [{ label: "Glassy", themes: ["glassy"] }] : []),
+    ...(glassySupported ? [{ label: "glassy", themes: ["glassy"] }] : []),
   ];
   $: filtered = groups
     .map((group) => ({
@@ -43,8 +56,8 @@
   <Search
     class="pointer-events-none absolute left-3 top-2.5 size-4 text-muted-foreground"
   /><Input
-    aria-label="Find a theme"
-    placeholder="Find a theme…"
+    aria-label={$t("theme.find")}
+    placeholder={$t("theme.findPlaceholder")}
     bind:value={query}
     class="pl-9"
   />
@@ -54,7 +67,7 @@
 >
   {#each filtered as group}<div>
       <h3 class="mb-1 px-2 text-xs font-medium text-muted-foreground">
-        {group.label}
+        {groupName(group.label)}
       </h3>
       <div class="grid grid-cols-2 gap-1">
         {#each group.themes as name}{@const theme = themes[name]}<Button
@@ -74,6 +87,6 @@
           >{/each}
       </div>
     </div>{:else}<p class="p-3 text-center text-sm text-muted-foreground">
-      No matching themes.
+      {$t("theme.none")}
     </p>{/each}
 </div>

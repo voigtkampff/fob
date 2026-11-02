@@ -16,7 +16,7 @@
     style={`max-width:min(calc(100vw - 2rem),${maxWidth})`}
     ><Dialog.Header
       ><Dialog.Title>{title}</Dialog.Title><Dialog.Description class="sr-only"
-        >NeoHtop details</Dialog.Description
+        >{title}</Dialog.Description
       ></Dialog.Header
     ><slot /></Dialog.Content
   ></Dialog.Root

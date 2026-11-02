@@ -66,6 +66,19 @@ export function formatDuration(seconds, t = tEn) {
   return t("dur.minutes", { m });
 }
 
+/** A process run time: "4h 18m 25s" / "4时18分25秒".
+ * @param {number} seconds
+ * @param {Translate} [t]
+ */
+export function formatHms(seconds, t = tEn) {
+  const s = Math.max(0, Math.floor(seconds));
+  return t("dur.hms", {
+    h: Math.floor(s / 3600),
+    m: Math.floor((s % 3600) / 60),
+    s: s % 60,
+  });
+}
+
 /** What the uptime chip shows. With Windows Fast Startup the kernel uptime
  * spans days the PC was "shut down"; `startedAt` (Unix s, from the boot event
  * log) is the last real start, so prefer it when known.

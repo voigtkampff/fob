@@ -1,5 +1,6 @@
 import type { Column } from "$lib/types";
 import { formatMemorySize } from "$lib/utils";
+import { formatHms } from "$lib/utils/dashboard.js";
 
 export let column_definitions: Column[] = [
   { id: "name", label: "Process Name", visible: true, required: true },
@@ -59,12 +60,6 @@ export let column_definitions: Column[] = [
     id: "run_time",
     label: "Run Time",
     visible: true,
-    format: (v) => {
-      const seconds = v; // v is the time the process has been running in seconds
-      const hours = Math.floor(seconds / 3600);
-      const minutes = Math.floor((seconds % 3600) / 60);
-      const remainingSeconds = seconds % 60;
-      return `${hours}h ${minutes}m ${remainingSeconds}s`; // Format as HH:MM:SS
-    },
+    format: (v, t) => formatHms(v, t), // v: seconds the process has run
   },
 ];

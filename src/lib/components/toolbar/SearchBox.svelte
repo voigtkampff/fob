@@ -4,20 +4,21 @@
   import { Button } from "$lib/components/ui/button/index.js";
   import * as Popover from "$lib/components/ui/popover/index.js";
   import { Search, X, CircleHelp } from "@lucide/svelte";
+  import { t } from "$lib/i18n";
   export let searchTerm: string;
   let input: HTMLInputElement | null = null;
   let open = false;
-  const examples = [
-    ["systemd, dbus", "Multiple names, separated by commas"],
-    ["d$", "Names ending in d"],
-    ["^kernel", "Names starting with kernel"],
-    ["ssh.*server", "Regular expressions"],
-    ["1234", "Find a process ID"],
-    [":3000", "Processes listening on a local port"],
-    ["port:443", "Explicit local TCP listener or UDP port"],
-    ["python, node, nginx", "Several runtimes"],
-    ["docker, containerd", "Container processes"],
-    ["gnome, plasma", "Desktop environments"],
+  // Example queries are literal search text, the same in every language.
+  $: examples = [
+    ["chrome, msedge", $t("search.exMulti")], // i18n-ignore
+    ["host$", $t("search.exEnd")],
+    ["^svc", $t("search.exStart")],
+    ["nvidia.*container", $t("search.exRegex")],
+    ["1234", $t("search.exPid")],
+    [":3000", $t("search.exPort")],
+    ["port:443", $t("search.exPortExplicit")],
+    ["python, node, java", $t("search.exRuntimes")], // i18n-ignore
+    ["explorer, dwm", $t("search.exShell")], // i18n-ignore
   ];
   function useExample(query: string) {
     searchTerm = query;
@@ -47,8 +48,8 @@
     /><Input
       bind:ref={input}
       bind:value={searchTerm}
-      aria-label="Search processes"
-      placeholder="Search processes…"
+      aria-label={$t("search.aria")}
+      placeholder={$t("search.placeholder")}
       class="h-9 pl-9 pr-9"
       onkeydown={(event) => {
         if (event.key === "Escape") {
@@ -60,7 +61,7 @@
         variant="ghost"
         size="icon-xs"
         class="absolute right-1.5 top-1.5 text-muted-foreground"
-        aria-label="Clear search"
+        aria-label={$t("search.clear")}
         onclick={() => {
           searchTerm = "";
           input?.focus();
@@ -73,17 +74,16 @@
           {...props}
           variant="ghost"
           size="icon-sm"
-          aria-label="Search syntax and examples"
+          aria-label={$t("search.help")}
           ><CircleHelp class="size-4 text-muted-foreground" /></Button
         >{/snippet}</Popover.Trigger
     ><Popover.Content
       align="start"
       class="max-h-[70vh] w-80 overflow-y-auto space-y-4"
       ><div>
-        <h2 class="text-sm font-medium">Find a process</h2>
+        <h2 class="text-sm font-medium">{$t("search.title")}</h2>
         <p class="mt-1 text-xs text-muted-foreground">
-          Search names, commands, PIDs or local ports (:3000). Comma-separated
-          terms match any term. Name searches also support regular expressions.
+          {$t("search.note")}
         </p>
       </div>
       <div class="space-y-1">
@@ -97,8 +97,7 @@
           >{/each}
       </div>
       <p class="border-t border-border pt-3 text-xs text-muted-foreground">
-        ⌘ / Ctrl F focuses search. Escape clears it. Invalid expressions still
-        match literal text.
+        {$t("search.keys")}
       </p></Popover.Content
     ></Popover.Root
   >

@@ -3,6 +3,8 @@
   import { settingsStore } from "$lib/stores";
   import { Label } from "$lib/components/ui/label/index.js";
   import * as NativeSelect from "$lib/components/ui/native-select/index.js";
+  import { t } from "$lib/i18n";
+  import { statusLabel } from "$lib/utils/process-status";
   export let statusFilter = "all";
   function save() {
     settingsStore.updateConfig({
@@ -15,12 +17,14 @@
 </script>
 
 <Label class="gap-2 text-xs"
-  >Status<NativeSelect.Root
+  >{$t("col.status")}<NativeSelect.Root
     bind:value={statusFilter}
     onchange={save}
-    aria-label="Process status"
+    aria-label={$t("filter.statusAria")}
     >{#each STATUS_OPTIONS as option}<option value={option.value}
-        >{option.label}</option
+        >{option.value === "all"
+          ? $t("filter.allStatuses")
+          : statusLabel(option.label, $t)}</option
       >{/each}</NativeSelect.Root
   ></Label
 >

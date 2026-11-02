@@ -5,6 +5,8 @@
   import { Badge } from "$lib/components/ui/badge/index.js";
   import * as Table from "$lib/components/ui/table/index.js";
   import { ChevronRight, ChevronDown, Pin } from "@lucide/svelte";
+  import { t } from "$lib/i18n";
+  import { statusLabel } from "$lib/utils/process-status";
   export let process: Process;
   export let columns: Column[];
   export let isPinned: boolean;
@@ -32,7 +34,7 @@
         title={column.id === "name"
           ? undefined
           : column.format
-            ? column.format(process[column.id])
+            ? column.format(process[column.id], $t)
             : String(process[column.id] ?? "")}
       >
         {#if column.id === "name"}<div
@@ -46,10 +48,11 @@
                   size="icon-xs"
                   disabled={expansionLocked}
                   aria-expanded={tree.expanded}
-                  aria-label={`${tree.expanded ? "Collapse" : "Expand"} ${process.name} children`}
-                  title={expansionLocked
-                    ? "Clear search and filters to collapse this branch"
-                    : undefined}
+                  aria-label={$t(
+                    tree.expanded ? "proc.collapseAria" : "proc.expandAria",
+                    { v: process.name },
+                  )}
+                  title={expansionLocked ? $t("proc.lockedBranch") : undefined}
                   onclick={() => tree && onToggleExpand(tree.key)}
                   >{#if tree.expanded}<ChevronDown />{:else}<ChevronRight
                     />{/if}</Button
@@ -66,7 +69,7 @@
             >{#if tree && tree.familyProcessCount > 1}<Badge
                 variant="secondary"
                 class="px-1.5 text-[10px] font-normal"
-                title={`${tree.familyProcessCount} processes in this family`}
+                title={$t("proc.familyCount", { n: tree.familyProcessCount })}
                 >{tree.familyProcessCount}</Badge
               >{/if}{#if isPinned}<Pin
                 class="size-3 shrink-0 fill-primary/20 text-primary"
@@ -78,11 +81,11 @@
               ? "rounded bg-destructive/10 px-1.5 py-1 text-destructive"
               : ""}
             title={tree
-              ? `Combined CPU for ${tree.familyProcessCount} processes`
+              ? $t("proc.familyCpu", { n: tree.familyProcessCount })
               : undefined}>{cpu.toFixed(1)}%</span
           >
         {:else if tree && column.id === "memory_usage"}<span
-            title="Sum of resident memory for this process and all descendants; shared pages may overlap."
+            title={$t("proc.familyRam")}
             >{(tree.familyMemoryUsage / (1024 * 1024)).toFixed(1)} MB</span
           >
         {:else if column.id === "status"}<span
@@ -94,9 +97,9 @@
                 : process.status === "Zombie" || process.status === "Stopped"
                   ? "var(--status-stopped)"
                   : "var(--status-idle)"}
-            ></span>{process.status}</span
+            ></span>{statusLabel(process.status, $t)}</span
           >
-        {:else if column.format}{column.format(process[column.id])}
+        {:else if column.format}{column.format(process[column.id], $t)}
         {:else}<span
             class={["pid", "ppid", "user", "session_id"].includes(column.id)
               ? "font-mono text-xs text-muted-foreground"

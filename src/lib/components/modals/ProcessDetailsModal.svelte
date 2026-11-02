@@ -18,6 +18,9 @@
     ChevronDown,
     ArrowUpRight,
   } from "@lucide/svelte";
+  import { t } from "$lib/i18n";
+  import { formatHms } from "$lib/utils/dashboard.js";
+  import { statusLabel } from "$lib/utils/process-status";
   export let show = false;
   export let process: Process | null = null;
   export let onClose: () => void;
@@ -62,11 +65,11 @@
         </div>
         <div class="min-w-0">
           <Sheet.Title tabindex={-1} class="break-all text-xl outline-none"
-            >{process?.name || "Process no longer available"}</Sheet.Title
+            >{process?.name || $t("pd.gone")}</Sheet.Title
           ><Sheet.Description
             >{process
-              ? `PID ${process.pid} · ${process.status}`
-              : "This process is no longer in the latest snapshot. Close this panel or choose another process."}</Sheet.Description
+              ? `PID ${process.pid} · ${statusLabel(process.status, $t)}`
+              : $t("pd.goneNote")}</Sheet.Description
           >
         </div>
       </div></Sheet.Header
@@ -74,7 +77,7 @@
         <Card.Root size="sm" class="gap-2"
           ><Card.Header
             ><Card.Description class="flex items-center gap-2"
-              ><Cpu class="size-4" />CPU usage</Card.Description
+              ><Cpu class="size-4" />{$t("filter.cpu")}</Card.Description
             ></Card.Header
           ><Card.Content class="flex-1 justify-between gap-3"
             ><p class="text-2xl font-semibold tabular-nums">
@@ -82,38 +85,39 @@
             </p>
             <Progress
               value={Math.min(100, Math.max(0, process.cpu_usage))}
-              aria-label="Process CPU usage"
+              aria-label={$t("pd.cpuAria")}
               style={`--primary:var(--${process.cpu_usage > 80 ? "red" : process.cpu_usage > 50 ? "yellow" : "blue"})`}
             /></Card.Content
           ></Card.Root
         ><Card.Root size="sm" class="gap-2"
           ><Card.Header
             ><Card.Description class="flex items-center gap-2"
-              ><MemoryStick class="size-4" />Resident memory</Card.Description
+              ><MemoryStick class="size-4" />{$t(
+                "pd.resident",
+              )}</Card.Description
             ></Card.Header
           ><Card.Content class="flex-1 justify-between gap-3"
             ><p class="text-2xl font-semibold tabular-nums">
               {formatBytes(process.memory_usage)}
             </p>
             <p class="text-xs text-muted-foreground">
-              Virtual: {formatBytes(process.virtual_memory)}
+              {$t("pd.virtual", { v: formatBytes(process.virtual_memory) })}
             </p></Card.Content
           ></Card.Root
         >
       </div>
       <Card.Root size="sm"
         ><Card.Header
-          ><Card.Title class="text-sm">Process information</Card.Title
-          ></Card.Header
+          ><Card.Title class="text-sm">{$t("pd.info")}</Card.Title></Card.Header
         ><Card.Content class="grid grid-cols-2 gap-x-6 gap-y-4 text-sm"
-          >{#each [["Name", process.name], ["User", process.user], ["Session ID", process.session_id ?? "Unavailable"], ["Threads", process.threads ?? "Unavailable"], ["Started", formatDate(process.start_time)], ["Run time", `${Math.floor(process.run_time / 3600)}h ${Math.floor((process.run_time % 3600) / 60)}m ${process.run_time % 60}s`]] as [label, value]}<div
+          >{#each [[$t("col.name"), process.name], [$t("col.user"), process.user], [$t("col.session_id"), process.session_id ?? $t("common.na")], [$t("pd.threads"), process.threads ?? $t("common.na")], [$t("pd.started"), formatDate(process.start_time)], [$t("col.run_time"), formatHms(process.run_time, $t)]] as [label, value]}<div
               class="min-w-0"
             >
               <p class="text-xs text-muted-foreground">{label}</p>
               <p class="mt-1 break-all" data-selectable>{value}</p>
             </div>{/each}
           <div>
-            <p class="text-xs text-muted-foreground">Parent process</p>
+            <p class="text-xs text-muted-foreground">{$t("pd.parent")}</p>
             {#if parent}<Button
                 variant="link"
                 size="sm"
@@ -121,41 +125,44 @@
                 onclick={() => parent && onShowDetails(parent)}
                 >{parent.name} · {process.ppid}<ArrowUpRight /></Button
               >{:else}<p class="mt-1 text-xs" data-selectable>
-                {process.ppid} · not in this snapshot
+                {$t("pd.parentGone", { v: process.ppid })}
               </p>{/if}
           </div>
           <div>
-            <p class="text-xs text-muted-foreground">Disk I/O</p>
+            <p class="text-xs text-muted-foreground">{$t("pd.disk")}</p>
             <p class="mt-1 text-xs" data-selectable>
-              Read {formatBytes(process.disk_usage[0])} · Written {formatBytes(
-                process.disk_usage[1],
-              )}
+              {$t("pd.diskRw", {
+                r: formatBytes(process.disk_usage[0]),
+                w: formatBytes(process.disk_usage[1]),
+              })}
             </p>
           </div></Card.Content
         ></Card.Root
       ><Card.Root size="sm"
         ><Card.Header
           ><Card.Title class="flex items-center gap-2 text-sm"
-            ><Terminal class="size-4" />Command & root</Card.Title
+            ><Terminal class="size-4" />{$t("pd.commandRoot")}</Card.Title
           ></Card.Header
         ><Card.Content class="gap-4"
           ><div>
-            <p class="mb-2 text-xs text-muted-foreground">Command</p>
+            <p class="mb-2 text-xs text-muted-foreground">
+              {$t("col.command")}
+            </p>
             <pre
               class="max-h-44 overflow-auto whitespace-pre-wrap break-all rounded-md border border-border bg-background p-3 font-mono text-xs"
-              data-selectable>{process.command || "Unavailable"}</pre>
+              data-selectable>{process.command || $t("common.na")}</pre>
           </div>
           <div>
-            <p class="text-xs text-muted-foreground">Root</p>
+            <p class="text-xs text-muted-foreground">{$t("col.root")}</p>
             <p class="mt-1 break-all font-mono text-xs" data-selectable>
-              {process.root || "Unavailable"}
+              {process.root || $t("common.na")}
             </p>
           </div></Card.Content
         ></Card.Root
       ><Card.Root size="sm"
         ><Card.Header
           ><Card.Title class="flex items-center gap-2 text-sm"
-            ><GitBranch class="size-4" />Child processes<Badge
+            ><GitBranch class="size-4" />{$t("pd.children")}<Badge
               variant="secondary">{children.length}</Badge
             ></Card.Title
           ></Card.Header
@@ -163,9 +170,10 @@
           >{#if children.length}<Table.Root
               ><Table.Header
                 ><Table.Row
-                  ><Table.Head>Name</Table.Head><Table.Head>PID</Table.Head
+                  ><Table.Head>{$t("col.name")}</Table.Head><Table.Head
+                    >PID</Table.Head
                   ><Table.Head class="text-right">CPU</Table.Head><Table.Head
-                    class="text-right">Memory</Table.Head
+                    class="text-right">{$t("dash.memory")}</Table.Head
                   ></Table.Row
                 ></Table.Header
               ><Table.Body
@@ -188,18 +196,18 @@
                   >{/each}</Table.Body
               ></Table.Root
             >{:else}<p class="text-sm text-muted-foreground">
-              No child process in the current snapshot.
+              {$t("pd.noChildren")}
             </p>{/if}</Card.Content
         ></Card.Root
       ><Collapsible.Root
         ><Collapsible.Trigger
           class="flex w-full items-center justify-between gap-3 rounded-md border border-border bg-card p-4 text-sm font-medium focus-visible:outline-2 focus-visible:outline-ring"
-          >Environment variables ({process.environ.length})<ChevronDown
+          >{$t("pd.env", { n: process.environ.length })}<ChevronDown
             class="size-4"
           /></Collapsible.Trigger
         ><Collapsible.Content class="pt-3"
           ><p class="mb-3 text-xs text-muted-foreground">
-            Values reported by the operating system for this process.
+            {$t("pd.envNote")}
           </p>
           <div
             class="max-h-72 overflow-auto rounded-md border border-border bg-card p-4"
@@ -210,14 +218,13 @@
               >
                 {env}
               </p>{:else}<p class="text-sm text-muted-foreground">
-                No accessible environment variables reported.
+                {$t("pd.noEnv")}
               </p>{/each}
           </div></Collapsible.Content
         ></Collapsible.Root
       >
       <p class="text-xs text-muted-foreground">
-        Readings follow the process snapshot. Virtual address space is not
-        physical RAM; CPU can exceed 100% across cores.
+        {$t("pd.foot")}
       </p>{/if}</Sheet.Content
   ></Sheet.Root
 >

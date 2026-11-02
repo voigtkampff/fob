@@ -6,6 +6,7 @@
   import { Button } from "$lib/components/ui/button/index.js";
   import * as Table from "$lib/components/ui/table/index.js";
   import { Search } from "@lucide/svelte";
+  import { t } from "$lib/i18n";
   export let onClearFilters: () => void = () => {};
 
   export let processes: Process[];
@@ -39,12 +40,15 @@
         }));
 </script>
 
-<section class="flex min-h-0 min-w-0 flex-1 flex-col" aria-label="Processes">
+<section
+  class="flex min-h-0 min-w-0 flex-1 flex-col"
+  aria-label={$t("toolbar.processes")}
+>
   <!-- svelte-ignore a11y_no_noninteractive_tabindex a11y_no_noninteractive_element_interactions (The labeled scroll region supports WebKit keyboard scrolling.) -->
   <div
     class="process-table-region focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring"
     role="region"
-    aria-label="Process table"
+    aria-label={$t("proc.tableAria")}
     tabindex="0"
     onkeydown={(event) => {
       if (
@@ -90,19 +94,15 @@
               class="h-48 text-center"
               ><Search class="mx-auto mb-3 size-6 text-muted-foreground" />
               <p class="text-sm font-medium">
-                {searchActive
-                  ? "No matching processes"
-                  : "No processes in this snapshot"}
+                {searchActive ? $t("proc.noMatch") : $t("proc.none")}
               </p>
               <p class="mt-1 text-xs text-muted-foreground">
-                {searchActive
-                  ? "Try another name, PID or condition."
-                  : "Wait for the next update or resume monitoring."}
+                {searchActive ? $t("proc.noMatchHint") : $t("proc.noneHint")}
               </p>
               {#if searchActive}<Button
                   variant="link"
                   size="sm"
-                  onclick={onClearFilters}>Clear search and filters</Button
+                  onclick={onClearFilters}>{$t("proc.clearFilters")}</Button
                 >{/if}</Table.Cell
             ></Table.Row
           >{/each}</Table.Body

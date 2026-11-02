@@ -6,6 +6,8 @@
   import { Badge } from "$lib/components/ui/badge/index.js";
   import * as ToggleGroup from "$lib/components/ui/toggle-group/index.js";
   import { List, GitBranch, X } from "@lucide/svelte";
+  import { t } from "$lib/i18n";
+  import { statusLabel } from "$lib/utils/process-status";
   export let searchTerm: string;
   export let columns: {
     id: string;
@@ -31,7 +33,9 @@
     !!searchTerm.trim() ||
     Object.values(filters).some((filter) => filter.enabled);
   $: activeFilters = [
-    ...(searchTerm.trim() ? [`Search: ${searchTerm.trim()}`] : []),
+    ...(searchTerm.trim()
+      ? [$t("toolbar.chipSearch", { v: searchTerm.trim() })]
+      : []),
     ...(filters.cpu.enabled
       ? [`CPU ${filters.cpu.operator} ${filters.cpu.value}%`]
       : []),
@@ -39,13 +43,19 @@
       ? [`GPU ${filters.gpu.operator} ${filters.gpu.value}%`]
       : []),
     ...(filters.ram.enabled
-      ? [`Memory ${filters.ram.operator} ${filters.ram.value} MB`]
+      ? [`${$t("filter.ram")} ${filters.ram.operator} ${filters.ram.value} MB`]
       : []),
     ...(filters.runtime.enabled
-      ? [`Run time ${filters.runtime.operator} ${filters.runtime.value} min`]
+      ? [
+          `${$t("filter.runtime")} ${filters.runtime.operator} ${filters.runtime.value} ${$t("filter.min")}`,
+        ]
       : []),
     ...(filters.status.enabled
-      ? [`Status: ${filters.status.values.join(", ")}`]
+      ? [
+          $t("toolbar.chipStatus", {
+            v: filters.status.values.map((s) => statusLabel(s, $t)).join(", "),
+          }),
+        ]
       : []),
   ];
 </script>
@@ -53,7 +63,8 @@
 <div class="toolbar shrink-0 border-y border-border bg-card px-4 py-3">
   <div class="flex items-center gap-3">
     <h2 class="mr-1 shrink-0 text-sm font-semibold">
-      Processes <span class="ml-1 font-normal text-muted-foreground"
+      {$t("toolbar.processes")}
+      <span class="ml-1 font-normal text-muted-foreground"
         >{totalProcesses.toLocaleString()}</span
       >
     </h2>
@@ -67,13 +78,13 @@
         }}
         variant="outline"
         size="sm"
-        aria-label="Process view"
+        aria-label={$t("toolbar.view")}
       >
-        <ToggleGroup.Item value="flat" aria-label="List view"
-          ><List class="size-3.5" />List</ToggleGroup.Item
+        <ToggleGroup.Item value="flat" aria-label={$t("toolbar.listView")}
+          ><List class="size-3.5" />{$t("toolbar.list")}</ToggleGroup.Item
         >
-        <ToggleGroup.Item value="tree" aria-label="Tree view"
-          ><GitBranch class="size-3.5" />Tree</ToggleGroup.Item
+        <ToggleGroup.Item value="tree" aria-label={$t("toolbar.treeView")}
+          ><GitBranch class="size-3.5" />{$t("toolbar.tree")}</ToggleGroup.Item
         >
       </ToggleGroup.Root><ColumnToggle {columns} />
     </div>
@@ -83,8 +94,10 @@
       class="mt-2 flex flex-wrap items-center gap-2 text-xs text-muted-foreground"
     >
       {#if searchActive}<span
-          >{matchingProcesses.toLocaleString()} of {totalProcesses.toLocaleString()}
-          processes match</span
+          >{$t("toolbar.matching", {
+            n: matchingProcesses.toLocaleString(),
+            m: totalProcesses.toLocaleString(),
+          })}</span
         >{#each activeFilters as label}<Badge
             variant="secondary"
             class="max-w-64 font-normal"
@@ -93,19 +106,19 @@
           variant="ghost"
           size="sm"
           class="h-6 px-2 text-xs"
-          onclick={onClearFilters}><X class="size-3" />Clear all</Button
+          onclick={onClearFilters}
+          ><X class="size-3" />{$t("toolbar.clearAll")}</Button
         >{/if}
-      {#if viewMode === "tree"}<span
-          title="Family CPU sums process CPU. Family RAM sums resident memory; shared pages may overlap."
+      {#if viewMode === "tree"}<span title={$t("toolbar.familyTitle")}
           >{searchActive
-            ? "Matching branches expanded · totals include hidden children"
-            : "App families · combined CPU and memory"}</span
+            ? $t("toolbar.familySearch")
+            : $t("toolbar.families")}</span
         ><Button
           variant="ghost"
           size="sm"
           class="ml-auto h-6 text-xs"
           disabled={searchActive || expandedCount === 0}
-          onclick={onCollapseAll}>Collapse all</Button
+          onclick={onCollapseAll}>{$t("toolbar.collapseAll")}</Button
         >{/if}
     </div>
   {/if}
