@@ -15,3 +15,7 @@ vite.config.ts.timestamp-*
 .run/
 
 /.site-build/
+
+# winperf build outputs
+/dist/
+/target/

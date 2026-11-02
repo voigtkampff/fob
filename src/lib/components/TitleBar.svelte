@@ -42,7 +42,7 @@
     data-tauri-drag-region
   >
     <img src="/32x32.png" alt="" class="size-5" />
-    <h1 class="text-sm font-semibold tracking-tight">NeoHtop</h1>
+    <h1 class="text-sm font-semibold tracking-tight">winperf</h1>
   </div>
   <div class="h-full min-w-4 flex-1" data-tauri-drag-region></div>
   <div class="flex items-center gap-1">
@@ -79,7 +79,7 @@
             {...props}
             variant="ghost"
             size="icon-sm"
-            aria-label="NeoHtop menu"><Ellipsis /></Button
+            aria-label="winperf menu"><Ellipsis /></Button
           >{/snippet}</DropdownMenu.Trigger
       >
       <DropdownMenu.Content align="end" class="w-60">
@@ -91,14 +91,14 @@
         <DropdownMenu.Separator />
         <DropdownMenu.Item
           onclick={() => command("open_about", { check: false })}
-          ><Info />About NeoHtop</DropdownMenu.Item
+          ><Info />About winperf</DropdownMenu.Item
         >
         <DropdownMenu.Item
           onclick={() => command("open_about", { check: true })}
           ><RefreshCw />Check for updates…</DropdownMenu.Item
         >
         <DropdownMenu.Separator /><DropdownMenu.Item
-          onclick={() => command("quit_app")}>Quit NeoHtop</DropdownMenu.Item
+          onclick={() => command("quit_app")}>Quit winperf</DropdownMenu.Item
         >
       </DropdownMenu.Content>
     </DropdownMenu.Root>

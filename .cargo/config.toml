@@ -1,0 +1,11 @@
+# Windows build is cross-compiled from Linux with cargo-xwin, same approach as
+# /workspace/tower-rs (see README "Windows build"). tauri-build already links the
+# VC runtime statically (ucrt ships with Win10/11); ignore LNK4099 (missing pdb
+# for Microsoft static libs).
+[target.x86_64-pc-windows-msvc]
+rustflags = ["-C", "link-arg=/IGNORE:4099"]
+
+# tauri-build 2.0.x only links vcruntime statically when the Tauri CLI sets this;
+# we build with plain cargo-xwin, so set it here (no VCRUNTIME140.dll import).
+[env]
+STATIC_VCRUNTIME = "true"

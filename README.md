@@ -1,3 +1,33 @@
+# winperf
+
+winperf is a Windows performance monitor (target: Windows 10/11 x64), built as a
+fork of [NeoHtop](https://github.com/Abdenasser/neohtop) by Abdenasser
+(MIT, see [LICENSE](LICENSE)). winperf adds a card dashboard on top of NeoHtop's
+process monitor; everything else is NeoHtop's work. The original NeoHtop README
+follows below the line.
+
+- Branch `main` tracks NeoHtop's `main` (remote `upstream`, fetch only), so
+  upstream changes can be merged in with `git fetch upstream && git merge upstream/main`.
+- Branch `master` holds the original winperf CLI bootstrap; `egui-wip` the stopped egui attempt.
+
+## Build the Windows exe (cross-compiled on Linux)
+
+Same approach as tower-rs: plain `cargo xwin build` of the Tauri crate, no
+installer, one standalone exe that uses the WebView2 runtime shipped with
+Windows 10/11. The VC runtime and WebView2Loader are linked statically
+(`.cargo/config.toml` sets `STATIC_VCRUNTIME`).
+
+```bash
+export PATH=/workspace/tools/xbin:/workspace/tools/llvm-mingw-20261020-ucrt-ubuntu-22.04-x86_64/bin:$HOME/.cargo/bin:$PATH
+npm ci && npm run build                     # frontend -> build/ (embedded into the exe)
+cd src-tauri && cargo xwin build --target x86_64-pc-windows-msvc --release
+# -> src-tauri/target/x86_64-pc-windows-msvc/release/winperf.exe
+```
+
+Tests: `cd src-tauri && cargo test` (Linux needs the webkit2gtk-4.1 / gtk3 dev packages).
+
+---
+
 <div align="center">
   <img src="app-icon.png" alt="NeoHtop ghost" width="96" />
   <h1>NeoHtop</h1>

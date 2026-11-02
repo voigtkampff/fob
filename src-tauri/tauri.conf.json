@@ -22,10 +22,10 @@
     },
     "targets": "all"
   },
-  "productName": "NeoHtop",
-  "mainBinaryName": "NeoHtop",
+  "productName": "winperf",
+  "mainBinaryName": "winperf",
   "version": "1.3.0",
-  "identifier": "com.neohtop.dev",
+  "identifier": "com.hcb.winperf",
   "plugins": {
     "os": {
       "all": true
@@ -39,7 +39,7 @@
         "theme": "Dark",
         "height": 900,
         "resizable": true,
-        "title": "NeoHtop",
+        "title": "winperf",
         "width": 1280,
         "minWidth": 1120,
         "minHeight": 700,
@@ -51,7 +51,7 @@
       {
         "label": "overview",
         "url": "/?view=companion",
-        "title": "NeoHtop Overview",
+        "title": "winperf Overview",
         "width": 400,
         "height": 600,
         "visible": false,
@@ -79,7 +79,7 @@
       {
         "label": "about",
         "url": "/?view=about",
-        "title": "About NeoHtop",
+        "title": "About winperf",
         "width": 520,
         "height": 400,
         "visible": false,
