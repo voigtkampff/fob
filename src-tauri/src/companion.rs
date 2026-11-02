@@ -366,37 +366,201 @@ pub fn hide(app: &AppHandle) {
     let _ = app.emit_to("overview", "companion-visibility", false);
 }
 
-// All geometry is physical pixels. Negative monitor origins and scale factors
-// must not be mixed with logical popup dimensions.
+/// A rectangle in physical pixels (virtual-screen coordinates).
+#[derive(Clone, Copy, Debug, PartialEq)]
+struct PxRect {
+    left: i32,
+    top: i32,
+    right: i32,
+    bottom: i32,
+}
+impl PxRect {
+    fn new(left: i32, top: i32, width: u32, height: u32) -> Self {
+        Self {
+            left,
+            top,
+            right: left.saturating_add(width as i32),
+            bottom: top.saturating_add(height as i32),
+        }
+    }
+    fn intersects(&self, o: &PxRect) -> bool {
+        self.left < o.right && o.left < self.right && self.top < o.bottom && o.top < self.bottom
+    }
+}
+#[derive(Clone, Copy, Debug, PartialEq)]
+enum Edge {
+    Bottom,
+    Top,
+    Left,
+    Right,
+}
+/// The display the tray icon is on: its full rect, its work area (without the
+/// taskbar) and, when known, the taskbar's edge, rect and auto-hide state.
+#[derive(Clone, Copy, Debug, PartialEq)]
+struct Screen {
+    monitor: PxRect,
+    work: PxRect,
+    taskbar: Option<(Edge, PxRect, bool)>,
+}
+#[derive(Clone, Copy, Debug, PartialEq)]
+struct Placed {
+    pos: PhysicalPosition<i32>,
+    /// false: the panel is larger than the work area (minus gaps).
+    fits: bool,
+}
+
+/// Fob: where the mini window goes. All geometry is physical pixels. The
+/// panel sits inside the WORK AREA (never over the taskbar), a 12 px (logical)
+/// gap from the taskbar edge like Windows 11 flyouts, centred on the tray icon
+/// along the taskbar and clamped into the work area. An auto-hidden taskbar
+/// does not shrink the work area, so its shown thickness is kept free.
 fn placement(
-    bounds: (i32, i32, u32, u32),
+    screen: &Screen,
     panel: (u32, u32),
     anchor: Option<(f64, f64, f64, f64)>,
     scale: f64,
-) -> PhysicalPosition<i32> {
-    let (left, top, width, height) = bounds;
-    let (pw, ph) = panel;
-    let margin = (8.0 * scale).round() as i32;
-    let right = left.saturating_add(width as i32);
-    let bottom = top.saturating_add(height as i32);
-    let (x, y) = if let Some((ax, ay, aw, ah)) = anchor {
-        let x = (ax + aw / 2.0 - pw as f64 / 2.0).round() as i32;
-        // A small gap to the taskbar: the native shadow needs room.
-        let gap = margin as f64;
-        let y = if ay + ah + gap + ph as f64 <= bottom as f64 {
-            (ay + ah + gap).round() as i32
-        } else {
-            (ay - gap - ph as f64).round() as i32
-        };
-        (x, y)
-    } else {
-        (right - pw as i32 - margin, top + (32.0 * scale) as i32)
+) -> Placed {
+    let (m, mut area) = (screen.monitor, screen.work);
+    let edge = match screen.taskbar {
+        Some((edge, bar, autohide)) if bar.intersects(&m) => {
+            if autohide && area == m {
+                match edge {
+                    Edge::Bottom => area.bottom = area.bottom.min(bar.top.max(m.top)),
+                    Edge::Top => area.top = area.top.max(bar.bottom.min(m.bottom)),
+                    Edge::Left => area.left = area.left.max(bar.right.min(m.right)),
+                    Edge::Right => area.right = area.right.min(bar.left.max(m.left)),
+                }
+            }
+            edge
+        }
+        _ if area.bottom < m.bottom => Edge::Bottom,
+        _ if area.top > m.top => Edge::Top,
+        _ if area.left > m.left => Edge::Left,
+        _ if area.right < m.right => Edge::Right,
+        // No taskbar reserved (auto-hide we could not ask about, or macOS's
+        // menu bar inside the monitor rect): the edge nearest the icon.
+        _ => match anchor {
+            Some((ax, ay, aw, ah)) => {
+                let (cx, cy) = (ax + aw / 2.0, ay + ah / 2.0);
+                let d = [
+                    (Edge::Bottom, m.bottom as f64 - cy),
+                    (Edge::Top, cy - m.top as f64),
+                    (Edge::Left, cx - m.left as f64),
+                    (Edge::Right, m.right as f64 - cx),
+                ];
+                d.iter().min_by(|a, b| a.1.total_cmp(&b.1)).unwrap().0
+            }
+            None => Edge::Bottom,
+        },
     };
-    PhysicalPosition::new(
-        x.clamp(left, (right - pw as i32).max(left)),
-        y.clamp(top, (bottom - ph as i32).max(top)),
-    )
+    let (pw, ph) = (panel.0 as i32, panel.1 as i32);
+    let gap = (12.0 * scale).round() as i32;
+    let center = anchor.map(|(ax, ay, aw, ah)| (ax + aw / 2.0, ay + ah / 2.0));
+    let (x, y) = match edge {
+        Edge::Bottom | Edge::Top => (
+            center.map_or(area.right - gap - pw, |(cx, _)| {
+                (cx - pw as f64 / 2.0).round() as i32
+            }),
+            if edge == Edge::Bottom {
+                area.bottom - gap - ph
+            } else {
+                area.top + gap
+            },
+        ),
+        Edge::Left | Edge::Right => (
+            if edge == Edge::Left {
+                area.left + gap
+            } else {
+                area.right - gap - pw
+            },
+            center.map_or(area.bottom - gap - ph, |(_, cy)| {
+                (cy - ph as f64 / 2.0).round() as i32
+            }),
+        ),
+    };
+    let fits_x = pw + 2 * gap <= area.right - area.left;
+    let fits_y = ph + 2 * gap <= area.bottom - area.top;
+    // Too big for the work area: keep the top-left visible rather than
+    // pushing it off screen (the caller reports it).
+    let clamp =
+        |v: i32, lo: i32, hi: i32, fits: bool| if fits { v.clamp(lo, hi) } else { lo - gap };
+    Placed {
+        pos: PhysicalPosition::new(
+            clamp(x, area.left + gap, area.right - gap - pw, fits_x),
+            clamp(y, area.top + gap, area.bottom - gap - ph, fits_y),
+        ),
+        fits: fits_x && fits_y,
+    }
 }
+
+/// The monitor containing `point` (the tray icon), its work area and the taskbar.
+#[cfg(target_os = "windows")]
+fn screen_at(point: (f64, f64), fallback: PxRect) -> Screen {
+    use windows::Win32::Foundation::{POINT, RECT};
+    use windows::Win32::Graphics::Gdi::{
+        GetMonitorInfoW, MonitorFromPoint, MONITORINFO, MONITOR_DEFAULTTONEAREST,
+    };
+    use windows::Win32::UI::Shell::{
+        SHAppBarMessage, ABE_BOTTOM, ABE_LEFT, ABE_RIGHT, ABE_TOP, ABM_GETSTATE, ABM_GETTASKBARPOS,
+        ABS_AUTOHIDE, APPBARDATA,
+    };
+    let px = |r: RECT| PxRect {
+        left: r.left,
+        top: r.top,
+        right: r.right,
+        bottom: r.bottom,
+    };
+    let (monitor, work) = unsafe {
+        let hmon = MonitorFromPoint(
+            POINT {
+                x: point.0.round() as i32,
+                y: point.1.round() as i32,
+            },
+            MONITOR_DEFAULTTONEAREST,
+        );
+        let mut info = MONITORINFO {
+            cbSize: std::mem::size_of::<MONITORINFO>() as u32,
+            ..Default::default()
+        };
+        if GetMonitorInfoW(hmon, &mut info).as_bool() {
+            (px(info.rcMonitor), px(info.rcWork))
+        } else {
+            (fallback, fallback)
+        }
+    };
+    let taskbar = unsafe {
+        let mut data = APPBARDATA {
+            cbSize: std::mem::size_of::<APPBARDATA>() as u32,
+            ..Default::default()
+        };
+        if SHAppBarMessage(ABM_GETTASKBARPOS, &mut data) != 0 {
+            let autohide = SHAppBarMessage(ABM_GETSTATE, &mut data) as u32 & ABS_AUTOHIDE != 0;
+            let edge = match data.uEdge {
+                ABE_TOP => Edge::Top,
+                ABE_LEFT => Edge::Left,
+                ABE_RIGHT => Edge::Right,
+                ABE_BOTTOM | _ => Edge::Bottom,
+            };
+            Some((edge, px(data.rc), autohide))
+        } else {
+            None
+        }
+    };
+    Screen {
+        monitor,
+        work,
+        taskbar,
+    }
+}
+#[cfg(not(target_os = "windows"))]
+fn screen_at(_point: (f64, f64), monitor: PxRect) -> Screen {
+    Screen {
+        monitor,
+        work: monitor,
+        taskbar: None,
+    }
+}
+
 fn show(app: &AppHandle, rect: Option<Rect>) -> Result<(), String> {
     let window = app
         .get_webview_window("overview")
@@ -443,22 +607,57 @@ fn place(
         .ok_or("No display available")?;
     let scale = monitor.scale_factor();
     let size = mini_size(scale);
+    let bounds = PxRect::new(
+        monitor.position().x,
+        monitor.position().y,
+        monitor.size().width,
+        monitor.size().height,
+    );
+    let point = anchor.map_or(
+        (
+            (bounds.left + bounds.right) as f64 / 2.0,
+            (bounds.top + bounds.bottom) as f64 / 2.0,
+        ),
+        |(x, y, w, h)| (x + w / 2.0, y + h / 2.0),
+    );
+    let screen = screen_at(point, bounds);
+    let placed = placement(&screen, (size.width, size.height), anchor, scale);
+    record_placement(app, &screen, anchor, scale, size, &placed);
+    // Position first, then size: the window is already on the target monitor
+    // (and DPI) when it gets its size, so Windows does not rescale it.
+    window.set_position(placed.pos).map_err(|e| e.to_string())?;
     window
         .set_size(tauri::Size::Physical(size))
-        .map_err(|e| e.to_string())?;
-    window
-        .set_position(placement(
-            (
-                monitor.position().x,
-                monitor.position().y,
-                monitor.size().width,
-                monitor.size().height,
-            ),
-            (size.width, size.height),
-            anchor,
-            scale,
-        ))
         .map_err(|e| e.to_string())
+}
+/// Fob: the last placement's numbers, overwritten on every show, in the app
+/// log folder (mini-placement.txt) so a misplaced window can be explained.
+fn record_placement(
+    app: &AppHandle,
+    screen: &Screen,
+    anchor: Option<(f64, f64, f64, f64)>,
+    scale: f64,
+    size: tauri::PhysicalSize<u32>,
+    placed: &Placed,
+) {
+    let Ok(dir) = app.path().app_log_dir() else {
+        return;
+    };
+    let text = format!(
+        "scale {scale}\nmonitor {:?}\nwork {:?}\ntaskbar {:?}\ntray icon {:?}\n\
+         panel {}x{} at {},{}\nfits work area: {}\n",
+        screen.monitor,
+        screen.work,
+        screen.taskbar,
+        anchor,
+        size.width,
+        size.height,
+        placed.pos.x,
+        placed.pos.y,
+        placed.fits,
+    );
+    let _ = std::fs::create_dir_all(&dir);
+    let _ = std::fs::write(dir.join("mini-placement.txt"), text);
 }
 pub fn open_main(app: &AppHandle) -> Result<(), String> {
     hide(app);
@@ -594,42 +793,6 @@ mod tests {
 
     use super::*;
     #[test]
-    fn panel_stays_on_scaled_and_negative_displays() {
-        assert_eq!(
-            placement(
-                (0, 0, 2880, 1800),
-                (800, 1200),
-                Some((2800.0, 0.0, 40.0, 48.0)),
-                2.0
-            ),
-            PhysicalPosition::new(2080, 64) // below a top menu bar, 16 px gap at 200%
-        );
-        assert_eq!(
-            placement(
-                (-1920, 0, 1920, 1080),
-                (400, 600),
-                Some((-1900.0, 1040.0, 24.0, 40.0)),
-                1.0
-            ),
-            PhysicalPosition::new(-1920, 432) // 8 px above the icon
-        );
-        assert_eq!(
-            placement((0, 0, 300, 400), (400, 600), None, 1.0),
-            PhysicalPosition::new(0, 0)
-        );
-    }
-    #[test]
-    fn mini_window_sits_above_a_bottom_right_tray_icon() {
-        // 1920x1080 at 150%: 360x600 logical = 540x900 physical; taskbar icon at the bottom right.
-        let pos = placement(
-            (0, 0, 2880, 1620),
-            (540, 900),
-            Some((2600.0, 1560.0, 36.0, 60.0)),
-            1.5,
-        );
-        assert_eq!(pos, PhysicalPosition::new(2340, 648)); // 12 px gap at 150%
-    }
-    #[test]
     fn mini_height_matches_the_frontend_layout() {
         let js = include_str!("../../src/lib/utils/mini-layout.js");
         let line = js
@@ -656,26 +819,213 @@ mod tests {
         assert_eq!(callers(concat!(".set_", "position(")), 1);
         assert!(!code.contains(concat!("fit_", "companion")));
     }
+    /// A 1920x1080 monitor at `scale` with a 48 px (logical) taskbar on `edge`.
+    fn hd(scale: f64, edge: Edge, origin: (i32, i32)) -> (Screen, (f64, f64, f64, f64)) {
+        let (w, h) = ((1920.0 * scale) as u32, (1080.0 * scale) as u32);
+        let m = PxRect::new(origin.0, origin.1, w, h);
+        let t = (48.0 * scale).round() as i32;
+        let (bar, icon) = match edge {
+            Edge::Bottom => (
+                PxRect {
+                    top: m.bottom - t,
+                    ..m
+                },
+                (
+                    m.right as f64 - 300.0 * scale,
+                    (m.bottom - t) as f64,
+                    24.0 * scale,
+                    t as f64,
+                ),
+            ),
+            Edge::Top => (
+                PxRect {
+                    bottom: m.top + t,
+                    ..m
+                },
+                (
+                    m.right as f64 - 300.0 * scale,
+                    m.top as f64,
+                    24.0 * scale,
+                    t as f64,
+                ),
+            ),
+            Edge::Left => (
+                PxRect {
+                    right: m.left + t,
+                    ..m
+                },
+                (
+                    m.left as f64,
+                    m.bottom as f64 - 200.0 * scale,
+                    t as f64,
+                    24.0 * scale,
+                ),
+            ),
+            Edge::Right => (
+                PxRect {
+                    left: m.right - t,
+                    ..m
+                },
+                (
+                    (m.right - t) as f64,
+                    m.bottom as f64 - 200.0 * scale,
+                    t as f64,
+                    24.0 * scale,
+                ),
+            ),
+        };
+        let work = match edge {
+            Edge::Bottom => PxRect {
+                bottom: bar.top,
+                ..m
+            },
+            Edge::Top => PxRect {
+                top: bar.bottom,
+                ..m
+            },
+            Edge::Left => PxRect {
+                left: bar.right,
+                ..m
+            },
+            Edge::Right => PxRect {
+                right: bar.left,
+                ..m
+            },
+        };
+        (
+            Screen {
+                monitor: m,
+                work,
+                taskbar: Some((edge, bar, false)),
+            },
+            icon,
+        )
+    }
+    fn inside(p: &Placed, size: tauri::PhysicalSize<u32>, area: &PxRect, gap: i32) {
+        assert!(p.fits);
+        assert!(
+            p.pos.x >= area.left + gap && p.pos.y >= area.top + gap,
+            "{p:?} {area:?}"
+        );
+        assert!(
+            p.pos.x + size.width as i32 <= area.right - gap,
+            "{p:?} {area:?}"
+        );
+        assert!(
+            p.pos.y + size.height as i32 <= area.bottom - gap,
+            "{p:?} {area:?}"
+        );
+    }
     #[test]
-    fn mini_window_fits_1080p_up_to_150_percent() {
-        // 1920x1080 physical, bottom taskbar 48 logical px, tray icon at the right.
+    fn bottom_taskbar_100_125_150_percent_stays_above_the_taskbar() {
+        for scale in [1.0, 1.25, 1.5] {
+            let (screen, icon) = hd(scale, Edge::Bottom, (0, 0));
+            let size = mini_size(scale);
+            let gap = (12.0 * scale).round() as i32;
+            let p = placement(&screen, (size.width, size.height), Some(icon), scale);
+            inside(&p, size, &screen.work, gap);
+            // Bottom edge exactly one gap above the taskbar, centred on the icon.
+            assert_eq!(p.pos.y + size.height as i32, screen.work.bottom - gap);
+            let cx = icon.0 + icon.2 / 2.0;
+            assert_eq!(p.pos.x, (cx - size.width as f64 / 2.0).round() as i32);
+        }
+        // The v0.5.3 numbers at 150 %: 2880x1620, taskbar 72 px, panel 540x978.
+        let (screen, icon) = hd(1.5, Edge::Bottom, (0, 0));
+        let p = placement(&screen, (540, 978), Some(icon), 1.5);
+        assert_eq!(p.pos.y, 1620 - 72 - 18 - 978);
+    }
+    #[test]
+    fn the_work_area_wins_over_the_monitor_and_a_bad_icon_rect() {
+        // v0.5.3 decided above/below from the icon rect and clamped to the
+        // monitor: an icon rect near the top put the panel at the monitor
+        // bottom, over the taskbar. The work area decides now.
+        let (screen, _) = hd(1.0, Edge::Bottom, (0, 0));
+        let size = mini_size(1.0);
+        for icon in [
+            (1600.0, 0.0, 24.0, 24.0),
+            (1600.0, 1079.0, 24.0, 1.0),
+            (5000.0, 5000.0, 24.0, 24.0),
+        ] {
+            let p = placement(&screen, (size.width, size.height), Some(icon), 1.0);
+            inside(&p, size, &screen.work, 12);
+            assert_eq!(p.pos.y + size.height as i32, 1080 - 48 - 12);
+        }
+        let p = placement(&screen, (size.width, size.height), None, 1.0);
+        assert_eq!(
+            p.pos,
+            PhysicalPosition::new(1920 - 12 - 360, 1080 - 48 - 12 - 652)
+        );
+    }
+    #[test]
+    fn taskbar_on_top_left_and_right() {
         for scale in [1.0, 1.25, 1.5] {
             let size = mini_size(scale);
-            assert_eq!(size.height, (MINI_HEIGHT * scale).ceil() as u32);
-            let bar = (48.0 * scale).round();
-            let icon = (1800.0, 1080.0 - bar, 24.0 * scale, bar);
-            let pos = placement(
-                (0, 0, 1920, 1080),
-                (size.width, size.height),
-                Some(icon),
-                scale,
-            );
-            assert!(pos.y >= 0, "top cut at {scale}");
-            let bottom = pos.y + size.height as i32;
-            assert!(
-                bottom <= (1080.0 - bar) as i32,
-                "covers the taskbar at {scale}"
-            );
+            let gap = (12.0 * scale).round() as i32;
+            for edge in [Edge::Top, Edge::Left, Edge::Right] {
+                let (screen, icon) = hd(scale, edge, (0, 0));
+                let p = placement(&screen, (size.width, size.height), Some(icon), scale);
+                inside(&p, size, &screen.work, gap);
+                match edge {
+                    Edge::Top => assert_eq!(p.pos.y, screen.work.top + gap),
+                    Edge::Left => assert_eq!(p.pos.x, screen.work.left + gap),
+                    Edge::Right => {
+                        assert_eq!(p.pos.x + size.width as i32, screen.work.right - gap)
+                    }
+                    Edge::Bottom => unreachable!(),
+                }
+            }
         }
+    }
+    #[test]
+    fn auto_hidden_taskbar_keeps_its_strip_free() {
+        let (mut screen, icon) = hd(1.25, Edge::Bottom, (0, 0));
+        screen.work = screen.monitor; // auto-hide: Windows reserves nothing
+        let bar = screen.taskbar.unwrap().1;
+        screen.taskbar = Some((Edge::Bottom, bar, true));
+        let size = mini_size(1.25);
+        let p = placement(&screen, (size.width, size.height), Some(icon), 1.25);
+        assert_eq!(p.pos.y + size.height as i32, bar.top - 15);
+    }
+    #[test]
+    fn secondary_monitor_with_negative_origin() {
+        let (mut screen, icon) = hd(1.0, Edge::Bottom, (-1920, -200));
+        // The primary taskbar (ABM_GETTASKBARPOS) is on another monitor.
+        screen.taskbar = Some((Edge::Bottom, PxRect::new(0, 1032, 1920, 48), false));
+        let size = mini_size(1.0);
+        let p = placement(&screen, (size.width, size.height), Some(icon), 1.0);
+        inside(&p, size, &screen.work, 12);
+        assert_eq!(p.pos.y + 652, 880 - 48 - 12);
+    }
+    #[test]
+    fn mac_menu_bar_at_the_top_without_a_work_area() {
+        let m = PxRect::new(0, 0, 2880, 1800);
+        let screen = Screen {
+            monitor: m,
+            work: m,
+            taskbar: None,
+        };
+        let p = placement(&screen, (720, 1304), Some((2800.0, 0.0, 40.0, 48.0)), 2.0);
+        assert_eq!(p.pos.y, 24);
+        assert!(p.fits);
+    }
+    #[test]
+    fn too_tall_for_the_work_area_is_reported_not_hidden() {
+        // 1920x1080 at 175 %: 1141 px panel, 1080 - 84 px taskbar = 996 px work area.
+        let m = PxRect::new(0, 0, 1920, 1080);
+        let screen = Screen {
+            monitor: m,
+            work: PxRect { bottom: 996, ..m },
+            taskbar: Some((Edge::Bottom, PxRect { top: 996, ..m }, false)),
+        };
+        let size = mini_size(1.75);
+        assert_eq!(size.height, 1141);
+        let p = placement(
+            &screen,
+            (size.width, size.height),
+            Some((1500.0, 996.0, 42.0, 84.0)),
+            1.75,
+        );
+        assert!(!p.fits);
+        assert_eq!(p.pos.y, 0); // top visible; fits = false is recorded
     }
 }
