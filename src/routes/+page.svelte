@@ -4,6 +4,7 @@
   import SettingsWindow from "$lib/components/SettingsWindow.svelte";
   import AppInfo from "$lib/components/AppInfo.svelte";
   import { emit } from "@tauri-apps/api/event";
+  import { getCurrentWindow } from "@tauri-apps/api/window";
   import { get } from "svelte/store";
   import { settingsStatus } from "$lib/stores/settings";
   import {
@@ -200,7 +201,15 @@
     if (mounted && !auxiliary && !isFrozen) {
       // Use adaptive refresh rate - slightly slower for 1s to reduce CPU usage
       const adaptiveRefreshRate = refreshRate === 1000 ? 1500 : refreshRate;
-      intervalId = setInterval(() => {
+      intervalId = setInterval(async () => {
+        // winperf: no sampling while the main window is hidden to the tray or
+        // minimized, so idle CPU stays low (the mini window polls on its own).
+        try {
+          const win = getCurrentWindow();
+          if (!(await win.isVisible()) || (await win.isMinimized())) return;
+        } catch {
+          /* Browser preview: always poll. */
+        }
         processStore.getProcesses();
       }, adaptiveRefreshRate);
     }

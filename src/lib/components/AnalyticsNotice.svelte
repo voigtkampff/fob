@@ -34,7 +34,7 @@
       <div class="min-w-0 flex-1">
         <p class="text-sm font-medium">A small change to privacy in v1.3</p>
         <p class="mt-1 text-xs leading-relaxed text-muted-foreground">
-          NeoHtop sends a basic app-open count and version each launch, without
+          winperf sends a basic app-open count and version each launch, without
           a persistent identifier. Feature-usage sharing is off by default. Your
           process and system readings stay here.
         </p>

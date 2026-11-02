@@ -47,14 +47,13 @@ pub fn open_about(app: AppHandle, check: bool) -> Result<(), String> {
 }
 pub fn setup(app: &AppHandle) -> tauri::Result<()> {
     let about = MenuItem::with_id(app, "app-about", "About winperf", true, None::<&str>)?;
-    let updates = MenuItem::with_id(app, "app-updates", "Check for Updates…", true, None::<&str>)?;
     let settings = MenuItem::with_id(app, "app-settings", "Settings…", true, Some("CmdOrCtrl+,"))?;
     let quit = Stock::quit(app, Some("Quit winperf"))?;
     let application = Submenu::with_items(
         app,
         "winperf",
         true,
-        &[&about, &updates, &Stock::separator(app)?, &settings],
+        &[&about, &Stock::separator(app)?, &settings],
     )?;
     #[cfg(target_os = "macos")]
     application.append_items(&[
@@ -83,13 +82,7 @@ pub fn setup(app: &AppHandle) -> tauri::Result<()> {
     let list = MenuItem::with_id(app, "view-list", "Process List", true, None::<&str>)?;
     let tree = MenuItem::with_id(app, "view-tree", "Process Tree", true, None::<&str>)?;
     let appearance = MenuItem::with_id(app, "view-appearance", "Appearance…", true, None::<&str>)?;
-    let overview = MenuItem::with_id(
-        app,
-        "view-overview",
-        "Menu-bar Overview",
-        true,
-        None::<&str>,
-    )?;
+    let overview = MenuItem::with_id(app, "view-overview", "Mini Window", true, None::<&str>)?;
     let view = Submenu::with_items(
         app,
         "View",
@@ -119,7 +112,6 @@ pub fn setup(app: &AppHandle) -> tauri::Result<()> {
         let _ = match event.id.as_ref() {
             "app-settings" => open_settings(app.clone(), None),
             "app-about" => open_about(app.clone(), false),
-            "app-updates" => open_about(app.clone(), true),
             "view-appearance" => open_settings(app.clone(), Some("appearance".into())),
             "view-overview" => {
                 let handle = app.clone();

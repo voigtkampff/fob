@@ -257,10 +257,11 @@ pub struct Overview {
 impl From<Snapshot> for Overview {
     fn from(s: Snapshot) -> Self {
         let mut processes = s.frame.processes.iter().collect::<Vec<_>>();
+        // winperf: the mini window lists the top processes by memory.
         processes.sort_by(|a, b| {
-            b.cpu_usage
-                .total_cmp(&a.cpu_usage)
-                .then_with(|| b.memory_usage.cmp(&a.memory_usage))
+            b.memory_usage
+                .cmp(&a.memory_usage)
+                .then_with(|| b.cpu_usage.total_cmp(&a.cpu_usage))
                 .then_with(|| a.pid.cmp(&b.pid))
         });
         Self {

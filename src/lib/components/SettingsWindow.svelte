@@ -97,7 +97,7 @@
     {#if pane === "general"}
       <h1 class="text-lg font-semibold tracking-tight">General</h1>
       <p class="mt-1 mb-5 text-sm text-muted-foreground">
-        Choose how NeoHtop monitors your system.
+        Choose how winperf monitors your system.
       </p>
       <fieldset disabled={!$settingsStatus.ready} class="space-y-5">
         <Card.Root size="sm"
@@ -129,7 +129,7 @@
           </Card.Content></Card.Root
         >
         <Card.Root size="sm"
-          ><Card.Header><Card.Title>Menu-bar companion</Card.Title></Card.Header
+          ><Card.Header><Card.Title>Tray mini window</Card.Title></Card.Header
           ><Card.Content class="gap-5">
             <div class="flex items-start gap-3">
               <Checkbox
@@ -139,34 +139,16 @@
                 onCheckedChange={(value) => save("menuBarEnabled", value)}
               />
               <div>
-                <Label for="show-menu-icon">Show menu-bar icon</Label>
+                <Label for="show-menu-icon">Show tray icon</Label>
                 <p class="mt-1 text-xs leading-relaxed text-muted-foreground">
                   Keep CPU, memory, graphics and network readings close at hand.
                 </p>
               </div>
             </div>
-            <div class="flex items-start gap-3">
-              <Checkbox
-                id="keep-running"
-                class="mt-0.5"
-                checked={$settingsStore.behavior.keepRunning}
-                disabled={!$settingsStore.behavior.menuBarEnabled}
-                onCheckedChange={(value) => save("keepRunning", value)}
-              />
-              <div
-                class={!$settingsStore.behavior.menuBarEnabled
-                  ? "opacity-50"
-                  : ""}
-              >
-                <Label for="keep-running"
-                  >Keep running when the window closes</Label
-                >
-                <p class="mt-1 text-xs leading-relaxed text-muted-foreground">
-                  Continue from the menu bar. Choose Quit NeoHtop to exit
-                  completely.
-                </p>
-              </div>
-            </div>
+            <p class="text-xs leading-relaxed text-muted-foreground">
+              With the tray icon on, closing the main window keeps winperf
+              running in the tray. Choose Quit from the tray menu to exit.
+            </p>
           </Card.Content></Card.Root
         >
       </fieldset>
@@ -199,7 +181,7 @@
         >
         <Card.Root size="sm"
           ><Card.Header
-            ><Card.Title>Help improve NeoHtop</Card.Title></Card.Header
+            ><Card.Title>Help improve winperf</Card.Title></Card.Header
           ><Card.Content class="gap-4">
             <div class="flex items-start gap-3">
               <Checkbox
@@ -238,7 +220,7 @@
     {:else}
       <h1 class="text-lg font-semibold tracking-tight">Appearance</h1>
       <p class="mt-1 mb-5 text-sm text-muted-foreground">
-        All your NeoHtop themes, across every window.
+        All your winperf themes, across every window.
       </p>
       <ThemeGallery embedded />
     {/if}

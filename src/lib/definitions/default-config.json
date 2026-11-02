@@ -23,7 +23,7 @@
     "itemsPerPage": 15,
     "refreshRate": 3000,
     "menuBarEnabled": true,
-    "keepRunning": false,
+    "keepRunning": true,
     "defaultStatusFilter": "all",
     "processView": "flat",
     "usageAnalytics": false

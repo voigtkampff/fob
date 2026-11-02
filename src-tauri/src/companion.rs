@@ -15,6 +15,24 @@ const TRAY_ID: &str = "neohtop-overview";
 pub struct CompanionState {
     pub keep_running: bool,
     pub hidden_at: Option<Instant>,
+    /// winperf: content height reported by the mini window (logical px).
+    pub height: Option<f64>,
+    /// winperf: last tray icon rect (physical px), so resizes stay anchored.
+    pub anchor: Option<(f64, f64, f64, f64)>,
+}
+
+/// winperf mini window: fixed width, height follows its content.
+const MINI_WIDTH: f64 = 360.0;
+const MINI_MIN_HEIGHT: f64 = 240.0;
+const MINI_MAX_HEIGHT: f64 = 720.0;
+const MINI_DEFAULT_HEIGHT: f64 = 640.0;
+
+pub fn mini_height(content: f64) -> f64 {
+    if content.is_finite() {
+        content.clamp(MINI_MIN_HEIGHT, MINI_MAX_HEIGHT)
+    } else {
+        MINI_DEFAULT_HEIGHT
+    }
 }
 
 // A monochrome pixel ghost, matching the public app's silhouette. macOS treats
@@ -60,11 +78,11 @@ fn ghost() -> tauri::image::Image<'static> {
 fn configure(app: &AppHandle, enabled: bool, keep_running: bool) -> Result<(), String> {
     // Called only on the main thread: native menus and tray destruction require it.
     if enabled && app.tray_by_id(TRAY_ID).is_none() {
-        let overview = MenuItem::with_id(app, "overview", "Show overview", true, None::<&str>)
+        let overview = MenuItem::with_id(app, "overview", "Show mini window", true, None::<&str>)
             .map_err(|e| e.to_string())?;
-        let open = MenuItem::with_id(app, "open-main", "Open winperf", true, None::<&str>)
+        let open = MenuItem::with_id(app, "open-main", "Open full window", true, None::<&str>)
             .map_err(|e| e.to_string())?;
-        let quit = MenuItem::with_id(app, "quit", "Quit winperf", true, None::<&str>)
+        let quit = MenuItem::with_id(app, "quit", "Quit", true, None::<&str>)
             .map_err(|e| e.to_string())?;
         let menu = Menu::with_items(app, &[&overview, &open, &quit]).map_err(|e| e.to_string())?;
         TrayIconBuilder::with_id(TRAY_ID)
@@ -120,7 +138,10 @@ fn configure(app: &AppHandle, enabled: bool, keep_running: bool) -> Result<(), S
     app.state::<Mutex<CompanionState>>()
         .lock()
         .map_err(|e| e.to_string())?
-        .keep_running = enabled && keep_running;
+        // winperf: with a tray icon, closing the main window always hides it
+        // to the tray (Quit is in the tray menu); the old preference is ignored.
+        .keep_running = enabled;
+    let _ = keep_running;
     Ok(())
 }
 
@@ -178,6 +199,28 @@ fn show(app: &AppHandle, rect: Option<Rect>) -> Result<(), String> {
         let s = r.size.to_physical::<f64>(1.0);
         (p.x, p.y, s.width, s.height)
     });
+    place(app, &window, anchor)?;
+    window.show().map_err(|e| e.to_string())?;
+    window.set_focus().map_err(|e| e.to_string())?;
+    crate::telemetry::track(app, "companion_open", None);
+    app.emit_to("overview", "companion-visibility", true)
+        .map_err(|e| e.to_string())
+}
+/// winperf: size the mini window to its content height and put it next to the
+/// tray icon (above it for a bottom taskbar), clamped to the monitor.
+fn place(
+    app: &AppHandle,
+    window: &tauri::WebviewWindow,
+    anchor: Option<(f64, f64, f64, f64)>,
+) -> Result<(), String> {
+    let (anchor, height) = {
+        let state = app.state::<Mutex<CompanionState>>();
+        let mut state = state.lock().map_err(|e| e.to_string())?;
+        if anchor.is_some() {
+            state.anchor = anchor;
+        }
+        (state.anchor, state.height.unwrap_or(MINI_DEFAULT_HEIGHT))
+    };
     let monitor = anchor
         .and_then(|(x, y, _, _)| window.monitor_from_point(x, y).ok().flatten())
         .or_else(|| {
@@ -187,7 +230,10 @@ fn show(app: &AppHandle, rect: Option<Rect>) -> Result<(), String> {
         .or_else(|| window.primary_monitor().ok().flatten())
         .ok_or("No display available")?;
     let scale = monitor.scale_factor();
-    let size = tauri::LogicalSize::new(400.0, 600.0).to_physical::<u32>(scale);
+    let size = tauri::LogicalSize::new(MINI_WIDTH, height).to_physical::<u32>(scale);
+    window
+        .set_size(tauri::Size::Physical(size))
+        .map_err(|e| e.to_string())?;
     window
         .set_position(placement(
             (
@@ -200,12 +246,24 @@ fn show(app: &AppHandle, rect: Option<Rect>) -> Result<(), String> {
             anchor,
             scale,
         ))
-        .map_err(|e| e.to_string())?;
-    window.show().map_err(|e| e.to_string())?;
-    window.set_focus().map_err(|e| e.to_string())?;
-    crate::telemetry::track(app, "companion_open", None);
-    app.emit_to("overview", "companion-visibility", true)
         .map_err(|e| e.to_string())
+}
+/// winperf: the mini window reports its content height; resize and re-anchor.
+#[tauri::command]
+pub async fn fit_companion(app: AppHandle, height: f64) -> Result<(), String> {
+    let height = mini_height(height);
+    {
+        let state = app.state::<Mutex<CompanionState>>();
+        let mut state = state.lock().map_err(|e| e.to_string())?;
+        if state.height.is_some_and(|h| (h - height).abs() < 1.0) {
+            return Ok(());
+        }
+        state.height = Some(height);
+    }
+    let window = app
+        .get_webview_window("overview")
+        .ok_or("Overview window unavailable")?;
+    place(&app, &window, None)
 }
 pub fn open_main(app: &AppHandle) -> Result<(), String> {
     hide(app);
@@ -336,5 +394,23 @@ mod tests {
             placement((0, 0, 300, 400), (400, 600), None, 1.0),
             PhysicalPosition::new(0, 0)
         );
+    }
+    #[test]
+    fn mini_window_sits_above_a_bottom_right_tray_icon() {
+        // 1920x1080 at 150%: 360x600 logical = 540x900 physical; taskbar icon at the bottom right.
+        let pos = placement(
+            (0, 0, 2880, 1620),
+            (540, 900),
+            Some((2600.0, 1560.0, 36.0, 60.0)),
+            1.5,
+        );
+        assert_eq!(pos, PhysicalPosition::new(2340, 660));
+    }
+    #[test]
+    fn mini_height_is_clamped() {
+        assert_eq!(mini_height(100.0), 240.0);
+        assert_eq!(mini_height(500.0), 500.0);
+        assert_eq!(mini_height(5000.0), 720.0);
+        assert_eq!(mini_height(f64::NAN), 640.0);
     }
 }

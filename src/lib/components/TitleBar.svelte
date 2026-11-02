@@ -12,7 +12,6 @@
     Ellipsis,
     Settings2,
     Info,
-    RefreshCw,
   } from "@lucide/svelte";
   export let isFrozen: boolean;
   export let onPause: (value: boolean) => void;
@@ -67,8 +66,8 @@
     <Button
       variant="ghost"
       size="icon-sm"
-      aria-label="Open menu-bar overview"
-      title="Menu-bar overview"
+      aria-label="Open mini window"
+      title="Mini window"
       onclick={() => command("show_companion")}><PanelsTopLeft /></Button
     >
     <div class="mx-1 h-4 w-px bg-border"></div>
@@ -92,10 +91,6 @@
         <DropdownMenu.Item
           onclick={() => command("open_about", { check: false })}
           ><Info />About winperf</DropdownMenu.Item
-        >
-        <DropdownMenu.Item
-          onclick={() => command("open_about", { check: true })}
-          ><RefreshCw />Check for updates…</DropdownMenu.Item
         >
         <DropdownMenu.Separator /><DropdownMenu.Item
           onclick={() => command("quit_app")}>Quit winperf</DropdownMenu.Item

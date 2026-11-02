@@ -38,6 +38,11 @@ fn main() {
             let window = app.get_webview_window("main").unwrap();
             ui::setup_window_effects(&window).expect("Failed to apply window effects");
             desktop::setup(app.handle())?;
+            // winperf: the app menu is for the main window; the tray mini
+            // window is a frameless popup without a menu bar.
+            if let Some(mini) = app.get_webview_window("overview") {
+                let _ = mini.remove_menu();
+            }
             Ok(())
         })
         .plugin(tauri_plugin_shell::init())
@@ -65,6 +70,7 @@ fn main() {
             companion::configure_companion,
             companion::show_companion,
             companion::hide_companion,
+            companion::fit_companion,
             companion::open_main_window,
             companion::quit_app,
         ])

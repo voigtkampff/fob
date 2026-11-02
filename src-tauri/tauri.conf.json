@@ -24,7 +24,7 @@
   },
   "productName": "winperf",
   "mainBinaryName": "winperf",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "identifier": "com.hcb.winperf",
   "plugins": {
     "os": {
@@ -51,9 +51,9 @@
       {
         "label": "overview",
         "url": "/?view=companion",
-        "title": "winperf Overview",
-        "width": 400,
-        "height": 600,
+        "title": "winperf mini",
+        "width": 360,
+        "height": 640,
         "visible": false,
         "decorations": false,
         "transparent": true,

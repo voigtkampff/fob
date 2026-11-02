@@ -34,7 +34,12 @@
   export let systemStats: SystemStats;
   export let gpus: GpuDevice[] = [];
   export let history: ResourceSample[] = [];
-  export let processes: Process[] = [];
+  export let processes: (Pick<
+    Process,
+    "pid" | "name" | "cpu_usage" | "memory_usage"
+  > & { command?: string })[] = [];
+  /** winperf mini window (tray popup): tighter cards, no page title. */
+  export let compact = false;
 
   const W = 260;
   const H = 36;
@@ -80,9 +85,9 @@
   }
 </script>
 
-<div class="dash">
+<div class="dash" class:compact>
   <header class="dash-header">
-    <div class="title">
+    <div class="title" class:hidden={compact}>
       <Activity class="size-5 text-[var(--green)]" />System
     </div>
     <div class="chips">
@@ -173,7 +178,10 @@
       <div class="card-head">
         <span class="label"><HardDrive class="size-3.5" />Free space</span>
         {#if volume}<span class="chip"
-            >{volume.mount} · {formatGB(volume.total, 0)}</span
+            >{compact ? "" : `${volume.mount} · `}{formatGB(
+              volume.total,
+              0,
+            )}</span
           >{/if}
       </div>
       {#if volume}
@@ -198,7 +206,8 @@
       <div class="card-head">
         <span class="label"><Globe class="size-3.5" />Network</span>
         <span class="legend"
-          ><i class="dot blue"></i>down <i class="dot green"></i>up</span
+          ><i class="dot blue"></i>{compact ? "↓" : "down"}
+          <i class="dot green"></i>{compact ? "↑" : "up"}</span
         >
       </div>
       <div class="big">{down.value}<small>{down.unit}</small></div>
@@ -233,9 +242,10 @@
       </div>
       <div class="big muted">—</div>
       <p class="note">
-        CPU temperature and fan speed need a hardware driver on Windows (PawnIO)
-        or LibreHardwareMonitor running. Not connected yet, so no readings are
-        shown.
+        {#if compact}Needs PawnIO or LibreHardwareMonitor; not connected.{:else}
+          CPU temperature and fan speed need a hardware driver on Windows
+          (PawnIO) or LibreHardwareMonitor running. Not connected yet, so no
+          readings are shown.{/if}
       </p>
     </article>
   </section>
@@ -453,5 +463,76 @@
   .num {
     text-align: right;
     font-variant-numeric: tabular-nums;
+  }
+  .hidden {
+    display: none;
+  }
+  /* winperf mini window: same cards, squeezed into ~340 px. */
+  .dash.compact {
+    flex: none;
+    overflow: visible;
+    padding: 0;
+    gap: 8px;
+    max-width: none;
+  }
+  .compact .chip {
+    font-size: 10.5px;
+    padding: 4px 6px;
+  }
+  .compact .chips {
+    gap: 4px;
+  }
+  .compact .grid {
+    gap: 8px;
+  }
+  .compact .card {
+    min-height: 0;
+    padding: 10px 11px;
+    gap: 4px;
+    border-radius: 12px;
+  }
+  .compact .label {
+    font-size: 12px;
+    white-space: nowrap;
+  }
+  .compact .big {
+    font-size: 22px;
+  }
+  .compact .big small {
+    font-size: 11px;
+    margin-left: 3px;
+  }
+  .compact .bars,
+  .compact .spark {
+    height: 26px;
+  }
+  .compact .track {
+    height: 8px;
+    margin: 9px 0 5px;
+  }
+  .compact .foot,
+  .compact .note {
+    font-size: 11px;
+  }
+  .compact .card-head .chip {
+    max-width: 92px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .compact .legend {
+    font-size: 10.5px;
+    gap: 4px;
+  }
+  .compact .procs {
+    padding: 4px 11px;
+  }
+  .compact .proc-row {
+    grid-template-columns: minmax(0, 1fr) 72px 44px;
+    gap: 8px;
+    padding: 5px 0;
+    font-size: 12.5px;
+  }
+  .compact .proc-row.head {
+    font-size: 11.5px;
   }
 </style>
