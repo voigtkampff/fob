@@ -1,7 +1,7 @@
-// winperf-sensors: READ-ONLY sensor helper for winperf.
+// fob-sensors: READ-ONLY sensor helper for Fob.
 // Reads CPU / GPU / motherboard temperatures and fan speeds through
 // LibreHardwareMonitorLib (needs admin + the PawnIO driver) and serves them on
-// the named pipe \\.\pipe\winperf-sensors, one JSON line per second.
+// the named pipe \\.\pipe\fob-sensors, one JSON line per second.
 //  - Never changes anything: IsControllerEnabled = false and no SetSoftware()
 //    call exists in this program. Fan "Control" values are only read.
 //  - Started at logon by the "fob-sensors" scheduled task (highest

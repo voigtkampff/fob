@@ -1,4 +1,4 @@
-//! The `winperf-sensors` scheduled task through the Task Scheduler COM API
+//! The `fob-sensors` scheduled task through the Task Scheduler COM API
 //! (ITaskService) instead of spawning schtasks.exe: no child processes, which
 //! behaviour-based antivirus tends to read as "execution / persistence".
 #![cfg(target_os = "windows")]

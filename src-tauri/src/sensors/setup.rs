@@ -536,15 +536,15 @@ mod tests {
 
     #[test]
     fn task_xml_round_trips_the_command_and_escapes() {
-        let exe = Path::new(r"C:\Program Files\winperf & co\sensors\winperf-sensors.exe");
+        let exe = Path::new(r"C:\Program Files\Fob & co\sensors\fob-sensors.exe");
         let xml = task_xml(r"DESKTOP-TEST\User", exe);
         assert!(xml.contains("<RunLevel>HighestAvailable</RunLevel>"));
         assert!(xml.contains("<LogonType>InteractiveToken</LogonType>"));
         assert!(xml.contains("<ExecutionTimeLimit>PT0S</ExecutionTimeLimit>"));
-        assert!(xml.contains("winperf &amp; co"));
+        assert!(xml.contains("Fob &amp; co"));
         assert_eq!(task_command(&xml).as_deref(), Some(exe.to_str().unwrap()));
         assert_eq!(task_state(Ok(&xml), exe), TaskState::Ok);
-        let moved = Path::new(r"D:\tools\winperf\sensors\winperf-sensors.exe");
+        let moved = Path::new(r"D:\tools\fob\sensors\fob-sensors.exe");
         assert_eq!(task_state(Ok(&xml), moved), TaskState::Mismatch);
         assert_eq!(task_state(Err(true), exe), TaskState::Missing);
         assert_eq!(task_state(Err(false), exe), TaskState::Unknown);

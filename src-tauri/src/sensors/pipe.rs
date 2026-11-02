@@ -1,6 +1,6 @@
-//! winperf's own read-only sensor helper (`sensors/winperf-sensors.exe`, run
-//! elevated by the `winperf-sensors` scheduled task) serves one JSON line per
-//! second on `\\.\pipe\winperf-sensors`:
+//! Fob's own read-only sensor helper (`sensors/fob-sensors.exe`, run
+//! elevated by the `fob-sensors` scheduled task) serves one JSON line per
+//! second on `\\.\pipe\fob-sensors`:
 //! `{"ts":<unix ms>,"sensors":[{"hw","id","name","type","value"}]}` with
 //! `type` = Temperature | Fan | Control and `value` a number or null.
 //! The line format is produced by sensors-helper/src/Wire.cs; both sides are

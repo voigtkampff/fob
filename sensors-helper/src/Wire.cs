@@ -1,4 +1,4 @@
-// winperf-sensors wire format: one JSON object per line.
+// fob-sensors wire format: one JSON object per line.
 // {"ts":<unix ms>,"sensors":[{"hw":..,"id":..,"name":..,"type":"Temperature"|"Fan"|"Control","value":<number|null>}],
 //  "net":{"ms":<interval>,"procs":[{"pid":..,"name":..,"rx":<bytes>,"tx":<bytes>}]}}
 //  ("net" only while ETW runs; "name" is the helper's best guess, winperf prefers its own by pid)
