@@ -4,6 +4,7 @@
 //! This is the main entry point for the application. It sets up the Tauri
 //! application, initializes plugins, and configures window effects.
 
+mod boot;
 mod commands;
 mod companion;
 mod desktop;

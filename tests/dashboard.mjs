@@ -4,6 +4,8 @@ import {
   formatGB,
   formatPercent,
   formatUptimeShort,
+  formatDuration,
+  uptimeInfo,
   averageCpu,
   systemVolume,
   gpuSummary,
@@ -38,6 +40,22 @@ assert.equal(formatUptimeShort(26 * 3600 + 5), "up 1 day, 2 hr");
 assert.equal(formatUptimeShort(3 * 86400), "up 3 days, 0 hr");
 assert.equal(formatUptimeShort(3 * 3600 + 4 * 60), "up 3 hr, 4 min");
 assert.equal(formatUptimeShort(59), "up 0 min");
+assert.equal(formatDuration(69 * 3600), "2 days, 21 hr");
+// Fast Startup: kernel up 2 days 21 hr, but started 3 h 4 min ago.
+const now = 2_000_000_000;
+assert.deepEqual(uptimeInfo(69 * 3600, now - (3 * 3600 + 240), now), {
+  seconds: 3 * 3600 + 240,
+  sinceStart: true,
+  kernel: 69 * 3600,
+});
+assert.deepEqual(uptimeInfo(600, null, now), {
+  seconds: 600,
+  sinceStart: false,
+  kernel: 600,
+});
+// Never more than the kernel uptime, never negative.
+assert.equal(uptimeInfo(600, now - 5000, now).seconds, 600);
+assert.equal(uptimeInfo(600, now + 50, now).seconds, 0);
 
 assert.equal(averageCpu([10, 20, 30, 40]), 25);
 assert.equal(averageCpu([]), null);

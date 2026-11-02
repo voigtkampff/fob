@@ -220,6 +220,8 @@ export interface FrameExtra {
   sensors: { sensors: Sensor[]; sources: string[] };
   /** Windows commit charge [used, limit] in bytes. */
   commit: [number, number] | null;
+  /** Unix seconds of the last real start (cold boot / Fast Startup resume). */
+  started_at?: number | null;
 }
 export interface MonitorSnapshot {
   port_error?: string | null;

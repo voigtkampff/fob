@@ -42,12 +42,37 @@ export function formatPercent(value) {
  * @param {number} seconds
  */
 export function formatUptimeShort(seconds) {
+  return `up ${formatDuration(seconds)}`;
+}
+
+/** "2 days, 21 hr" / "3 hr, 4 min" / "5 min".
+ * @param {number} seconds
+ */
+export function formatDuration(seconds) {
   const d = Math.floor(seconds / 86400);
   const h = Math.floor((seconds % 86400) / 3600);
   const m = Math.floor((seconds % 3600) / 60);
-  if (d > 0) return `up ${d} day${d === 1 ? "" : "s"}, ${h} hr`;
-  if (h > 0) return `up ${h} hr, ${m} min`;
-  return `up ${m} min`;
+  if (d > 0) return `${d} day${d === 1 ? "" : "s"}, ${h} hr`;
+  if (h > 0) return `${h} hr, ${m} min`;
+  return `${m} min`;
+}
+
+/** What the uptime chip shows. With Windows Fast Startup the kernel uptime
+ * spans days the PC was "shut down"; `startedAt` (Unix s, from the boot event
+ * log) is the last real start, so prefer it when known.
+ * @param {number} kernelUptime seconds
+ * @param {number | null | undefined} startedAt Unix seconds
+ * @param {number} nowSec Unix seconds
+ */
+export function uptimeInfo(kernelUptime, startedAt, nowSec) {
+  if (startedAt == null || !Number.isFinite(startedAt))
+    return { seconds: kernelUptime, sinceStart: false, kernel: kernelUptime };
+  const since = Math.max(0, Math.round(nowSec - startedAt));
+  return {
+    seconds: Math.min(kernelUptime, since),
+    sinceStart: true,
+    kernel: kernelUptime,
+  };
 }
 
 /** Average of per-core usage, or null when unknown.

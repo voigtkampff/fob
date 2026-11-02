@@ -40,6 +40,9 @@ pub struct Extra {
     pub sensors: crate::sensors::SensorReport,
     /// Windows commit charge (used, limit) in bytes.
     pub commit: Option<(u64, u64)>,
+    /// winperf: Unix seconds of the last real start (cold boot or Fast
+    /// Startup resume); `None` = only the kernel uptime is known.
+    pub started_at: Option<u64>,
 }
 #[cfg(target_os = "windows")]
 fn commit_charge() -> Option<(u64, u64)> {
@@ -264,6 +267,7 @@ impl Hub {
         let extra = Extra {
             sensors: state.sensors.lock().map_err(|e| e.to_string())?.read(&gpus),
             commit: commit_charge(),
+            started_at: crate::boot::last_start(now_ms() / 1000, stats.uptime),
         };
         self.sequence += 1;
         Ok(Frame {

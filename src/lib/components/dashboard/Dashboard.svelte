@@ -16,7 +16,8 @@
     formatGB,
     formatPercent,
     formatRate,
-    formatUptimeShort,
+    formatDuration,
+    uptimeInfo,
     gpuSummary,
     lastN,
     series,
@@ -123,8 +124,17 @@
     identity.cpu_model,
     formatGB(systemStats.memory_total, 0),
     identity.os_version,
-    formatUptimeShort(systemStats.uptime),
   ].filter(Boolean);
+  // Re-evaluated with every new sample (systemStats changes).
+  $: since = uptimeInfo(
+    systemStats.uptime,
+    extra?.started_at,
+    systemStats && Date.now() / 1000,
+  );
+  $: upText = `${since.sinceStart ? "on" : "up"} ${formatDuration(since.seconds)}`;
+  $: upTitle = since.sinceStart
+    ? `Time since Windows last started (power-on or Fast Startup). Kernel uptime, as Task Manager shows it: ${formatDuration(since.kernel)}`
+    : "Time since the system kernel started";
 
   function level(p: number | null) {
     if (p == null) return "idle";
@@ -155,6 +165,7 @@
       </div>
       <div class="chips">
         {#each chips as chip}<span class="chip">{chip}</span>{/each}
+        <span class="chip" title={upTitle}>{upText}</span>
       </div>
     </header>
 
