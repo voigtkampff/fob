@@ -171,7 +171,8 @@ export const en = {
   "col.run_time": "Run Time",
   "col.familyCpu": "Family CPU",
   "col.familyRam": "Family RAM",
-  "col.familyCpuTitle": "Combined family CPU; may exceed 100% across cores.",
+  "col.familyCpuTitle":
+    "Combined family CPU, as a share of all logical processors (like Task Manager).",
   "col.familyRamTitle":
     "Sum of resident memory for each family; shared pages can be counted more than once.",
   "col.sortBy": "Sort by {v}",
@@ -383,7 +384,8 @@ export const zh = {
   "col.run_time": "运行时长",
   "col.familyCpu": "进程族 CPU",
   "col.familyRam": "进程族内存",
-  "col.familyCpuTitle": "整个进程族的 CPU 合计，多核时可能超过 100%。",
+  "col.familyCpuTitle":
+    "整个进程族的 CPU 合计，按全部逻辑处理器计算（与任务管理器一致）。",
   "col.familyRamTitle": "每个进程族的常驻内存之和；共享页可能被重复计算。",
   "col.sortBy": "按{v}排序",
   "col.actions": "操作",

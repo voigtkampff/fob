@@ -72,6 +72,7 @@ impl ProcessMonitor {
 
     /// Collects raw process data from the system
     fn collect_process_data(&self, sys: &sysinfo::System, current_time: u64) -> Vec<ProcessData> {
+        let logical = logical_processors(sys);
         sys.processes()
             .iter()
             .map(|(pid, process)| {
@@ -81,7 +82,7 @@ impl ProcessMonitor {
                     name: process.name().to_string_lossy().into_owned(),
                     cmd: os_string_vec_to_string_vec(&process.cmd()),
                     user_id: process.user_id().map(|uid| uid.to_string()),
-                    cpu_usage: process.cpu_usage(),
+                    cpu_usage: normalize_cpu(process.cpu_usage(), logical),
                     memory: process.memory(),
                     status: process.status(),
                     ppid: process.parent().map(|p| p.as_u32()),
@@ -154,12 +155,43 @@ impl ProcessMonitor {
     }
 }
 
+/// Logical processors the CPU percentages are shared across.
+fn logical_processors(sys: &sysinfo::System) -> usize {
+    match sys.cpus().len() {
+        0 => std::thread::available_parallelism().map_or(1, |n| n.get()),
+        n => n,
+    }
+}
+
+/// sysinfo reports a process's CPU as a share of one logical processor
+/// (0..100 x logical). Task Manager shows the share of the whole machine,
+/// 0..100, so a process that saturates 1 of 24 threads reads 4.2 %.
+fn normalize_cpu(per_core: f32, logical: usize) -> f32 {
+    if !per_core.is_finite() {
+        return 0.0;
+    }
+    (per_core / logical.max(1) as f32).clamp(0.0, 100.0)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use sysinfo::System;
 
     /// Tests creation of a new process monitor
+    #[test]
+    fn cpu_is_a_share_of_the_whole_machine() {
+        // node at 115.8 % of one core on a 24-thread example hybrid CPU
+        assert!((normalize_cpu(115.8, 24) - 4.825).abs() < 1e-4);
+        // every thread busy is 100 %, never more
+        assert_eq!(normalize_cpu(2400.0, 24), 100.0);
+        assert_eq!(normalize_cpu(3000.0, 24), 100.0);
+        assert_eq!(normalize_cpu(50.0, 1), 50.0);
+        assert_eq!(normalize_cpu(50.0, 0), 50.0);
+        assert_eq!(normalize_cpu(-1.0, 8), 0.0);
+        assert_eq!(normalize_cpu(f32::NAN, 8), 0.0);
+    }
+
     #[test]
     fn test_process_monitor_creation() {
         let monitor = ProcessMonitor::new();

@@ -170,7 +170,7 @@ Community packages are maintained independently and can update on a different sc
 
 Search names, commands and PIDs. Commas match any term; regular expressions work too: `node, python`, `d$`, or `^kernel`. Use **Filters** to combine CPU, GPU engine activity, RAM, runtime and status conditions. Clear active conditions in one action.
 
-Tree mode keeps parent context around matches and pages whole families together. Family CPU can exceed 100% across cores; summed resident RAM can double-count shared pages. List mode keeps individual process readings. **View** controls columns, and the bottom bar controls page size.
+Tree mode keeps parent context around matches and pages whole families together. Process CPU % is a share of all logical processors, like Task Manager (0–100%), so family totals stay within 100%; summed resident RAM can double-count shared pages. List mode keeps individual process readings. **View** controls columns, and the bottom bar controls page size.
 
 </details>
 
