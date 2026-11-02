@@ -1,5 +1,4 @@
 <script lang="ts">
-  import { trackUsage } from "$lib/utils/telemetry";
   import type { Snippet } from "svelte";
   import * as Sheet from "$lib/components/ui/sheet/index.js";
   import { Button } from "$lib/components/ui/button/index.js";
@@ -62,11 +61,7 @@
   const triggerId = $derived(`resource-trigger-${kind}`);
 </script>
 
-<Sheet.Root
-  onOpenChange={(open) => {
-    if (open) trackUsage("resource_view", kind);
-  }}
->
+<Sheet.Root onOpenChange={(open) => {}}>
   <Sheet.Trigger id={triggerId}
     >{#snippet child({ props })}<Button
         {...props}

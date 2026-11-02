@@ -1,7 +1,6 @@
 use std::path::Path;
 
 fn main() {
-    println!("cargo:rerun-if-env-changed=NEOHTOP_ANALYTICS_ENDPOINT");
     // winperf: embed the sensor helper's SHA-256 manifest (sensors-helper/build.sh).
     // The elevated setup only copies/runs files that match it.
     let manifest = Path::new("../sensors-helper/dist/manifest.sha256");

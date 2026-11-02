@@ -90,7 +90,7 @@ python3 -m http.server 8765 --bind 127.0.0.1 --directory docs
 
 Open `http://127.0.0.1:8765/`. Commit both the source and generated pages/assets.
 Do not hand-edit generated HTML. `docs/main.js` progressively enhances actual
-published-release download links and copy controls. Website analytics is separate from the desktop relay and does not affect navigation or downloads. Desktop analytics requires its explicit build-time endpoint; see `telemetry/README.md`.
+published-release download links and copy controls. Website analytics is separate from the desktop relay and does not affect navigation or downloads. The desktop app (winperf) has no analytics.
 
 Each public HTML page has a canonical URL, social metadata, structured data,
 and a linked Markdown equivalent. Keep the HTML, Markdown, `llms.txt`, and

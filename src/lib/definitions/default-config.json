@@ -26,7 +26,6 @@
     "keepRunning": true,
     "startInTray": true,
     "defaultStatusFilter": "all",
-    "processView": "flat",
-    "usageAnalytics": false
+    "processView": "flat"
   }
 }

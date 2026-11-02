@@ -226,6 +226,8 @@ If NeoHtop earns a place in your setup, [star the project](https://github.com/Ab
 
 [The story behind NeoHtop](https://www.abdenasser.com/2024/11/06/oh-boy-neohtop/) · [MIT License](LICENSE)
 
-## Privacy and analytics
+## Privacy
 
-Official v1.3.0 builds send a basic launch count and app version without a persistent identifier, even when optional sharing is off. **Settings → Privacy** lets you opt in to limited feature usage. Process names, search text, commands, paths and system readings stay local. See the [privacy notice](https://abdenasser.github.io/neohtop/privacy.html).
+winperf has no analytics, telemetry or launch counter: the NeoHtop usage
+reporting (settings pane, notice, relay, installation identifier) was removed.
+Nothing about your system leaves your machine.

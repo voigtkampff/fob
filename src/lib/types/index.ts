@@ -136,7 +136,6 @@ export interface AppConfig {
     defaultStatusFilter: string;
     processView?: "flat" | "tree";
     menuBarEnabled: boolean;
-    usageAnalytics: boolean;
     keepRunning: boolean;
     /** winperf: launch with only the tray icon (mini window mode). */
     startInTray: boolean;

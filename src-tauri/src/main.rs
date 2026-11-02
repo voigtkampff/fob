@@ -15,7 +15,6 @@ mod preferences;
 mod sampling;
 mod sensors;
 mod state;
-mod telemetry;
 mod ui;
 
 use state::AppState;
@@ -43,12 +42,6 @@ fn main() {
         .setup(|app| {
             let window = app.get_webview_window("main").unwrap();
             ui::setup_window_effects(&window).expect("Failed to apply window effects");
-            desktop::setup(app.handle())?;
-            // winperf: the app menu is for the main window; the tray mini
-            // window is a frameless popup without a menu bar.
-            if let Some(mini) = app.get_webview_window("overview") {
-                let _ = mini.remove_menu();
-            }
             companion::native_frame(app.handle());
             // winperf: tray-only start (default) or the main window.
             companion::launch(app.handle())?;
@@ -58,13 +51,10 @@ fn main() {
         .plugin(tauri_plugin_os::init())
         .manage(AppState::new())
         .manage(preferences::Preferences::default())
-        .manage(telemetry::Telemetry::default())
         .manage(desktop::DesktopState::default())
         .manage(std::sync::Mutex::new(companion::CompanionState::default()))
         .on_window_event(companion::window_event)
         .invoke_handler(tauri::generate_handler![
-            telemetry::track_usage,
-            telemetry::analytics_configured,
             preferences::read_preferences,
             preferences::update_preferences,
             desktop::open_settings,

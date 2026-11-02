@@ -1,9 +1,8 @@
 <script lang="ts">
-  import { trackUsage } from "$lib/utils/telemetry";
-  import AnalyticsNotice from "$lib/components/AnalyticsNotice.svelte";
   import SettingsWindow from "$lib/components/SettingsWindow.svelte";
   import AppInfo from "$lib/components/AppInfo.svelte";
   import { emit } from "@tauri-apps/api/event";
+  import { invoke } from "@tauri-apps/api/core";
   import { getCurrentWindow } from "@tauri-apps/api/window";
   import { get } from "svelte/store";
   import { settingsStatus } from "$lib/stores/settings";
@@ -78,7 +77,6 @@
   let detail: DetailKind | null = null;
 
   function setProcessView(view: "flat" | "tree") {
-    trackUsage("process_view_changed", view);
     settingsStore.updateConfig({
       behavior: { ...$settingsStore.behavior, processView: view },
     });
@@ -142,7 +140,6 @@
 
   // Collect sockets as soon as the query becomes a port search, not on the next tick
   $: if (mounted && !isFrozen && !auxiliary && searchHasPortQuery(searchTerm)) {
-    trackUsage("port_search");
     debouncedPortRefresh();
   }
 
@@ -242,27 +239,13 @@
           );
         },
       );
-      const stopCommand = await listen<string>("app-command", ({ payload }) => {
-        if (payload === "view-list" || payload === "view-tree")
-          setProcessView(payload === "view-tree" ? "tree" : "flat");
-      });
       if (disposed) {
-        [
-          stopPreferences,
-          stopRuntimeError,
-          stopRetry,
-          stopStatus,
-          stopCommand,
-        ].forEach((stop) => stop());
+        [stopPreferences, stopRuntimeError, stopRetry, stopStatus].forEach(
+          (stop) => stop(),
+        );
         return;
       }
-      listeners.push(
-        stopPreferences,
-        stopRuntimeError,
-        stopRetry,
-        stopStatus,
-        stopCommand,
-      );
+      listeners.push(stopPreferences, stopRuntimeError, stopRetry, stopStatus);
       mounted = true;
       const stopControl = await listen("monitor-control", () => {
         void processStore.refreshControl();
@@ -303,6 +286,11 @@
 <svelte:window
   onkeydown={(event) => {
     if (event.key === "Escape" && detail) detail = null;
+    // Ctrl+, opens settings (there is no native menu bar to carry it).
+    if (event.key === "," && (event.ctrlKey || event.metaKey) && !auxiliary) {
+      event.preventDefault();
+      void invoke("open_settings");
+    }
   }}
 />
 
@@ -335,7 +323,6 @@
     </nav>
     {#if tab === "dashboard"}
       <main>
-        <AnalyticsNotice />
         {#if error}<div class="alert" role="alert">{error}</div>{/if}
         {#if systemStats}
           <Dashboard
@@ -351,7 +338,6 @@
       </main>
     {:else}
       <main>
-        <AnalyticsNotice />
         {#if systemStats}
           <StatsBar
             {systemStats}
