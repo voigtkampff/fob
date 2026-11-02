@@ -28,14 +28,24 @@
   let fitted: string | null = null;
   $: view = miniView(!!data, detail);
   $: if (needsFit(fitted, view)) void fit(view);
+  const frame = () => new Promise((r) => requestAnimationFrame(r));
   async function fit(target: string) {
     fitted = target;
-    await tick();
-    await new Promise((r) => requestAnimationFrame(r));
-    if (!panel || fitted !== target) return;
-    panel.scrollTop = 0;
-    const h = Math.ceil(panel.scrollHeight);
-    void invoke("fit_companion", { height: h }).catch(() => {});
+    let asked = 0;
+    // Pass 2 corrects for whatever the native window took off the client
+    // area (frame, DPI rounding), so the cards view never needs a scrollbar.
+    for (let pass = 0; pass < 2; pass++) {
+      await tick();
+      await frame();
+      if (!panel || fitted !== target) return;
+      panel.scrollTop = 0;
+      const content = Math.ceil(panel.scrollHeight);
+      const short = content - window.innerHeight;
+      if (pass === 1 && short <= 0) return;
+      asked = pass === 0 ? content : asked + short;
+      await invoke("fit_companion", { height: asked }).catch(() => {});
+      await new Promise((r) => setTimeout(r, 120));
+    }
   }
   $: age = data
     ? Math.max(0, Math.floor((clock - data.captured_at) / 1000))
@@ -230,6 +240,14 @@
   .mini {
     max-height: 100vh;
     overflow-y: auto;
+    /* Only long detail lists scroll; keep the bar thin and trackless. */
+    scrollbar-width: thin;
+    scrollbar-color: color-mix(
+        in oklab,
+        var(--muted-foreground) 45%,
+        transparent
+      )
+      transparent;
     background: var(--background);
     padding: 8px 10px 10px;
   }

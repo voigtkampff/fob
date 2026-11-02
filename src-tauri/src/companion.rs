@@ -442,7 +442,11 @@ fn place(
         .or_else(|| window.primary_monitor().ok().flatten())
         .ok_or("No display available")?;
     let scale = monitor.scale_factor();
-    let size = tauri::LogicalSize::new(MINI_WIDTH, height).to_physical::<u32>(scale);
+    // Round up: a pixel lost to rounding at 125 %/150 % shows a scrollbar.
+    let size = tauri::PhysicalSize::new(
+        (MINI_WIDTH * scale).ceil() as u32,
+        (height * scale).ceil() as u32,
+    );
     window
         .set_size(tauri::Size::Physical(size))
         .map_err(|e| e.to_string())?;
