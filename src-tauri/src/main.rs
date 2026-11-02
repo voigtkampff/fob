@@ -15,6 +15,7 @@ mod native_icons;
 mod preferences;
 mod sampling;
 mod sensors;
+mod space;
 mod state;
 mod ui;
 mod window_icon;
@@ -54,6 +55,7 @@ fn main() {
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_os::init())
         .manage(AppState::new())
+        .manage(space::SpaceState::default())
         .manage(preferences::Preferences::default())
         .manage(desktop::DesktopState::default())
         .manage(std::sync::Mutex::new(companion::CompanionState::default()))
@@ -80,6 +82,12 @@ fn main() {
             companion::quit_app,
             sensors::setup::sensor_setup_status,
             sensors::setup::sensor_setup,
+            space::space_drives,
+            space::space_scan,
+            space::space_stop,
+            space::space_status,
+            space::space_result,
+            space::space_reveal,
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application")

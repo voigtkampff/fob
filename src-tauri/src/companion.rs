@@ -792,7 +792,15 @@ pub struct ProcessTarget {
 pub async fn open_main_window(
     app: AppHandle,
     process: Option<ProcessTarget>,
+    page: Option<String>,
 ) -> Result<(), String> {
+    // A page of the main window to show (the disk space map).
+    if let Some(page) = page.filter(|p| p == "space") {
+        open_main(&app)?;
+        return app
+            .emit_to("main", "open-page", page)
+            .map_err(|e| e.to_string());
+    }
     if let Some(target) = process {
         let state = app.state::<crate::state::AppState>();
         let frame = state
