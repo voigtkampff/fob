@@ -61,6 +61,21 @@ def version_strings(pe):
     return strings
 
 
+# Every size Windows 10/11 asks for at 100-250 % scaling; src-tauri/icons/make-ico.py
+# renders each from SVG.
+ICON_SIZES = [16, 20, 24, 30, 32, 36, 40, 48, 60, 64, 72, 80, 96, 128, 256]
+
+
+def group_icon_frames(data):
+    """(size, bit depth) of each frame in an RT_GROUP_ICON (GRPICONDIR)."""
+    _, kind, count = struct.unpack_from("<HHH", data)
+    frames = []
+    for i in range(count):
+        w, _h, _c, _r, _planes, bpp = struct.unpack_from("<BBBBHH", data, 6 + 14 * i)
+        frames.append((w or 256, bpp))
+    return sorted(frames)
+
+
 def ico_images(path):
     data = open(path, "rb").read()
     _, kind, count = struct.unpack_from("<HHH", data)
@@ -95,7 +110,13 @@ def check(path, version, company, need_cc6, icon=None):
         errors.append(f"VERSIONINFO ProductVersion {strings.get('ProductVersion')!r} (want {version})")
     if not res.get("RT_GROUP_ICON"):
         errors.append("no icon (RT_GROUP_ICON)")
-    elif icon:
+    else:
+        frames = group_icon_frames(res["RT_GROUP_ICON"][0][1])
+        if [w for w, _ in frames] != ICON_SIZES:
+            errors.append(f"icon sizes {[w for w, _ in frames]} (want {ICON_SIZES})")
+        if any(bpp != 32 for _, bpp in frames):
+            errors.append(f"icon frames not all 32-bit: {frames}")
+    if icon and res.get("RT_GROUP_ICON"):
         embedded = {data for _, data in res.get("RT_ICON", [])}
         if not embedded or not embedded <= ico_images(icon):
             errors.append(f"embedded icon images differ from {icon}")

@@ -711,6 +711,9 @@ pub fn open_main(app: &AppHandle) -> Result<(), String> {
 }
 pub fn window_event(window: &tauri::Window, event: &WindowEvent) {
     let app = window.app_handle();
+    if let WindowEvent::ScaleFactorChanged { .. } = event {
+        crate::window_icon::apply(window);
+    }
     match (window.label(), event) {
         ("overview", WindowEvent::Focused(false)) => {
             let pinned = app

@@ -17,6 +17,7 @@ mod sampling;
 mod sensors;
 mod state;
 mod ui;
+mod window_icon;
 
 use state::AppState;
 use tauri::Manager;
@@ -44,6 +45,7 @@ fn main() {
             let window = app.get_webview_window("main").unwrap();
             ui::setup_window_effects(&window).expect("Failed to apply window effects");
             companion::native_frame(app.handle());
+            window_icon::apply_all(app.handle());
             sampling::sample_in_background(app.handle().clone());
             // winperf: tray-only start (default) or the main window.
             companion::launch(app.handle())?;
