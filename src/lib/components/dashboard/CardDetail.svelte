@@ -15,11 +15,17 @@
     formatRate,
     formatSensor,
     groupByHardware,
+    fanGroups,
+    byKind,
+    sensorSummary,
+    setupState,
     lastN,
     series,
     sparklinePath,
   } from "$lib/utils/dashboard.js";
   import { ChevronLeft } from "@lucide/svelte";
+  import SensorSetup from "./SensorSetup.svelte";
+  import { sensorSetup } from "$lib/stores/sensorSetup";
 
   type Row = {
     pid: number;
@@ -69,7 +75,10 @@
   $: volumes = [...systemStats.details.volumes].sort((a, b) =>
     a.mount.localeCompare(b.mount),
   );
-  $: groups = groupByHardware(sensors);
+  $: summary = sensorSummary(sensors);
+  $: fans = fanGroups(sensors);
+  // Fans are listed on their own above; the per-hardware lists show the rest.
+  $: groups = groupByHardware(sensors.filter((s) => s.kind !== "fan"));
   $: memAvail = systemStats.memory_total - systemStats.memory_used;
   const pct = (part: number, total: number) =>
     total > 0 ? Math.min(100, Math.max(0, (part / total) * 100)) : 0;
@@ -306,31 +315,64 @@
       </p>
     </div>
   {:else if kind === "temp"}
+    <SensorSetup status={$sensorSetup} />
+    {#if summary.cpuTemp || summary.gpuTemp}
+      <div class="panel">
+        <div class="temps">
+          {#each [summary.cpuTemp, summary.gpuTemp] as t, i}
+            {#if t}
+              <div class="temp">
+                <span class="muted">{i === 0 ? "CPU" : "GPU"} · {t.name}</span>
+                <span class="big">{t.value.toFixed(0)}<small>°C</small></span>
+              </div>
+            {/if}
+          {/each}
+        </div>
+      </div>
+    {/if}
+    {#if fans.length}
+      <div class="panel">
+        {#each fans as group (group.hardware)}
+          <div class="list-head">
+            <span>Fans · {group.hardware}</span><span>RPM</span>
+          </div>
+          {#each group.fans as f (f.id || f.name)}
+            <div class="item">
+              <span class="name">{f.name}</span><span
+                class="num"
+                class:muted={f.value <= 0}
+                >{f.value > 0
+                  ? Math.round(f.value)
+                  : "0 · stopped or unused"}</span
+              >
+            </div>
+          {/each}
+        {/each}
+      </div>
+    {/if}
     {#each groups as group (group.hardware)}
       <div class="panel">
         <div class="list-head"><span>{group.hardware}</span></div>
-        {#each group.sensors as s}
+        {#each byKind(group.sensors) as s (s.id || `${s.kind}:${s.name}`)}
           <div class="item">
-            <span class="name">{s.name}</span><span class="num"
-              >{formatSensor(s)}</span
-            >
+            <span class="name"
+              >{s.name}{s.kind === "control" ? " (duty)" : ""}</span
+            ><span class="num">{formatSensor(s)}</span>
           </div>
         {/each}
       </div>
-    {:else}
+    {/each}
+    {#if !sensors.length}
       <div class="panel">
         <p class="note">
-          No temperature or fan readings are available right now. winperf
-          doesn't install a driver of its own, so CPU, motherboard and fan
-          sensors only appear when a supported hardware-monitoring source is
-          running on this PC.
-        </p>
-        <p class="note">
-          NVIDIA GPUs report their temperature and fan through the driver and
-          appear here automatically. No numbers are faked.
+          {#if setupState($sensorSetup) !== "none"}Until then only NVIDIA GPUs
+            report their temperature and fan here. No numbers are faked.
+          {:else}No temperature or fan readings are available on this system.
+            NVIDIA GPUs report their temperature and fan through the driver;
+            other sensors need a supported sensor source. No numbers are faked.{/if}
         </p>
       </div>
-    {/each}
+    {/if}
     {#if sources.length}
       <p class="note">Source: {sources.join(", ")}</p>
     {/if}
@@ -406,6 +448,23 @@
   .strong {
     font-weight: 600;
     font-size: 13px;
+  }
+  .temps {
+    display: flex;
+    gap: 16px;
+  }
+  .temp {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    flex: 1;
+    min-width: 0;
+  }
+  .temp .muted {
+    font-size: 11.5px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
   }
   .graph {
     width: 100%;

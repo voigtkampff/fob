@@ -16,7 +16,13 @@ import {
   sensorSummary,
   groupByHardware,
   formatSensor,
+  fanGroups,
+  fanText,
+  byKind,
+  setupState,
+  setupSteps,
 } from "../src/lib/utils/dashboard.js";
+import { readFileSync } from "node:fs";
 
 assert.deepEqual(formatRate(null), { value: "—", unit: "" });
 assert.deepEqual(formatRate(-1), { value: "—", unit: "" });
@@ -201,4 +207,86 @@ assert.equal(formatSensor(sensors[6]), "42 %");
 
 console.log(
   "PASS: dashboard formatting, volume/GPU selection, top processes, sparkline series",
+);
+
+// winperf v0.4: helper pipe sensors (same fixture the Rust and C# tests use).
+{
+  const kinds = { Temperature: "temperature", Fan: "fan", Control: "control" };
+  const line = readFileSync(
+    new URL("../src-tauri/tests/fixtures/sensors-pipe.jsonl", import.meta.url),
+    "utf8",
+  ).split("\n")[0];
+  const pipe = JSON.parse(line)
+    .sensors.filter((s) => kinds[s.type] && Number.isFinite(s.value))
+    .map((s) => ({
+      hardware: s.hw,
+      id: s.id,
+      name: s.name,
+      kind: kinds[s.type],
+      value: s.value,
+      source: "winperf sensor helper",
+    }));
+  const sum = sensorSummary(pipe);
+  assert.equal(sum.cpuTemp?.name, "CPU Package");
+  assert.equal(sum.cpuTemp?.value, 52);
+  assert.equal(sum.gpuTemp?.name, "GPU Core");
+  const groups = fanGroups(pipe);
+  assert.deepEqual(
+    groups.map((g) => [g.hardware, g.fans.map((f) => f.name)]),
+    [
+      ["Example Board", ["Fan #1", "Fan #2", "Fan #3"]],
+      ["NVIDIA Example GPU", ["GPU Fan 1"]],
+    ],
+  );
+  assert.equal(fanText(pipe), "1102 · 1349 RPM");
+  assert.equal(fanText(pipe, 1), "1102 RPM +1");
+  assert.equal(fanText([]), "");
+  const tenth = { hardware: "B", name: "Fan #10", kind: "fan", value: 900 };
+  const second = { hardware: "B", name: "Fan #2", kind: "fan", value: 800 };
+  assert.deepEqual(
+    fanGroups([tenth, second])[0].fans.map((f) => f.name),
+    ["Fan #2", "Fan #10"],
+  );
+  assert.deepEqual(
+    byKind([
+      { kind: "control", name: "Fan #2" },
+      { kind: "fan", name: "Fan #1" },
+      { kind: "temperature", name: "CPU" },
+    ]).map((s) => s.kind),
+    ["temperature", "fan", "control"],
+  );
+}
+{
+  const base = {
+    supported: true,
+    bundled: true,
+    pawnio_installed: false,
+    installed: false,
+    task: "missing",
+    update_available: false,
+    running: false,
+    fake: false,
+  };
+  assert.equal(setupState(null), "none");
+  assert.equal(setupState({ ...base, supported: false }), "none");
+  assert.equal(setupState(base), "enable");
+  assert.equal(setupState({ ...base, bundled: false }), "missing-files");
+  const done = { ...base, pawnio_installed: true, installed: true, task: "ok" };
+  assert.equal(setupState({ ...done, running: true }), "ready");
+  assert.equal(setupState(done), "starting");
+  assert.equal(setupState({ ...done, update_available: true }), "update");
+  assert.equal(setupState({ ...done, task: "mismatch" }), "repair");
+  assert.equal(setupState({ ...base, task: "unknown" }), "repair");
+  const fresh = setupSteps(base);
+  assert.equal(fresh.length, 3);
+  assert.match(fresh[0], /PawnIO driver/);
+  assert.match(fresh[1], /C:\\Program Files\\winperf\\sensors/);
+  assert.match(fresh[2], /“winperf-sensors”/);
+  const again = setupSteps(done);
+  assert.equal(again.length, 2); // driver already there: no driver step
+  assert.match(again[0], /^Replace/);
+  assert.match(again[1], /^Re-create/);
+}
+console.log(
+  "PASS: sensor helper pipe summary, fan groups, setup states and steps",
 );

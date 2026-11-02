@@ -1,11 +1,14 @@
-//! winperf: temperatures and fan speeds from sources that need no driver of our
-//! own. Each source sits behind `SensorSource` so it can be swapped (e.g. a
-//! future FanControl reader) without touching the sampler or the UI.
+//! winperf: temperatures and fan speeds. Each source sits behind `SensorSource`
+//! so it can be swapped without touching the sampler or the UI. Board sources
+//! are tried in order and the first that answers wins: winperf's own helper
+//! pipe, then LibreHardwareMonitor's web server. NVIDIA NVML is always merged.
 use crate::gpu::GpuDevice;
 use serde::Serialize;
 use std::fmt::Debug;
 
 pub mod lhm;
+pub mod pipe;
+pub mod setup;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "lowercase")]
@@ -21,6 +24,8 @@ pub enum SensorKind {
 #[derive(Clone, Debug, PartialEq, Serialize)]
 pub struct Sensor {
     pub hardware: String,
+    /// Source-specific identifier, e.g. "/lpc/example/0/fan/1" ("" if none).
+    pub id: String,
     pub name: String,
     pub kind: SensorKind,
     pub value: f64,
@@ -47,6 +52,7 @@ pub fn from_gpus(gpus: &[GpuDevice]) -> Vec<Sensor> {
         if let Some(t) = gpu.temperature.filter(|t| t.is_finite()) {
             out.push(Sensor {
                 hardware: gpu.name.clone(),
+                id: format!("nvml/{}/temperature", gpu.id),
                 name: "GPU core".into(),
                 kind: SensorKind::Temperature,
                 value: t,
@@ -56,6 +62,7 @@ pub fn from_gpus(gpus: &[GpuDevice]) -> Vec<Sensor> {
         if let Some(f) = gpu.fan_percent.filter(|f| f.is_finite()) {
             out.push(Sensor {
                 hardware: gpu.name.clone(),
+                id: format!("nvml/{}/fan", gpu.id),
                 name: "GPU fan".into(),
                 kind: SensorKind::Control,
                 value: f,
@@ -73,15 +80,20 @@ pub struct SensorHub {
 
 impl Default for SensorHub {
     fn default() -> Self {
-        Self {
-            // LibreHardwareMonitor's own web server is Windows-only in practice;
-            // don't probe localhost ports on other platforms.
-            sources: if cfg!(target_os = "windows") {
-                vec![Box::new(lhm::LhmHttp::default())]
-            } else {
-                Vec::new()
-            },
+        #[allow(unused_mut)]
+        let mut sources: Vec<Box<dyn SensorSource>> = Vec::new();
+        #[cfg(debug_assertions)]
+        if let Some(fake) = pipe::FakeReplay::from_env() {
+            sources.push(Box::new(fake));
         }
+        // Both board sources are Windows-only; don't probe pipes or localhost
+        // ports elsewhere.
+        #[cfg(target_os = "windows")]
+        {
+            sources.push(Box::new(pipe::HelperPipe::default()));
+            sources.push(Box::new(lhm::LhmHttp::default()));
+        }
+        Self { sources }
     }
 }
 
@@ -92,9 +104,20 @@ impl SensorHub {
             if let Some(sensors) = source.read() {
                 report.sources.push(source.name().into());
                 report.sensors.extend(sensors);
+                break;
             }
         }
-        let nvml = from_gpus(gpus);
+        // NVML only for GPUs the board source didn't already cover.
+        let covered = |name: &str| {
+            report
+                .sensors
+                .iter()
+                .any(|s| s.hardware.eq_ignore_ascii_case(name))
+        };
+        let nvml: Vec<Sensor> = from_gpus(gpus)
+            .into_iter()
+            .filter(|s| !covered(&s.hardware))
+            .collect();
         if !nvml.is_empty() {
             report.sources.push("NVML".into());
             report.sensors.extend(nvml);
@@ -149,6 +172,7 @@ mod tests {
     fn hub_merges_available_sources_only() {
         let fan = Sensor {
             hardware: "Board".into(),
+            id: "/lpc/x/0/fan/0".into(),
             name: "Fan #1".into(),
             kind: SensorKind::Fan,
             value: 900.0,
@@ -162,6 +186,37 @@ mod tests {
         };
         let r = hub.read(&[]);
         assert_eq!(r.sources, vec!["Fixed".to_string()]);
-        assert_eq!(r.sensors, vec![fan]);
+        assert_eq!(r.sensors, vec![fan.clone()]);
+    }
+    #[test]
+    fn first_board_source_wins_and_nvml_fills_uncovered_gpus() {
+        let gpu_temp = Sensor {
+            hardware: "NVIDIA Example GPU".into(),
+            id: "/gpu-nvidia/0/temperature/0".into(),
+            name: "GPU Core".into(),
+            kind: SensorKind::Temperature,
+            value: 48.5,
+            source: "Fixed".into(),
+        };
+        let other = Sensor {
+            name: "Other".into(),
+            ..gpu_temp.clone()
+        };
+        let mut hub = SensorHub {
+            sources: vec![
+                Box::new(Fixed(Some(vec![gpu_temp.clone()]))),
+                Box::new(Fixed(Some(vec![other]))),
+            ],
+        };
+        let nvml = gpu("NVIDIA NVML driver", Some(48.0), Some(30.0));
+        let r = hub.read(std::slice::from_ref(&nvml));
+        assert_eq!(r.sensors, vec![gpu_temp]);
+        assert_eq!(r.sources, vec!["Fixed".to_string()]);
+        let mut empty = SensorHub {
+            sources: vec![Box::new(Fixed(None))],
+        };
+        let r = empty.read(&[nvml]);
+        assert_eq!(r.sources, vec!["NVML".to_string()]);
+        assert_eq!(r.sensors.len(), 2);
     }
 }

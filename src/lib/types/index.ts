@@ -196,10 +196,23 @@ export interface GpuDevice {
 /** winperf: temperatures and fans (LibreHardwareMonitor, NVML). */
 export interface Sensor {
   hardware: string;
+  /** e.g. "/lpc/example/0/fan/1"; "" when the source has none. */
+  id: string;
   name: string;
   kind: "temperature" | "fan" | "control";
   value: number;
   source: string;
+}
+/** winperf sensor helper setup (Windows); see src-tauri/src/sensors/setup.rs. */
+export interface SensorSetupStatus {
+  supported: boolean;
+  bundled: boolean;
+  pawnio_installed: boolean;
+  installed: boolean;
+  task: "missing" | "ok" | "mismatch" | "unknown";
+  update_available: boolean;
+  running: boolean;
+  fake: boolean;
 }
 export interface FrameExtra {
   sensors: { sensors: Sensor[]; sources: string[] };

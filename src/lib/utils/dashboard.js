@@ -222,3 +222,85 @@ export function formatSensor(s) {
   if (s.kind === "fan") return `${Math.round(s.value)} RPM`;
   return `${Math.round(s.value)} %`;
 }
+
+/** Natural order for sensor names ("Fan #2" before "Fan #10"). */
+const natural = new Intl.Collator("en", { numeric: true, sensitivity: "base" });
+
+/** Fan RPM sensors grouped by hardware (board first-seen order), names in
+ * natural order. 0 RPM fans are kept: stopped or not connected.
+ * @template {{ hardware: string, name: string, kind: string, value: number }} S
+ * @param {S[]} sensors
+ * @returns {{ hardware: string, fans: S[] }[]}
+ */
+export function fanGroups(sensors) {
+  return groupByHardware((sensors ?? []).filter((s) => s.kind === "fan"))
+    .map(({ hardware, sensors: fans }) => ({
+      hardware,
+      fans: [...fans].sort((a, b) => natural.compare(a.name, b.name)),
+    }))
+    .filter((g) => g.fans.length);
+}
+
+/** "1102 · 1349 RPM +2" for the spinning fans, or "" when none spin.
+ * @param {{ kind: string, value: number }[]} sensors
+ */
+export function fanText(sensors, max = 3) {
+  const spinning = fanGroups(/** @type {any[]} */ (sensors))
+    .flatMap((g) => g.fans)
+    .filter((f) => f.value > 0);
+  if (!spinning.length) return "";
+  const shown = spinning.slice(0, max).map((f) => Math.round(f.value));
+  const more = spinning.length - shown.length;
+  return `${shown.join(" · ")} RPM${more > 0 ? ` +${more}` : ""}`;
+}
+
+/** Sensors are sorted temperature, fan, duty within a hardware group.
+ * @template {{ kind: string, name: string }} S
+ * @param {S[]} list
+ */
+export function byKind(list) {
+  const rank = { temperature: 0, fan: 1, control: 2 };
+  return [...list].sort(
+    (a, b) =>
+      (rank[/** @type {keyof typeof rank} */ (a.kind)] ?? 3) -
+        (rank[/** @type {keyof typeof rank} */ (b.kind)] ?? 3) ||
+      natural.compare(a.name, b.name),
+  );
+}
+
+/** What the user has to do for fan/temperature readings, from the setup status.
+ * "none": nothing to offer (not Windows / dev build / already working).
+ * @param {{ supported: boolean, bundled: boolean, installed: boolean, task: string, update_available: boolean, running: boolean } | null | undefined} status
+ * @returns {"none" | "missing-files" | "enable" | "repair" | "update" | "starting" | "ready"}
+ */
+export function setupState(status) {
+  if (!status || !status.supported) return "none";
+  const done = status.installed && status.task === "ok";
+  if (done && status.update_available)
+    return status.bundled ? "update" : "ready";
+  if (done) return status.running ? "ready" : "starting";
+  if (!status.bundled) return "missing-files";
+  return status.installed || status.task !== "missing" ? "repair" : "enable";
+}
+
+/** The steps the elevated setup will take, shown before anything runs.
+ * @param {{ pawnio_installed: boolean, installed: boolean, task: string }} status
+ */
+export function setupSteps(status) {
+  const steps = [];
+  if (!status.pawnio_installed)
+    steps.push(
+      "Install the PawnIO driver from the bundled PawnIO_setup.exe (version 2.2.0, signed by its author namazso, GPL-2.0). Windows needs it so programs can read CPU and motherboard sensors.",
+    );
+  steps.push(
+    status.installed
+      ? "Replace the sensor helper in C:\\Program Files\\winperf\\sensors with the one bundled with this winperf."
+      : "Copy the read-only sensor helper (winperf-sensors.exe, built on LibreHardwareMonitorLib) to C:\\Program Files\\winperf\\sensors.",
+  );
+  steps.push(
+    status.task === "missing"
+      ? "Create the scheduled task \u201cwinperf-sensors\u201d that starts the helper with administrator rights when you sign in, without asking again, and start it now."
+      : "Re-create the scheduled task \u201cwinperf-sensors\u201d so it starts that helper when you sign in, and start it now.",
+  );
+  return steps;
+}

@@ -5,6 +5,7 @@
 //! `ImageURL`, `Children`; hardware nodes add `HardwareId`; sensor nodes add
 //! `SensorId`, `Type` and the unformatted `RawMin`/`RawValue`/`RawMax`.
 //! Older releases only have the formatted `Value` (e.g. "52,0 °C") and no `Type`.
+#![cfg_attr(not(target_os = "windows"), allow(dead_code))]
 use super::{Sensor, SensorKind, SensorSource};
 use serde_json::Value;
 use std::{
@@ -58,6 +59,7 @@ fn walk(node: &Value, path: &mut Vec<String>, hardware: Option<&str>, out: &mut 
             let fallback = path.len().checked_sub(2).map(|i| path[i].as_str());
             out.push(Sensor {
                 hardware: hardware.or(fallback).unwrap_or("Unknown").to_owned(),
+                id: node["SensorId"].as_str().unwrap_or_default().to_owned(),
                 name: text,
                 kind,
                 value,

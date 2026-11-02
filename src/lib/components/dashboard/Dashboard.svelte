@@ -26,7 +26,11 @@
     topBy,
     sensorSummary,
     formatSensor,
+    fanText,
+    setupState,
   } from "$lib/utils/dashboard.js";
+  import { onMount } from "svelte";
+  import { sensorSetup, refreshSensorSetup } from "$lib/stores/sensorSetup";
   import {
     Cpu,
     MemoryStick,
@@ -66,6 +70,16 @@
   }
   $: sensors = extra?.sensors.sensors ?? [];
   $: summary = sensorSummary(sensors);
+  $: fansLine = fanText(sensors);
+  // A board source (helper pipe / LHM) is answering; NVML alone isn't enough.
+  $: hasBoard = sensors.some((s) => s.source !== "NVML");
+  $: setup = setupState($sensorSetup);
+  $: offerSetup =
+    !hasBoard &&
+    ["enable", "repair", "update", "missing-files"].includes(setup);
+  onMount(() => void refreshSensorSetup());
+  // Re-check when the temp view opens or a board source appears/disappears.
+  $: if (detail === "temp" || hasBoard || !hasBoard) void refreshSensorSetup();
   $: lists = {
     cpu: topCpu ?? topBy(processes, (p) => p.cpu_usage),
     gpu:
@@ -339,25 +353,39 @@
             >
           </div>
           <div class="foot">
-            {#if summary.cpuTemp && summary.gpuTemp}GPU {formatSensor(
-                summary.gpuTemp,
-              )}{/if}
-            {#if summary.fan}{summary.cpuTemp && summary.gpuTemp
-                ? " · "
-                : ""}fan
-              {formatSensor(summary.fan)}{/if}
+            {[
+              summary.cpuTemp && summary.gpuTemp
+                ? `GPU ${formatSensor(summary.gpuTemp)}`
+                : "",
+              fansLine
+                ? `${compact ? "" : "Fans "}${fansLine}`
+                : summary.fan
+                  ? `fan ${formatSensor(summary.fan)}`
+                  : "",
+            ]
+              .filter(Boolean)
+              .join(" · ")}
           </div>
         {:else if summary.fan}
           <div class="big">{formatSensor(summary.fan)}</div>
-          <div class="foot">{summary.fan.name}</div>
-        {:else}
+          <div class="foot">{fansLine || summary.fan.name}</div>
+        {:else if !offerSetup}
           <div class="big muted">—</div>
           <p class="note">
-            {#if compact}No sensor source found. Open for how to enable.{:else}
-              No temperature or fan source found. Windows needs a hardware
-              monitor that exposes its sensors (see the card's detail view); no
+            {#if compact}No sensor source found. Open for details.{:else}
+              No temperature or fan source found. Open this card for details; no
               readings are faked.{/if}
           </p>
+        {/if}
+        {#if offerSetup}
+          <div class="big muted">—</div>
+          <span class="enable"
+            >{setup === "update"
+              ? "Update sensor helper"
+              : setup === "repair"
+                ? "Repair fan/temperature"
+                : "Enable fan/temperature"} ›</span
+          >
         {/if}
       </div>
     </section>
@@ -427,6 +455,18 @@
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 10px;
+  }
+  .enable {
+    align-self: flex-start;
+    max-width: 100%;
+    margin-top: 6px;
+    font-size: 11px;
+    font-weight: 600;
+    line-height: 1.3;
+    padding: 3px 9px;
+    border-radius: 10px;
+    color: #0b0f14;
+    background: var(--green, #4ade80);
   }
   .card {
     background: var(--card);

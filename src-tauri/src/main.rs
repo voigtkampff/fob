@@ -29,6 +29,10 @@ use tauri::Manager;
 /// - Failed to apply window effects
 /// - Failed to initialize the application state
 fn main() {
+    // winperf: elevated one-shot sensor setup/removal (relaunched via UAC).
+    if let Some(code) = sensors::setup::handle_cli() {
+        std::process::exit(code);
+    }
     #[cfg(target_os = "linux")]
     if std::env::var("XDG_SESSION_TYPE").unwrap_or_default() == "wayland" {
         std::env::set_var("WEBKIT_DISABLE_DMABUF_RENDERER", "1");
@@ -74,6 +78,8 @@ fn main() {
             companion::fit_companion,
             companion::open_main_window,
             companion::quit_app,
+            sensors::setup::sensor_setup_status,
+            sensors::setup::sensor_setup,
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application")

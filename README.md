@@ -23,11 +23,26 @@ follows below the line.
 - **Detail views (v0.3):** click a card for per-thread CPU and top processes,
   per-engine GPU and top GPU processes (PDH instance pids), memory with commit
   charge, all drives, per-adapter network, and all temperature/fan sensors.
-- **Temperatures and fans:** read from a running hardware monitor through a
-  swappable `SensorSource` (LibreHardwareMonitor's `data.json` today) plus NVIDIA
-  NVML. winperf installs no driver; without a source nothing is shown or faked.
+- **Temperatures and fans (v0.4):** an optional, read-only sensor helper
+  (`sensors-helper/`, .NET Framework 4.7.2 + LibreHardwareMonitorLib 0.9.6)
+  serves CPU / motherboard / GPU temperatures and fan speeds on the named pipe
+  `\\.\pipe\winperf-sensors`. "Enable fan/temperature" in the Temp & fan
+  card explains the steps first, then one UAC prompt installs the bundled
+  signed PawnIO driver if missing, copies the helper to
+  `%ProgramFiles%\winperf\sensors` (files checked against SHA-256 hashes
+  compiled into winperf.exe) and registers the `winperf-sensors` logon task.
+  winperf itself stays unelevated; "Disable" removes task and helper. Sources
+  sit behind `SensorSource`: helper pipe, else LibreHardwareMonitor's
+  `data.json`; NVIDIA NVML is always merged. Nothing is faked.
 - Not done yet: battery, health score, speed test, per-process network speed
   (needs ETW with admin rights).
+
+## Build the Windows package (cross-compiled on Linux)
+
+`scripts/package-windows.sh` builds the sensor helper (`sensors-helper/build.sh`,
+needs a .NET 8 SDK; runs the wire-format test), the frontend and the exe, and
+writes `dist/winperf-v<version>-x86_64-windows.zip` (portable folder:
+`winperf.exe`, `sensors/`, `PawnIO/`, `licenses/`).
 
 ## Build the Windows exe (cross-compiled on Linux)
 
