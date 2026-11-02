@@ -5,6 +5,7 @@ import type {
   SystemStats,
   ResourceSample,
   GpuDevice,
+  FrameExtra,
   MonitorSnapshot,
 } from "$lib/types";
 import { searchHasPortQuery } from "$lib/utils";
@@ -16,6 +17,7 @@ interface ProcessStore {
   processes: Process[];
   systemStats: SystemStats | null;
   gpus: GpuDevice[];
+  extra: FrameExtra | null;
   capturedAt: number;
   error: string | null;
   isLoading: boolean;
@@ -41,6 +43,7 @@ const initialState: ProcessStore = {
   processes: [],
   systemStats: null,
   gpus: [],
+  extra: null,
   capturedAt: 0,
   error: null,
   isLoading: true,
@@ -80,6 +83,7 @@ function createProcessStore() {
         processes: result.frame.processes,
         systemStats: result.frame.stats,
         gpus: result.frame.gpus,
+        extra: result.frame.extra ?? null,
         capturedAt: result.frame.captured_at,
         resourceHistory: result.history,
         isFrozen: result.paused,

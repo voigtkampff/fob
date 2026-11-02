@@ -1,7 +1,10 @@
 <script lang="ts">
   // winperf: card dashboard (default view). Reads only what NeoHtop's sampler
   // already provides: stats, GPU devices, the bounded history and processes.
+  import CardDetail from "./CardDetail.svelte";
+  import type { DetailKind } from "./detail";
   import type {
+    FrameExtra,
     GpuDevice,
     Process,
     ResourceSample,
@@ -20,6 +23,9 @@
     sparklinePath,
     systemVolume,
     topByMemory,
+    topBy,
+    sensorSummary,
+    formatSensor,
   } from "$lib/utils/dashboard.js";
   import {
     Cpu,
@@ -37,9 +43,38 @@
   export let processes: (Pick<
     Process,
     "pid" | "name" | "cpu_usage" | "memory_usage"
-  > & { command?: string })[] = [];
+  > & { command?: string; gpu_usage?: number | null })[] = [];
   /** winperf mini window (tray popup): tighter cards, no page title. */
   export let compact = false;
+  export let extra: FrameExtra | null = null;
+  /** Top lists from the backend (mini window); computed from `processes` otherwise. */
+  export let topCpu: typeof processes | null = null;
+  export let topGpu: typeof processes | null = null;
+  export let topMemory: typeof processes | null = null;
+  /** Cards open a detail view when clicked; `detail` is bindable (Esc handling). */
+  export let expandable = false;
+  export let detail: DetailKind | null = null;
+
+  function open(kind: DetailKind) {
+    if (expandable) detail = kind;
+  }
+  function openKey(event: KeyboardEvent, kind: DetailKind) {
+    if (event.key === "Enter" || event.key === " ") {
+      event.preventDefault();
+      open(kind);
+    }
+  }
+  $: sensors = extra?.sensors.sensors ?? [];
+  $: summary = sensorSummary(sensors);
+  $: lists = {
+    cpu: topCpu ?? topBy(processes, (p) => p.cpu_usage),
+    gpu:
+      topGpu ??
+      topBy(processes, (p) =>
+        p.gpu_usage != null && p.gpu_usage > 0 ? p.gpu_usage : null,
+      ),
+    memory: topMemory ?? topBy(processes, (p) => p.memory_usage),
+  };
 
   const W = 260;
   const H = 36;
@@ -86,184 +121,262 @@
 </script>
 
 <div class="dash" class:compact>
-  <header class="dash-header">
-    <div class="title" class:hidden={compact}>
-      <Activity class="size-5 text-[var(--green)]" />System
-    </div>
-    <div class="chips">
-      {#each chips as chip}<span class="chip">{chip}</span>{/each}
-    </div>
-  </header>
+  {#if detail}
+    <CardDetail
+      kind={detail}
+      {systemStats}
+      {gpus}
+      {history}
+      {sensors}
+      sources={extra?.sensors.sources ?? []}
+      commit={extra?.commit ?? null}
+      {lists}
+      {compact}
+      onBack={() => (detail = null)}
+    />
+  {:else}
+    <header class="dash-header">
+      <div class="title" class:hidden={compact}>
+        <Activity class="size-5 text-[var(--green)]" />System
+      </div>
+      <div class="chips">
+        {#each chips as chip}<span class="chip">{chip}</span>{/each}
+      </div>
+    </header>
 
-  <section class="grid" aria-label="System cards">
-    <article class="card">
-      <div class="card-head">
-        <span class="label"><Cpu class="size-3.5" />CPU</span>
-        <span class="chip">{cores.length} threads</span>
-      </div>
-      <div class="big">{formatPercent(cpu)}<small>%</small></div>
-      <div class="bars" aria-label="Per-core usage">
-        {#each cores as core}
-          <span
-            class="bar"
-            style={`height:${Math.max(6, Math.min(100, core))}%`}
-            title={`${core.toFixed(0)}%`}
-          ></span>
-        {/each}
-      </div>
-      <div class="foot">
-        {level(cpu)} · {identity.physical_cores ?? "?"} cores
-      </div>
-    </article>
-
-    <article class="card">
-      <div class="card-head">
-        <span class="label"><Gauge class="size-3.5" />GPU</span>
-        {#if gpu.name}<span class="chip ellipsis" title={gpu.name}
-            >{gpu.name}</span
-          >{/if}
-      </div>
-      <div class="big">
-        {formatPercent(gpu.percent)}{#if gpu.percent != null}<small>%</small
-          >{/if}
-      </div>
-      <svg viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none" class="spark">
-        <path
-          d={sparklinePath(gpuSeries, {
-            width: W,
-            height: H,
-            max: 100,
-            slots: SLOTS,
-          })}
-          class="line peach"
-        />
-      </svg>
-      <div class="foot">
-        {gpu.percent == null
-          ? gpus.length
-            ? "no live counter for this adapter yet"
-            : "no GPU detected"
-          : level(gpu.percent)}
-      </div>
-    </article>
-
-    <article class="card">
-      <div class="card-head">
-        <span class="label"><MemoryStick class="size-3.5" />Memory</span>
-        <span class="chip"
-          >{memPct != null && memPct >= 85 ? "High" : "Normal"}</span
-        >
-      </div>
-      <div class="big">{formatPercent(memPct)}<small>%</small></div>
-      <svg viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none" class="spark">
-        <path
-          d={sparklinePath(memSeries, {
-            width: W,
-            height: H,
-            max: 100,
-            slots: SLOTS,
-          })}
-          class="line yellow"
-        />
-      </svg>
-      <div class="foot">
-        {formatGB(systemStats.memory_used, 2)} / {formatGB(
-          systemStats.memory_total,
-          0,
-        )}
-      </div>
-    </article>
-
-    <article class="card">
-      <div class="card-head">
-        <span class="label"><HardDrive class="size-3.5" />Free space</span>
-        {#if volume}<span class="chip"
-            >{compact ? "" : `${volume.mount} · `}{formatGB(
-              volume.total,
-              0,
-            )}</span
-          >{/if}
-      </div>
-      {#if volume}
-        <div class="big">
-          {(volume.available / 1024 ** 3).toFixed(0)}<small>GB</small>
+    <section class="grid" aria-label="System cards">
+      <div
+        class="card"
+        class:clickable={expandable}
+        role="button"
+        tabindex={expandable ? 0 : -1}
+        onclick={() => open("cpu")}
+        onkeydown={(e) => openKey(e, "cpu")}
+      >
+        <div class="card-head">
+          <span class="label"><Cpu class="size-3.5" />CPU</span>
+          <span class="chip">{cores.length} threads</span>
         </div>
-        <div class="track">
-          <span class="fill" style={`width:${usedPct ?? 0}%`}></span>
+        <div class="big">{formatPercent(cpu)}<small>%</small></div>
+        <div class="bars" aria-label="Per-core usage">
+          {#each cores as core}
+            <span
+              class="bar"
+              style={`height:${Math.max(6, Math.min(100, core))}%`}
+              title={`${core.toFixed(0)}%`}
+            ></span>
+          {/each}
         </div>
         <div class="foot">
-          {formatGB(volume.total - volume.available, 0)} used · {formatPercent(
-            usedPct,
-          )}%
+          {level(cpu)} · {identity.physical_cores ?? "?"} cores
         </div>
-      {:else}
-        <div class="big">n/a</div>
-        <div class="foot">no volumes reported</div>
-      {/if}
-    </article>
-
-    <article class="card">
-      <div class="card-head">
-        <span class="label"><Globe class="size-3.5" />Network</span>
-        <span class="legend"
-          ><i class="dot blue"></i>{compact ? "↓" : "down"}
-          <i class="dot green"></i>{compact ? "↑" : "up"}</span
-        >
       </div>
-      <div class="big">{down.value}<small>{down.unit}</small></div>
-      <svg viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none" class="spark">
-        <path
-          d={sparklinePath(txSeries, {
-            width: W,
-            height: H,
-            max: netMax,
-            slots: SLOTS,
-          })}
-          class="line green"
-        />
-        <path
-          d={sparklinePath(rxSeries, {
-            width: W,
-            height: H,
-            max: netMax,
-            slots: SLOTS,
-          })}
-          class="line blue"
-        />
-      </svg>
-      <div class="foot">↑ {up.value} {up.unit}</div>
-    </article>
 
-    <article class="card">
-      <div class="card-head">
-        <span class="label"><Thermometer class="size-3.5" />Temp &amp; fan</span
-        >
-        <span class="chip">n/a</span>
-      </div>
-      <div class="big muted">—</div>
-      <p class="note">
-        {#if compact}Needs PawnIO or LibreHardwareMonitor; not connected.{:else}
-          CPU temperature and fan speed need a hardware driver on Windows
-          (PawnIO) or LibreHardwareMonitor running. Not connected yet, so no
-          readings are shown.{/if}
-      </p>
-    </article>
-  </section>
-
-  <section class="card procs" aria-label="Top processes by memory">
-    <div class="proc-row head">
-      <span>Top processes</span><span class="num">Memory</span><span class="num"
-        >% CPU</span
+      <div
+        class="card"
+        class:clickable={expandable}
+        role="button"
+        tabindex={expandable ? 0 : -1}
+        onclick={() => open("gpu")}
+        onkeydown={(e) => openKey(e, "gpu")}
       >
-    </div>
-    {#each top as p (p.pid)}
-      <div class="proc-row">
-        <span class="ellipsis" title={p.command || p.name}>{p.name}</span>
-        <span class="num">{formatGB(p.memory_usage, 2)}</span>
-        <span class="num">{p.cpu_usage.toFixed(1)}</span>
+        <div class="card-head">
+          <span class="label"><Gauge class="size-3.5" />GPU</span>
+          {#if gpu.name}<span class="chip ellipsis" title={gpu.name}
+              >{gpu.name}</span
+            >{/if}
+        </div>
+        <div class="big">
+          {formatPercent(gpu.percent)}{#if gpu.percent != null}<small>%</small
+            >{/if}
+        </div>
+        <svg viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none" class="spark">
+          <path
+            d={sparklinePath(gpuSeries, {
+              width: W,
+              height: H,
+              max: 100,
+              slots: SLOTS,
+            })}
+            class="line peach"
+          />
+        </svg>
+        <div class="foot">
+          {gpu.percent == null
+            ? gpus.length
+              ? "no live counter for this adapter yet"
+              : "no GPU detected"
+            : level(gpu.percent)}
+        </div>
       </div>
-    {/each}
-  </section>
+
+      <div
+        class="card"
+        class:clickable={expandable}
+        role="button"
+        tabindex={expandable ? 0 : -1}
+        onclick={() => open("memory")}
+        onkeydown={(e) => openKey(e, "memory")}
+      >
+        <div class="card-head">
+          <span class="label"><MemoryStick class="size-3.5" />Memory</span>
+          <span class="chip"
+            >{memPct != null && memPct >= 85 ? "High" : "Normal"}</span
+          >
+        </div>
+        <div class="big">{formatPercent(memPct)}<small>%</small></div>
+        <svg viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none" class="spark">
+          <path
+            d={sparklinePath(memSeries, {
+              width: W,
+              height: H,
+              max: 100,
+              slots: SLOTS,
+            })}
+            class="line yellow"
+          />
+        </svg>
+        <div class="foot">
+          {formatGB(systemStats.memory_used, 2)} / {formatGB(
+            systemStats.memory_total,
+            0,
+          )}
+        </div>
+      </div>
+
+      <div
+        class="card"
+        class:clickable={expandable}
+        role="button"
+        tabindex={expandable ? 0 : -1}
+        onclick={() => open("disk")}
+        onkeydown={(e) => openKey(e, "disk")}
+      >
+        <div class="card-head">
+          <span class="label"><HardDrive class="size-3.5" />Free space</span>
+          {#if volume}<span class="chip"
+              >{compact ? "" : `${volume.mount} · `}{formatGB(
+                volume.total,
+                0,
+              )}</span
+            >{/if}
+        </div>
+        {#if volume}
+          <div class="big">
+            {(volume.available / 1024 ** 3).toFixed(0)}<small>GB</small>
+          </div>
+          <div class="track">
+            <span class="fill" style={`width:${usedPct ?? 0}%`}></span>
+          </div>
+          <div class="foot">
+            {formatGB(volume.total - volume.available, 0)} used · {formatPercent(
+              usedPct,
+            )}%
+          </div>
+        {:else}
+          <div class="big">n/a</div>
+          <div class="foot">no volumes reported</div>
+        {/if}
+      </div>
+
+      <div
+        class="card"
+        class:clickable={expandable}
+        role="button"
+        tabindex={expandable ? 0 : -1}
+        onclick={() => open("network")}
+        onkeydown={(e) => openKey(e, "network")}
+      >
+        <div class="card-head">
+          <span class="label"><Globe class="size-3.5" />Network</span>
+          <span class="legend"
+            ><i class="dot blue"></i>{compact ? "↓" : "down"}
+            <i class="dot green"></i>{compact ? "↑" : "up"}</span
+          >
+        </div>
+        <div class="big">{down.value}<small>{down.unit}</small></div>
+        <svg viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none" class="spark">
+          <path
+            d={sparklinePath(txSeries, {
+              width: W,
+              height: H,
+              max: netMax,
+              slots: SLOTS,
+            })}
+            class="line green"
+          />
+          <path
+            d={sparklinePath(rxSeries, {
+              width: W,
+              height: H,
+              max: netMax,
+              slots: SLOTS,
+            })}
+            class="line blue"
+          />
+        </svg>
+        <div class="foot">↑ {up.value} {up.unit}</div>
+      </div>
+
+      <div
+        class="card"
+        class:clickable={expandable}
+        role="button"
+        tabindex={expandable ? 0 : -1}
+        onclick={() => open("temp")}
+        onkeydown={(e) => openKey(e, "temp")}
+      >
+        <div class="card-head">
+          <span class="label"
+            ><Thermometer class="size-3.5" />Temp &amp; fan</span
+          >
+          <span class="chip">{summary.count ? summary.count : "n/a"}</span>
+        </div>
+        {#if summary.cpuTemp || summary.gpuTemp}
+          <div class="big">
+            {(summary.cpuTemp ?? summary.gpuTemp)?.value.toFixed(0)}<small
+              >°C {summary.cpuTemp ? "CPU" : "GPU"}</small
+            >
+          </div>
+          <div class="foot">
+            {#if summary.cpuTemp && summary.gpuTemp}GPU {formatSensor(
+                summary.gpuTemp,
+              )}{/if}
+            {#if summary.fan}{summary.cpuTemp && summary.gpuTemp
+                ? " · "
+                : ""}fan
+              {formatSensor(summary.fan)}{/if}
+          </div>
+        {:else if summary.fan}
+          <div class="big">{formatSensor(summary.fan)}</div>
+          <div class="foot">{summary.fan.name}</div>
+        {:else}
+          <div class="big muted">—</div>
+          <p class="note">
+            {#if compact}No sensor source found. Open for how to enable.{:else}
+              No temperature or fan source found. Windows needs a hardware
+              monitor that exposes its sensors (see the card's detail view); no
+              readings are faked.{/if}
+          </p>
+        {/if}
+      </div>
+    </section>
+
+    <section class="card procs" aria-label="Top processes by memory">
+      <div class="proc-row head">
+        <span>Top processes</span><span class="num">Memory</span><span
+          class="num">% CPU</span
+        >
+      </div>
+      {#each top as p (p.pid)}
+        <div class="proc-row">
+          <span class="ellipsis" title={p.command || p.name}>{p.name}</span>
+          <span class="num">{formatGB(p.memory_usage, 2)}</span>
+          <span class="num">{p.cpu_usage.toFixed(1)}</span>
+        </div>
+      {/each}
+    </section>
+  {/if}
   <!-- TODO(winperf): per-process network speed needs ETW (admin); battery,
        health score and speed test are out of scope for v0.2. -->
 </div>
@@ -466,6 +579,17 @@
   }
   .hidden {
     display: none;
+  }
+  .card.clickable {
+    cursor: pointer;
+    transition:
+      border-color 120ms,
+      background 120ms;
+  }
+  .card.clickable:hover,
+  .card.clickable:focus-visible {
+    border-color: color-mix(in oklab, var(--foreground) 30%, var(--border));
+    outline: none;
   }
   /* winperf mini window: same cards, squeezed into ~340 px. */
   .dash.compact {

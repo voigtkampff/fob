@@ -17,8 +17,15 @@ follows below the line.
   per adapter, busiest engine like Task Manager; NVIDIA also via NVML), memory,
   free space on the system drive, network down/up with a 2-minute graph, and the
   top 5 processes by memory. NeoHtop's process table is the **Processes** tab.
-- **Temp & fan card is a placeholder:** reading CPU temperature/fan speed on
-  Windows needs a driver (PawnIO) or LibreHardwareMonitor; nothing is faked.
+- **Tray mini window (v0.3):** left-click the tray icon for a 360 px panel with
+  the same cards, sized to its content, hidden on focus loss or Esc. Closing the
+  main window keeps winperf in the tray; Quit is in the tray menu.
+- **Detail views (v0.3):** click a card for per-thread CPU and top processes,
+  per-engine GPU and top GPU processes (PDH instance pids), memory with commit
+  charge, all drives, per-adapter network, and all temperature/fan sensors.
+- **Temperatures and fans:** read from a running hardware monitor through a
+  swappable `SensorSource` (LibreHardwareMonitor's `data.json` today) plus NVIDIA
+  NVML. winperf installs no driver; without a source nothing is shown or faked.
 - Not done yet: battery, health score, speed test, per-process network speed
   (needs ETW with admin rights).
 

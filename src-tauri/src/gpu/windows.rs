@@ -9,7 +9,7 @@ use windows::Win32::System::Performance::{
     PdhOpenQueryW, PDH_FMT_COUNTERVALUE_ITEM_W, PDH_FMT_DOUBLE, PDH_HCOUNTER, PDH_HQUERY,
 };
 
-pub fn collect(busy: &BTreeMap<String, f64>) -> Vec<GpuDevice> {
+pub fn collect(busy: &engine_counters::EngineSnapshot) -> Vec<GpuDevice> {
     let mut result = Vec::new();
     // Enumeration only. DXGI capacity is not used as a utilization counter.
     unsafe {
@@ -36,7 +36,8 @@ pub fn collect(busy: &BTreeMap<String, f64>) -> Vec<GpuDevice> {
                 desc.AdapterLuid.HighPart, desc.AdapterLuid.LowPart
             );
             // winperf: utilization from PDH GPU engine counters (None if PDH failed).
-            let utilization = busy_for(busy, &id);
+            let utilization = busy_for(&busy.adapters, &id);
+            let engines = busy.engines.get(&id).cloned().unwrap_or_default();
             result.push(GpuDevice {
                 id,
                 name: String::from_utf16_lossy(&desc.Description[..end]),
@@ -67,6 +68,8 @@ pub fn collect(busy: &BTreeMap<String, f64>) -> Vec<GpuDevice> {
                     "Windows DXGI inventory; live counters unavailable for this adapter"
                 }
                 .into(),
+                fan_percent: None,
+                engines,
             });
             if result.len() == 8 {
                 break;
@@ -120,7 +123,7 @@ impl Query {
             Some(Self { query, counter })
         }
     }
-    fn sample(&mut self) -> Option<BTreeMap<String, f64>> {
+    fn sample(&mut self) -> Option<engine_counters::EngineSnapshot> {
         unsafe {
             if PdhCollectQueryData(self.query) != 0 {
                 return None;
@@ -128,7 +131,7 @@ impl Query {
             let (mut size, mut count) = (0u32, 0u32);
             PdhGetFormattedCounterArrayW(self.counter, PDH_FMT_DOUBLE, &mut size, &mut count, None);
             if size == 0 {
-                return Some(BTreeMap::new());
+                return Some(Default::default());
             }
             // u64 buffer keeps the item array 8-byte aligned.
             let mut buf = vec![0u64; (size as usize).div_ceil(8)];
@@ -154,7 +157,7 @@ impl Query {
                     )
                 })
                 .collect();
-            Some(engine_counters::adapter_utilization(
+            Some(engine_counters::engine_snapshot(
                 pairs.iter().map(|(n, v)| (n.as_str(), *v)),
             ))
         }
@@ -171,17 +174,17 @@ impl Drop for Query {
 
 impl EngineCounters {
     /// Empty map when PDH is unavailable; the query is reopened on the next call.
-    pub fn sample(&mut self) -> BTreeMap<String, f64> {
+    pub fn sample(&mut self) -> engine_counters::EngineSnapshot {
         if self.0.is_none() {
             self.0 = Query::open();
             // Fresh query: first rate sample comes on the next collection.
-            return BTreeMap::new();
+            return Default::default();
         }
         match self.0.as_mut().and_then(Query::sample) {
             Some(map) => map,
             None => {
                 self.0 = None;
-                BTreeMap::new()
+                Default::default()
             }
         }
     }

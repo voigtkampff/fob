@@ -158,3 +158,67 @@ export function sparklinePath(
   });
   return path;
 }
+
+/** Top `count` items by a numeric key (descending); items without a value are skipped.
+ * @template T
+ * @param {T[]} items
+ * @param {(item: T) => number | null | undefined} key
+ * @returns {T[]}
+ */
+export function topBy(items, key, count = 10) {
+  return (items ?? [])
+    .map((item) => ({ item, value: key(item) }))
+    .filter((x) => typeof x.value === "number" && Number.isFinite(x.value))
+    .sort(
+      (a, b) =>
+        /** @type {number} */ (b.value) - /** @type {number} */ (a.value),
+    )
+    .slice(0, count)
+    .map((x) => x.item);
+}
+
+/** Pick headline readings for the Temp & fan card.
+ * @param {{ hardware: string, name: string, kind: "temperature" | "fan" | "control", value: number }[]} sensors
+ */
+export function sensorSummary(sensors) {
+  const list = sensors ?? [];
+  const temps = list.filter((s) => s.kind === "temperature");
+  const isCpu = (/** @type {{ hardware: string, name: string }} */ s) =>
+    /cpu|core|ryzen|intel|package|tctl/i.test(`${s.hardware} ${s.name}`) &&
+    !/gpu|nvidia|radeon|geforce/i.test(`${s.hardware} ${s.name}`);
+  const cpuTemp =
+    temps.find((s) => /package|tctl|tdie/i.test(s.name) && isCpu(s)) ??
+    temps.find(isCpu) ??
+    null;
+  const gpuTemp =
+    temps.find((s) =>
+      /gpu|nvidia|radeon|geforce/i.test(`${s.hardware} ${s.name}`),
+    ) ?? null;
+  const fans = list.filter((s) => s.kind === "fan" && s.value > 0);
+  const fan = fans.length
+    ? fans.reduce((a, b) => (b.value > a.value ? b : a))
+    : (list.find((s) => s.kind === "control") ?? null);
+  return { cpuTemp, gpuTemp, fan, count: list.length };
+}
+
+/** Group sensors by hardware, keeping first-seen order.
+ * @template {{ hardware: string }} S
+ * @param {S[]} sensors
+ * @returns {{ hardware: string, sensors: S[] }[]}
+ */
+export function groupByHardware(sensors) {
+  /** @type {Map<string, S[]>} */
+  const groups = new Map();
+  for (const s of sensors ?? []) {
+    if (!groups.has(s.hardware)) groups.set(s.hardware, []);
+    /** @type {S[]} */ (groups.get(s.hardware)).push(s);
+  }
+  return [...groups].map(([hardware, list]) => ({ hardware, sensors: list }));
+}
+
+/** @param {{ kind: string, value: number }} s */
+export function formatSensor(s) {
+  if (s.kind === "temperature") return `${s.value.toFixed(0)} °C`;
+  if (s.kind === "fan") return `${Math.round(s.value)} RPM`;
+  return `${Math.round(s.value)} %`;
+}

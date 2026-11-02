@@ -14,6 +14,7 @@
   } from "$lib/stores/monitoring-preferences";
   import MenuBarOverview from "$lib/components/MenuBarOverview.svelte";
   import Dashboard from "$lib/components/dashboard/Dashboard.svelte";
+  import type { DetailKind } from "$lib/components/dashboard/detail";
   import { listen, type UnlistenFn } from "@tauri-apps/api/event";
   import { onMount, onDestroy } from "svelte";
   import {
@@ -74,6 +75,7 @@
   let expandedProcesses = new Set<string>();
   // winperf: card dashboard is the default tab; NeoHtop's table is "Processes".
   let tab: "dashboard" | "processes" = "dashboard";
+  let detail: DetailKind | null = null;
 
   function setProcessView(view: "flat" | "tree") {
     trackUsage("process_view_changed", view);
@@ -298,6 +300,12 @@
   });
 </script>
 
+<svelte:window
+  onkeydown={(event) => {
+    if (event.key === "Escape" && detail) detail = null;
+  }}
+/>
+
 {#if view === "settings"}
   <SettingsWindow />
 {:else if view === "about"}
@@ -331,6 +339,9 @@
         {#if error}<div class="alert" role="alert">{error}</div>{/if}
         {#if systemStats}
           <Dashboard
+            expandable
+            bind:detail
+            extra={$processStore.extra}
             {systemStats}
             {gpus}
             history={resourceHistory}

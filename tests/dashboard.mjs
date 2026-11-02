@@ -12,6 +12,10 @@ import {
   lastN,
   chartMax,
   sparklinePath,
+  topBy,
+  sensorSummary,
+  groupByHardware,
+  formatSensor,
 } from "../src/lib/utils/dashboard.js";
 
 assert.deepEqual(formatRate(null), { value: "—", unit: "" });
@@ -38,12 +42,27 @@ const vols = [
   { mount: "C:\\", total: 1000, available: 400 },
 ];
 assert.equal(systemVolume(vols)?.mount, "C:\\");
-assert.equal(systemVolume([{ mount: "/boot", total: 1, available: 1 }, { mount: "/", total: 9, available: 3 }])?.mount, "/");
-assert.equal(systemVolume([{ mount: "/a", total: 1, available: 1 }, { mount: "/b", total: 9, available: 3 }])?.mount, "/b");
+assert.equal(
+  systemVolume([
+    { mount: "/boot", total: 1, available: 1 },
+    { mount: "/", total: 9, available: 3 },
+  ])?.mount,
+  "/",
+);
+assert.equal(
+  systemVolume([
+    { mount: "/a", total: 1, available: 1 },
+    { mount: "/b", total: 9, available: 3 },
+  ])?.mount,
+  "/b",
+);
 assert.equal(systemVolume([]), null);
 
 assert.deepEqual(gpuSummary([]), { percent: null, name: null });
-assert.deepEqual(gpuSummary([{ name: "iGPU", utilization: null }]), { percent: null, name: "iGPU" });
+assert.deepEqual(gpuSummary([{ name: "iGPU", utilization: null }]), {
+  percent: null,
+  name: "iGPU",
+});
 assert.deepEqual(
   gpuSummary([
     { name: "iGPU", utilization: 3 },
@@ -59,19 +78,127 @@ const procs = [
   { pid: 2, memory_usage: 50 },
   { pid: 4, memory_usage: 5 },
 ];
-assert.deepEqual(topByMemory(procs, 3).map((p) => p.pid), [1, 2, 3]);
+assert.deepEqual(
+  topByMemory(procs, 3).map((p) => p.pid),
+  [1, 2, 3],
+);
 assert.equal(procs[0].pid, 3, "input is not mutated");
 
-assert.deepEqual(series([{ cpu: 1 }, { cpu: null }, { cpu: NaN }, {}], "cpu"), [1, null, null, null]);
+assert.deepEqual(series([{ cpu: 1 }, { cpu: null }, { cpu: NaN }, {}], "cpu"), [
+  1,
+  null,
+  null,
+  null,
+]);
 assert.deepEqual(lastN([1, 2, 3, 4], 2), [3, 4]);
 assert.deepEqual(lastN([1], 2), [1]);
 assert.equal(chartMax([[null, 10], [20]]), 1024);
 assert.equal(chartMax([[5000], [null]]), 5000);
 
 assert.equal(sparklinePath([], { width: 10, height: 10, max: 1 }), "");
-assert.equal(sparklinePath([0, 50, 100], { width: 100, height: 10, max: 100 }), "M0.0,10.0L50.0,5.0L100.0,0.0");
-assert.equal(sparklinePath([10, null, 10], { width: 2, height: 10, max: 10 }), "M0.0,0.0M2.0,0.0");
+assert.equal(
+  sparklinePath([0, 50, 100], { width: 100, height: 10, max: 100 }),
+  "M0.0,10.0L50.0,5.0L100.0,0.0",
+);
+assert.equal(
+  sparklinePath([10, null, 10], { width: 2, height: 10, max: 10 }),
+  "M0.0,0.0M2.0,0.0",
+);
 // fewer points than slots are right-aligned; values above max are clamped
-assert.equal(sparklinePath([200], { width: 100, height: 10, max: 100, slots: 3 }), "M100.0,0.0");
+assert.equal(
+  sparklinePath([200], { width: 100, height: 10, max: 100, slots: 3 }),
+  "M100.0,0.0",
+);
 
-console.log("PASS: dashboard formatting, volume/GPU selection, top processes, sparkline series");
+// detail views
+const ps = [
+  { pid: 1, cpu_usage: 5, gpu_usage: null },
+  { pid: 2, cpu_usage: 50, gpu_usage: 3 },
+  { pid: 3, cpu_usage: NaN, gpu_usage: 9 },
+];
+assert.deepEqual(
+  topBy(ps, (p) => p.cpu_usage).map((p) => p.pid),
+  [2, 1],
+);
+assert.deepEqual(
+  topBy(ps, (p) => p.gpu_usage, 1).map((p) => p.pid),
+  [3],
+);
+assert.deepEqual(
+  topBy(null, (p) => p),
+  [],
+);
+
+const sensors = [
+  { hardware: "Example Chip", name: "CPU", kind: "temperature", value: 41 },
+  {
+    hardware: "Example Hybrid CPU",
+    name: "Core Max",
+    kind: "temperature",
+    value: 55,
+  },
+  {
+    hardware: "Example Hybrid CPU",
+    name: "CPU Package",
+    kind: "temperature",
+    value: 52,
+  },
+  {
+    hardware: "NVIDIA Example GPU",
+    name: "GPU Core",
+    kind: "temperature",
+    value: 48.5,
+  },
+  { hardware: "Example Chip", name: "Fan #1", kind: "fan", value: 1102 },
+  { hardware: "Example Chip", name: "Fan #2", kind: "fan", value: 1349 },
+  {
+    hardware: "Example Chip",
+    name: "Fan #2 duty",
+    kind: "control",
+    value: 42,
+  },
+];
+const sum = sensorSummary(sensors);
+assert.equal(sum.cpuTemp?.name, "CPU Package");
+assert.equal(sum.gpuTemp?.name, "GPU Core");
+assert.equal(sum.fan?.name, "Fan #2");
+assert.equal(sum.count, 7);
+assert.deepEqual(sensorSummary([]), {
+  cpuTemp: null,
+  gpuTemp: null,
+  fan: null,
+  count: 0,
+});
+// NVML only: GPU temp + fan duty, no CPU temp
+const nv = sensorSummary([
+  {
+    hardware: "NVIDIA Example GPU",
+    name: "GPU core",
+    kind: "temperature",
+    value: 50,
+  },
+  {
+    hardware: "NVIDIA Example GPU",
+    name: "GPU fan",
+    kind: "control",
+    value: 30,
+  },
+]);
+assert.equal(nv.cpuTemp, null);
+assert.equal(nv.gpuTemp?.value, 50);
+assert.equal(nv.fan?.kind, "control");
+assert.deepEqual(
+  groupByHardware(sensors).map((g) => [g.hardware, g.sensors.length]),
+  [
+    ["Example Chip", 4],
+    ["Example Hybrid CPU", 2],
+    ["NVIDIA Example GPU", 1],
+  ],
+);
+assert.equal(formatSensor(sensors[2]), "52 °C");
+assert.equal(formatSensor(sensors[5]), "1349 RPM");
+assert.equal(formatSensor(sensors[6]), "42 %");
+
+console.log(
+  "PASS: dashboard formatting, volume/GPU selection, top processes, sparkline series",
+);

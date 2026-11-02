@@ -62,6 +62,8 @@ impl Nvidia {
                     core_clock_mhz: device.clock_info(Clock::Graphics).ok().map(u64::from),
                     cores: None,
                     source: "NVIDIA NVML driver".into(),
+                    fan_percent: device.fan_speed(0).ok().map(f64::from),
+                    engines: Vec::new(),
                 })
             })
             .collect()

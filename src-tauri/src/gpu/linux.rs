@@ -104,6 +104,8 @@ fn collect_from(root: &Path) -> Vec<GpuDevice> {
                 "Linux DRM inventory; utilization not exposed"
             }
             .into(),
+            fan_percent: None,
+            engines: Vec::new(),
         });
         if result.len() == 8 {
             break;

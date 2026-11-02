@@ -30,6 +30,10 @@ pub struct GpuDevice {
     pub core_clock_mhz: Option<u64>,
     pub cores: Option<u64>,
     pub source: String,
+    /// winperf: fan duty in percent (NVML), when the driver reports it.
+    pub fan_percent: Option<f64>,
+    /// winperf: (engine type, utilization %) on Windows PDH; empty elsewhere.
+    pub engines: Vec<(String, f64)>,
 }
 
 pub fn percent(value: f64) -> Option<f64> {
@@ -42,6 +46,8 @@ pub struct GpuMonitor {
     nvidia: nvidia::Nvidia,
     #[cfg(target_os = "windows")]
     engines: windows::EngineCounters,
+    /// winperf: pid -> GPU % from the last sample (Windows PDH only).
+    pub process_usage: std::collections::BTreeMap<u32, f64>,
 }
 
 impl GpuMonitor {
@@ -60,6 +66,7 @@ impl GpuMonitor {
                     .map(|d| d.name.trim_start_matches("NVIDIA ").to_lowercase())
                     .collect::<Vec<_>>();
                 let busy = self.engines.sample();
+                self.process_usage = busy.processes.clone();
                 for device in windows::collect(&busy) {
                     if device.vendor == "NVIDIA" {
                         let name = device.name.trim_start_matches("NVIDIA ").to_lowercase();

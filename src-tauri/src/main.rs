@@ -12,6 +12,7 @@ mod monitoring;
 mod native_icons;
 mod preferences;
 mod sampling;
+mod sensors;
 mod state;
 mod telemetry;
 mod ui;

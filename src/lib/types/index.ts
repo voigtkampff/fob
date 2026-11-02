@@ -188,6 +188,23 @@ export interface GpuDevice {
   core_clock_mhz: number | null;
   cores: number | null;
   source: string;
+  /** winperf: NVML fan duty %. */
+  fan_percent?: number | null;
+  /** winperf: [engine type, utilization %] from Windows PDH. */
+  engines?: [string, number][];
+}
+/** winperf: temperatures and fans (LibreHardwareMonitor, NVML). */
+export interface Sensor {
+  hardware: string;
+  name: string;
+  kind: "temperature" | "fan" | "control";
+  value: number;
+  source: string;
+}
+export interface FrameExtra {
+  sensors: { sensors: Sensor[]; sources: string[] };
+  /** Windows commit charge [used, limit] in bytes. */
+  commit: [number, number] | null;
 }
 export interface MonitorSnapshot {
   port_error?: string | null;
@@ -197,6 +214,7 @@ export interface MonitorSnapshot {
     processes: Process[];
     stats: SystemStats;
     gpus: GpuDevice[];
+    extra?: FrameExtra;
   };
   history: ResourceSample[];
   paused: boolean;
@@ -208,11 +226,17 @@ export interface OverviewSnapshot {
   stats: SystemStats;
   gpus: GpuDevice[];
   history: ResourceSample[];
-  processes: Pick<
-    Process,
-    "pid" | "start_time" | "name" | "cpu_usage" | "memory_usage"
-  >[];
+  processes: BusyProcess[];
+  top_cpu: BusyProcess[];
+  top_gpu: BusyProcess[];
+  top_memory: BusyProcess[];
+  extra: FrameExtra;
   paused: boolean;
   interval: number;
   error: string | null;
 }
+
+export type BusyProcess = Pick<
+  Process,
+  "pid" | "start_time" | "name" | "cpu_usage" | "memory_usage" | "gpu_usage"
+>;

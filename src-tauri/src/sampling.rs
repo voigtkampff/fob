@@ -32,6 +32,33 @@ pub struct Frame {
     pub processes: Vec<ProcessInfo>,
     pub stats: SystemStats,
     pub gpus: Vec<GpuDevice>,
+    /// winperf additions (sensors, commit charge).
+    pub extra: Extra,
+}
+#[derive(Clone, Debug, Default, Serialize)]
+pub struct Extra {
+    pub sensors: crate::sensors::SensorReport,
+    /// Windows commit charge (used, limit) in bytes.
+    pub commit: Option<(u64, u64)>,
+}
+#[cfg(target_os = "windows")]
+fn commit_charge() -> Option<(u64, u64)> {
+    use windows::Win32::System::SystemInformation::{GlobalMemoryStatusEx, MEMORYSTATUSEX};
+    let mut status = MEMORYSTATUSEX {
+        dwLength: std::mem::size_of::<MEMORYSTATUSEX>() as u32,
+        ..Default::default()
+    };
+    unsafe { GlobalMemoryStatusEx(&mut status) }.ok()?;
+    Some((
+        status
+            .ullTotalPageFile
+            .saturating_sub(status.ullAvailPageFile),
+        status.ullTotalPageFile,
+    ))
+}
+#[cfg(not(target_os = "windows"))]
+fn commit_charge() -> Option<(u64, u64)> {
+    None
 }
 #[derive(Clone, Debug, Serialize)]
 pub struct Sample {
@@ -223,7 +250,21 @@ impl Hub {
         } else {
             self.gpu_process_monitor.reset();
         }
-        let gpus = state.gpu.lock().map_err(|e| e.to_string())?.collect();
+        let gpus = {
+            let mut gpu = state.gpu.lock().map_err(|e| e.to_string())?;
+            let gpus = gpu.collect();
+            // winperf: Windows PDH per-process GPU % (Linux uses DRM fdinfo above).
+            for process in &mut processes {
+                if process.gpu_usage.is_none() {
+                    process.gpu_usage = gpu.process_usage.get(&process.pid).map(|v| *v as f32);
+                }
+            }
+            gpus
+        };
+        let extra = Extra {
+            sensors: state.sensors.lock().map_err(|e| e.to_string())?.read(&gpus),
+            commit: commit_charge(),
+        };
         self.sequence += 1;
         Ok(Frame {
             captured_at: now_ms(),
@@ -231,17 +272,51 @@ impl Hub {
             processes,
             stats,
             gpus,
+            extra,
         })
     }
 }
 
-#[derive(Serialize)]
+#[derive(Clone, Serialize)]
 pub struct BusyProcess {
     pub pid: u32,
     pub start_time: u64,
     pub name: String,
     pub cpu_usage: f32,
     pub memory_usage: u64,
+    pub gpu_usage: Option<f32>,
+}
+impl BusyProcess {
+    fn of(p: &ProcessInfo) -> Self {
+        Self {
+            pid: p.pid,
+            start_time: p.start_time,
+            name: p.name.clone(),
+            cpu_usage: p.cpu_usage,
+            memory_usage: p.memory_usage,
+            gpu_usage: p.gpu_usage,
+        }
+    }
+}
+/// winperf: top `n` processes by a key (descending), ties by pid.
+fn top_by<K: PartialOrd>(
+    processes: &[ProcessInfo],
+    n: usize,
+    key: impl Fn(&ProcessInfo) -> Option<K>,
+) -> Vec<BusyProcess> {
+    let mut list: Vec<(&ProcessInfo, K)> = processes
+        .iter()
+        .filter_map(|p| key(p).map(|k| (p, k)))
+        .collect();
+    list.sort_by(|a, b| {
+        b.1.partial_cmp(&a.1)
+            .unwrap_or(std::cmp::Ordering::Equal)
+            .then_with(|| a.0.pid.cmp(&b.0.pid))
+    });
+    list.into_iter()
+        .take(n)
+        .map(|(p, _)| BusyProcess::of(p))
+        .collect()
 }
 #[derive(Serialize)]
 pub struct Overview {
@@ -250,36 +325,32 @@ pub struct Overview {
     pub gpus: Vec<GpuDevice>,
     pub history: Vec<Sample>,
     pub processes: Vec<BusyProcess>,
+    /// winperf detail views.
+    pub top_cpu: Vec<BusyProcess>,
+    pub top_gpu: Vec<BusyProcess>,
+    pub top_memory: Vec<BusyProcess>,
+    pub extra: Extra,
     pub paused: bool,
     pub interval: u64,
     pub error: Option<String>,
 }
 impl From<Snapshot> for Overview {
     fn from(s: Snapshot) -> Self {
-        let mut processes = s.frame.processes.iter().collect::<Vec<_>>();
+        let all = &s.frame.processes;
         // winperf: the mini window lists the top processes by memory.
-        processes.sort_by(|a, b| {
-            b.memory_usage
-                .cmp(&a.memory_usage)
-                .then_with(|| b.cpu_usage.total_cmp(&a.cpu_usage))
-                .then_with(|| a.pid.cmp(&b.pid))
-        });
+        let top_memory = top_by(all, 10, |p| Some(p.memory_usage));
         Self {
             captured_at: s.frame.captured_at,
             stats: s.frame.stats.clone(),
             gpus: s.frame.gpus.clone(),
             history: s.history,
-            processes: processes
-                .into_iter()
-                .take(5)
-                .map(|p| BusyProcess {
-                    pid: p.pid,
-                    start_time: p.start_time,
-                    name: p.name.clone(),
-                    cpu_usage: p.cpu_usage,
-                    memory_usage: p.memory_usage,
-                })
-                .collect(),
+            processes: top_memory.iter().take(5).cloned().collect(),
+            top_cpu: top_by(all, 10, |p| p.cpu_usage.is_finite().then_some(p.cpu_usage)),
+            top_gpu: top_by(all, 10, |p| {
+                p.gpu_usage.filter(|g| g.is_finite() && *g > 0.0)
+            }),
+            top_memory,
+            extra: s.frame.extra.clone(),
             paused: s.paused,
             interval: s.interval,
             error: s.error,
@@ -386,6 +457,9 @@ mod tests {
         assert_eq!(resumed.frame.sequence, main.frame.sequence + 1);
         let overview: Overview = resumed.into();
         assert!(overview.processes.len() <= 5);
+        assert!(overview.top_cpu.len() <= 10);
+        let mem: Vec<u64> = overview.top_memory.iter().map(|p| p.memory_usage).collect();
+        assert!(mem.windows(2).all(|w| w[0] >= w[1]));
     }
     #[test]
     fn gpu_history_keeps_adapter_identity_and_real_zeros() {
@@ -405,6 +479,8 @@ mod tests {
             core_clock_mhz: None,
             cores: None,
             source: "Fixture".into(),
+            fan_percent: None,
+            engines: Vec::new(),
         };
         let frame = Frame {
             captured_at: 10000,
@@ -416,6 +492,7 @@ mod tests {
                 device("adapter-b", Some(75.0)),
                 device("adapter-c", None),
             ],
+            extra: Extra::default(),
         };
         let sample = Sample::from_frame(&frame, 3000);
         let mut history = VecDeque::new();

@@ -6,6 +6,7 @@
   import { Button } from "$lib/components/ui/button/index.js";
   import { Pause, Play, Maximize2, Power } from "@lucide/svelte";
   import Dashboard from "./dashboard/Dashboard.svelte";
+  import type { DetailKind } from "./dashboard/detail";
   import { themeStore } from "$lib/stores/theme";
   import type { OverviewSnapshot } from "$lib/types";
   let data: OverviewSnapshot | null = null;
@@ -20,6 +21,9 @@
   const listeners: UnlistenFn[] = [];
   // winperf: the window height follows the panel's content (clamped natively).
   let panel: HTMLDivElement;
+  // Stable wrapper: Dashboard swaps its root elements when a detail opens.
+  let body: HTMLDivElement;
+  let detail: DetailKind | null = null;
   let resize: ResizeObserver | undefined;
   let lastHeight = 0;
   function fit() {
@@ -71,6 +75,7 @@
   }
   async function visibility(value: boolean) {
     visible = value;
+    if (!visible) detail = null; // reopen on the cards
     clearTimeout(poll);
     clearInterval(ticker);
     if (visible && !destroyed) {
@@ -99,7 +104,7 @@
   onMount(() => {
     document.documentElement.dataset.companion = "true";
     resize = new ResizeObserver(fit);
-    for (const child of panel?.children ?? []) resize.observe(child);
+    if (body) resize.observe(body);
     if (panel) resize.observe(panel);
     themeStore.init();
     void (async () => {
@@ -137,7 +142,10 @@
 
 <svelte:window
   on:keydown={(event) => {
-    if (event.key === "Escape") void invoke("hide_companion");
+    if (event.key !== "Escape") return;
+    // winperf: Esc closes an open detail view first, then hides the window.
+    if (detail) detail = null;
+    else void invoke("hide_companion");
   }}
 />
 
@@ -180,20 +188,28 @@
         onclick={() => invoke("quit_app")}><Power /></Button
       >
     </div>
-    {#if error}<div role="alert" class="mini-error">
-        {error}<Button variant="link" size="sm" onclick={read}>Retry</Button>
-      </div>{/if}
-    {#if data}
-      <Dashboard
-        compact
-        systemStats={data.stats}
-        gpus={data.gpus}
-        history={data.history}
-        processes={data.processes}
-      />
-    {:else}
-      <p class="p-4 text-xs text-muted-foreground">Reading this machine…</p>
-    {/if}
+    <div bind:this={body}>
+      {#if error}<div role="alert" class="mini-error">
+          {error}<Button variant="link" size="sm" onclick={read}>Retry</Button>
+        </div>{/if}
+      {#if data}
+        <Dashboard
+          compact
+          expandable
+          bind:detail
+          extra={data.extra}
+          topCpu={data.top_cpu}
+          topGpu={data.top_gpu}
+          topMemory={data.top_memory}
+          systemStats={data.stats}
+          gpus={data.gpus}
+          history={data.history}
+          processes={data.processes}
+        />
+      {:else}
+        <p class="p-4 text-xs text-muted-foreground">Reading this machine…</p>
+      {/if}
+    </div>
   </div>
 </div>
 

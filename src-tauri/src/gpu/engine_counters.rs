@@ -43,6 +43,7 @@ pub fn parse_instance(name: &str) -> Option<EngineInstance<'_>> {
 
 /// Map of adapter id -> utilization percent (0..=100). Unparseable instances and
 /// non-finite values are ignored.
+#[cfg(test)]
 pub fn adapter_utilization<'a>(
     samples: impl IntoIterator<Item = (&'a str, f64)>,
 ) -> BTreeMap<String, f64> {
@@ -64,6 +65,53 @@ pub fn adapter_utilization<'a>(
         *entry = entry.max(busy.min(100.0));
     }
     adapters
+}
+
+/// winperf detail view: per-adapter engine-type loads and per-process GPU %.
+#[derive(Debug, Default, Clone, PartialEq)]
+pub struct EngineSnapshot {
+    /// adapter id -> busiest engine (same as `adapter_utilization`).
+    pub adapters: BTreeMap<String, f64>,
+    /// adapter id -> (engine type, busiest engine of that type), by type name.
+    pub engines: BTreeMap<String, Vec<(String, f64)>>,
+    /// pid -> that process's busiest engine on any adapter.
+    pub processes: BTreeMap<u32, f64>,
+}
+
+pub fn engine_snapshot<'a>(samples: impl IntoIterator<Item = (&'a str, f64)>) -> EngineSnapshot {
+    let mut engines: BTreeMap<(String, u32, u32), (String, f64)> = BTreeMap::new();
+    let mut processes: BTreeMap<u32, f64> = BTreeMap::new();
+    for (name, value) in samples {
+        let Some(i) = parse_instance(name) else {
+            continue;
+        };
+        if !value.is_finite() || value < 0.0 {
+            continue;
+        }
+        let busy = processes.entry(i.pid).or_default();
+        *busy = busy.max(value.min(100.0));
+        let slot = engines
+            .entry((i.adapter, i.phys, i.engine))
+            .or_insert_with(|| (i.engine_type.to_owned(), 0.0));
+        slot.1 += value;
+    }
+    let mut snapshot = EngineSnapshot {
+        processes,
+        ..Default::default()
+    };
+    let mut by_type: BTreeMap<String, BTreeMap<String, f64>> = BTreeMap::new();
+    for ((adapter, _, _), (kind, busy)) in engines {
+        let busy = busy.min(100.0);
+        let top = snapshot.adapters.entry(adapter.clone()).or_default();
+        *top = top.max(busy);
+        let entry = by_type.entry(adapter).or_default().entry(kind).or_default();
+        *entry = entry.max(busy);
+    }
+    snapshot.engines = by_type
+        .into_iter()
+        .map(|(adapter, kinds)| (adapter, kinds.into_iter().collect()))
+        .collect();
+    snapshot
 }
 
 #[cfg(test)]
@@ -121,5 +169,35 @@ mod tests {
         assert_eq!(u["luid:0:a"], 100.0);
         assert_eq!(u["luid:0:c"], 0.0);
         assert!(adapter_utilization([]).is_empty());
+    }
+
+    #[test]
+    fn snapshot_breaks_down_engine_types_and_processes() {
+        let snap = engine_snapshot([
+            ("pid_10_luid_0x0_0xA_phys_0_eng_0_engtype_3D", 20.0),
+            ("pid_11_luid_0x0_0xA_phys_0_eng_0_engtype_3D", 15.0),
+            ("pid_11_luid_0x0_0xA_phys_0_eng_1_engtype_3D", 50.0),
+            ("pid_11_luid_0x0_0xA_phys_0_eng_5_engtype_VideoDecode", 4.0),
+            ("pid_12_luid_0x0_0xB_phys_0_eng_0_engtype_Copy", 2.0),
+            ("not an instance", 80.0),
+        ]);
+        assert_eq!(snap.adapters["luid:0:a"], 50.0);
+        assert_eq!(snap.adapters["luid:0:b"], 2.0);
+        assert_eq!(
+            snap.engines["luid:0:a"],
+            vec![("3D".to_string(), 50.0), ("VideoDecode".to_string(), 4.0)]
+        );
+        assert_eq!(snap.processes[&10], 20.0);
+        assert_eq!(snap.processes[&11], 50.0);
+        assert_eq!(snap.processes[&12], 2.0);
+        // Same per-adapter answer as the simple aggregation.
+        let samples = [
+            ("pid_1_luid_0x0_0xA_phys_0_eng_0_engtype_3D", 80.0),
+            ("pid_2_luid_0x0_0xA_phys_0_eng_0_engtype_3D", 70.0),
+        ];
+        assert_eq!(
+            engine_snapshot(samples).adapters,
+            adapter_utilization(samples)
+        );
     }
 }

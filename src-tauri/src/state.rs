@@ -16,6 +16,8 @@ pub struct AppState {
     pub icons: Mutex<crate::native_icons::IconCache>,
     pub hub: Mutex<crate::sampling::Hub>,
     pub gpu: Mutex<crate::gpu::GpuMonitor>,
+    /// winperf: temperatures and fans (LibreHardwareMonitor, NVML).
+    pub sensors: Mutex<crate::sensors::SensorHub>,
     /// System information handler
     pub sys: Mutex<System>,
     /// Networks information handler
@@ -45,6 +47,7 @@ impl AppState {
             icons: Mutex::new(crate::native_icons::IconCache::default()),
             hub: Mutex::new(crate::sampling::Hub::default()),
             gpu: Mutex::new(crate::gpu::GpuMonitor::default()),
+            sensors: Mutex::new(crate::sensors::SensorHub::default()),
             process_monitor: Mutex::new(ProcessMonitor::new()),
             system_monitor: Mutex::new(SystemMonitor::new(&networks)),
             sys: Mutex::new(sys),
