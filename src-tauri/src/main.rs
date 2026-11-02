@@ -41,6 +41,8 @@ fn main() {
 
     tauri::Builder::default()
         .setup(|app| {
+            // Fob: settings from the winperf era (before the rename) carry over once.
+            preferences::carry_over_winperf_settings(app.handle());
             let window = app.get_webview_window("main").unwrap();
             ui::setup_window_effects(&window).expect("Failed to apply window effects");
             companion::native_frame(app.handle());

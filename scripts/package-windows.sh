@@ -1,31 +1,32 @@
 #!/usr/bin/env bash
 # Build the portable Windows folder + zip from Linux:
-#   dist/winperf-v<ver>-x86_64-windows.zip  ->  winperf-v<ver>/{winperf.exe, sensors/, PawnIO/, licenses/, README.txt}
+#   dist/fob-v<ver>-x86_64-windows.zip  ->  fob-v<ver>/{fob.exe, sensors/, PawnIO/, licenses/, README.txt}
 # Needs: node/npm, cargo-xwin + llvm (see README), a .NET 8 SDK (sensors-helper/build.sh).
 set -euo pipefail
 cd "$(dirname "$0")/.."
 VER=$(node -p "require('./package.json').version")
-NAME=winperf-v$VER
+NAME=fob-v$VER
 sensors-helper/build.sh              # stages sensors-helper/dist + manifest (embedded by build.rs)
 npm run build
 (cd src-tauri && cargo xwin build --target x86_64-pc-windows-msvc --release)
 STAGE=$(mktemp -d)
 OUT=$STAGE/$NAME
 mkdir -p "$OUT"
-cp src-tauri/target/x86_64-pc-windows-msvc/release/winperf.exe "$OUT/"
+# The cargo crate is still called winperf; the shipped exe is fob.exe.
+cp src-tauri/target/x86_64-pc-windows-msvc/release/winperf.exe "$OUT/fob.exe"
 cp -r sensors-helper/dist/sensors sensors-helper/dist/PawnIO sensors-helper/dist/licenses "$OUT/"
-cp LICENSE "$OUT/licenses/winperf-LICENSE.txt"
+cp LICENSE "$OUT/licenses/Fob-LICENSE.txt"
 cp LICENSE "$OUT/LICENSE.txt"
 cat > "$OUT/README.txt" <<TXT
-winperf $VER (portable, Windows 10/11 x64)
+Fob $VER (portable, Windows 10/11 x64)
 
-Run winperf.exe. Keep this folder together: the "sensors" and "PawnIO"
+Run fob.exe. Keep this folder together: the "sensors" and "PawnIO"
 folders are only used if you choose "Enable fan/temperature" in the
-Temp & fan card. winperf explains each step and Windows asks for permission
+Temp & fan card. Fob explains each step and Windows asks for permission
 (UAC) once before anything is installed:
   - PawnIO driver (only if it is not installed yet),
-  - the read-only helper copied to C:\Program Files\winperf\sensors,
-  - the scheduled task "winperf-sensors" that starts it when you sign in
+  - the read-only helper copied to C:\Program Files\Fob\sensors,
+  - the scheduled task "fob-sensors" that starts it when you sign in
     (it also counts per-app network traffic for the Network detail).
 PawnIO's own installer window opens for the driver step.
 "Disable..." in the same place removes the task and the helper again.

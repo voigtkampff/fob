@@ -8,7 +8,7 @@ export const ASCII_ART = `
 `;
 
 export const APP_INFO = {
-  name: "winperf",
+  name: "Fob",
   developer: "Abdenasser",
   github: "https://github.com/Abdenasser/neohtop",
   stack: ["Tauri", "Rust", "Svelte", "TypeScript"],

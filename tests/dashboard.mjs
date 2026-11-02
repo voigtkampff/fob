@@ -285,9 +285,33 @@ console.log(
     task: "missing",
     update_available: false,
     running: false,
+    legacy: false,
     fake: false,
   };
   assert.equal(setupState(null), "none");
+  // winperf 0.4 still installed: offer the move to Fob first, whatever else.
+  assert.equal(setupState({ ...base, legacy: true }), "migrate");
+  assert.equal(
+    setupState({
+      ...base,
+      legacy: true,
+      installed: true,
+      task: "ok",
+      running: true,
+    }),
+    "migrate",
+  );
+  assert.equal(
+    setupState({ ...base, legacy: true, bundled: false }),
+    "missing-files",
+  );
+  const moving = setupSteps({ ...base, legacy: true, pawnio_installed: true });
+  assert.equal(moving.length, 3);
+  assert.match(
+    moving[0],
+    /winperf-sensors.*C:\\Program Files\\winperf\\sensors/,
+  );
+  assert.match(moving[1], /C:\\Program Files\\Fob\\sensors/);
   assert.equal(setupState({ ...base, supported: false }), "none");
   assert.equal(setupState(base), "enable");
   assert.equal(setupState({ ...base, bundled: false }), "missing-files");
@@ -300,8 +324,8 @@ console.log(
   const fresh = setupSteps(base);
   assert.equal(fresh.length, 3);
   assert.match(fresh[0], /PawnIO driver/);
-  assert.match(fresh[1], /C:\\Program Files\\winperf\\sensors/);
-  assert.match(fresh[2], /“winperf-sensors”/);
+  assert.match(fresh[1], /C:\\Program Files\\Fob\\sensors/);
+  assert.match(fresh[2], /“fob-sensors”/);
   const again = setupSteps(done);
   assert.equal(again.length, 2); // driver already there: no driver step
   assert.match(again[0], /^Replace/);

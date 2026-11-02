@@ -1,48 +1,56 @@
-# winperf
+# Fob
 
-winperf is a Windows performance monitor (target: Windows 10/11 x64), built as a
-fork of [NeoHtop](https://github.com/Abdenasser/neohtop) by Abdenasser
-(MIT, see [LICENSE](LICENSE)). winperf adds a card dashboard on top of NeoHtop's
-process monitor; everything else is NeoHtop's work. The original NeoHtop README
-follows below the line.
+Fob (formerly winperf) is a Windows performance monitor (target: Windows 10/11
+x64), built as a fork of [NeoHtop](https://github.com/Abdenasser/neohtop) by
+Abdenasser (MIT, see [LICENSE](LICENSE)). Fob adds a card dashboard on top of
+NeoHtop's process monitor; everything else is NeoHtop's work. The original
+NeoHtop README follows below the line. The repository and the Rust crate keep
+the old name `winperf`; everything shipped is called Fob (`fob.exe`,
+`fob-sensors.exe`).
 
 - Branch `main` tracks NeoHtop's `main` (remote `upstream`, fetch only), so
   upstream changes can be merged in with `git fetch upstream && git merge upstream/main`.
 - Branch `master` holds the original winperf CLI bootstrap; `egui-wip` the stopped egui attempt.
 
-## What winperf adds
+## What Fob adds
 
-- **Dashboard tab (default):** dark card panel with CPU (% + per-core bars), GPU
+- **Dashboard tab (default):** card panel with CPU (% + per-core bars), GPU
   (% from the Windows PDH counter `\GPU Engine(*)\Utilization Percentage`,
   per adapter, busiest engine like Task Manager; NVIDIA also via NVML), memory,
   free space on the system drive, network down/up with a 2-minute graph, and the
   top 5 processes by memory. NeoHtop's process table is the **Processes** tab.
-- **Tray mini window (v0.3):** left-click the tray icon for a 360 px panel with
-  the same cards, sized to its content, hidden on focus loss or Esc. Closing the
-  main window keeps winperf in the tray; Quit is in the tray menu.
-- **Detail views (v0.3):** click a card for per-thread CPU and top processes,
-  per-engine GPU and top GPU processes (PDH instance pids), memory with commit
-  charge, all drives, per-adapter network, and all temperature/fan sensors.
-- **Temperatures and fans (v0.4):** an optional, read-only sensor helper
+- **Tray mini window:** left-click the tray icon for a 360 px panel with the
+  same cards, sized to its content, hidden on focus loss or Esc. Starts in the
+  tray by default; closing the main window keeps Fob in the tray; Quit is in the
+  tray menu. No native menu bar: settings, About and Quit are in the title-bar
+  menu (Ctrl+, opens settings).
+- **Detail views:** click a card for per-thread CPU and top processes,
+  per-engine GPU and top GPU processes, memory with commit charge, all drives,
+  per-app network speeds and adapters, and all temperature/fan sensors.
+- **Chinese and English (v0.5):** follows the Windows display language;
+  switch in Settings or the tray menu.
+- **Sensor helper (v0.4/v0.5):** an optional, read-only helper
   (`sensors-helper/`, .NET Framework 4.7.2 + LibreHardwareMonitorLib 0.9.6)
-  serves CPU / motherboard / GPU temperatures and fan speeds on the named pipe
-  `\\.\pipe\winperf-sensors`. "Enable fan/temperature" in the Temp & fan
-  card explains the steps first, then one UAC prompt installs the bundled
-  signed PawnIO driver if missing, copies the helper to
-  `%ProgramFiles%\winperf\sensors` (files checked against SHA-256 hashes
-  compiled into winperf.exe) and registers the `winperf-sensors` logon task.
-  winperf itself stays unelevated; "Disable" removes task and helper. Sources
-  sit behind `SensorSource`: helper pipe, else LibreHardwareMonitor's
-  `data.json`; NVIDIA NVML is always merged. Nothing is faked.
-- Not done yet: battery, health score, speed test, per-process network speed
-  (needs ETW with admin rights).
+  serves temperatures, fan speeds and, while Fob is connected, per-process
+  network bytes from an ETW session (Microsoft-Windows-Kernel-Network) on the
+  named pipe `\\.\pipe\fob-sensors`. "Enable fan/temperature" explains the
+  steps first, then one UAC prompt installs the bundled signed PawnIO driver if
+  missing (its own installer window), copies the helper to
+  `%ProgramFiles%\Fob\sensors` (files checked against SHA-256 hashes compiled
+  into fob.exe) and registers the `fob-sensors` logon task through the Task
+  Scheduler API. Fob itself stays unelevated; "Disable" removes task and
+  helper. An existing winperf 0.4 helper (`winperf-sensors` task,
+  `%ProgramFiles%\winperf\sensors`) is detected and replaced in the same
+  single prompt, with consent. Nothing is faked.
+- **No telemetry:** NeoHtop's usage analytics were removed.
+- Not done: battery, health score, speed test.
 
 ## Build the Windows package (cross-compiled on Linux)
 
 `scripts/package-windows.sh` builds the sensor helper (`sensors-helper/build.sh`,
 needs a .NET 8 SDK; runs the wire-format test), the frontend and the exe, and
-writes `dist/winperf-v<version>-x86_64-windows.zip` (portable folder:
-`winperf.exe`, `sensors/`, `PawnIO/`, `licenses/`).
+writes `dist/fob-v<version>-x86_64-windows.zip` (portable folder: `fob.exe`,
+`sensors/`, `PawnIO/`, `licenses/`, `SHA256SUMS.txt`).
 
 ## Build the Windows exe (cross-compiled on Linux)
 
@@ -55,10 +63,12 @@ Windows 10/11. The VC runtime and WebView2Loader are linked statically
 export PATH=/workspace/tools/xbin:/workspace/tools/llvm-mingw-20261020-ucrt-ubuntu-22.04-x86_64/bin:$HOME/.cargo/bin:$PATH
 npm ci && npm run build                     # frontend -> build/ (embedded into the exe)
 cd src-tauri && cargo xwin build --target x86_64-pc-windows-msvc --release
-# -> src-tauri/target/x86_64-pc-windows-msvc/release/winperf.exe
+# -> src-tauri/target/x86_64-pc-windows-msvc/release/winperf.exe (shipped as fob.exe)
 ```
 
-Tests: `cd src-tauri && cargo test` (Linux needs the webkit2gtk-4.1 / gtk3 dev packages).
+Tests: `cd src-tauri && cargo test` (Linux needs the webkit2gtk-4.1 / gtk3 dev
+packages), `npm run test:dashboard`, `npm run test:i18n`, `npm run check`, and
+the helper's wire test in `sensors-helper/build.sh`.
 
 ---
 

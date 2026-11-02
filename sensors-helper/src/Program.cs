@@ -4,10 +4,10 @@
 // the named pipe \\.\pipe\winperf-sensors, one JSON line per second.
 //  - Never changes anything: IsControllerEnabled = false and no SetSoftware()
 //    call exists in this program. Fan "Control" values are only read.
-//  - Started at logon by the "winperf-sensors" scheduled task (highest
+//  - Started at logon by the "fob-sensors" scheduled task (highest
 //    privileges). It keeps running; while no client is connected it does not
 //    touch the hardware, it only sleeps.
-//  - While a client is connected it also runs the "winperf-net" ETW session
+//  - While a client is connected it also runs the "fob-net" ETW session
 //    (Microsoft-Windows-Kernel-Network) for per-process network bytes; it is
 //    stopped as soon as no client is connected, and on exit.
 //  - LibreHardwareMonitorLib takes global mutexes around ISA/SMBus access, so
@@ -26,7 +26,7 @@ namespace WinperfSensors
 {
     static class Program
     {
-        const string PipeName = "winperf-sensors";
+        const string PipeName = "fob-sensors";
         const int MaxClients = 4;
 
         sealed class Snapshot
@@ -45,7 +45,7 @@ namespace WinperfSensors
         static int Main(string[] args)
         {
             bool fresh;
-            using (var mutex = new Mutex(true, @"Local\winperf-sensors-helper", out fresh))
+            using (var mutex = new Mutex(true, @"Local\fob-sensors-helper", out fresh))
             {
                 if (!fresh) return 0; // already running in this session
                 try
@@ -231,7 +231,7 @@ namespace WinperfSensors
             {
                 lock (logLock)
                 {
-                    var path = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "winperf-sensors.log");
+                    var path = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "fob-sensors.log");
                     var info = new FileInfo(path);
                     if (info.Exists && info.Length > 256 * 1024) info.Delete();
                     File.AppendAllText(path, DateTime.Now.ToString("s") + " " + message + Environment.NewLine);

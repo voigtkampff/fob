@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 # Build the read-only sensor helper (.NET Framework 4.7.2) from Linux and stage
-# everything winperf bundles next to winperf.exe:
-#   dist/sensors/            winperf-sensors.exe + LibreHardwareMonitorLib and deps
+# everything Fob bundles next to fob.exe:
+#   dist/sensors/            fob-sensors.exe + LibreHardwareMonitorLib and deps
 #   dist/PawnIO/             PawnIO_setup.exe 2.2.0 (signed by namazso, pinned sha256)
 #   dist/licenses/           MPL-2.0, LHM third-party notices, PawnIO GPL-2.0, ...
-#   dist/manifest.sha256     hashes winperf.exe embeds and checks before the
+#   dist/manifest.sha256     hashes fob.exe embeds and checks before the
 #                            elevated setup copies or runs any of these files
 # Needs a .NET 8 SDK: $DOTNET, /workspace/tools/dotnet/dotnet or dotnet on PATH.
 set -euo pipefail

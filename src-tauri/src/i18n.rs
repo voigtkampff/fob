@@ -43,7 +43,7 @@ pub fn tray(locale: Locale) -> Tray {
             language: "Language",
             auto: "Automatic (Windows)",
             quit: "Quit",
-            tooltip: "winperf — system overview",
+            tooltip: "Fob — system overview",
         },
         Locale::Zh => Tray {
             show_mini: "显示迷你窗口",
@@ -52,7 +52,7 @@ pub fn tray(locale: Locale) -> Tray {
             language: "语言",
             auto: "自动（跟随 Windows）",
             quit: "退出",
-            tooltip: "winperf — 系统概览",
+            tooltip: "Fob — 系统概览",
         },
     }
 }

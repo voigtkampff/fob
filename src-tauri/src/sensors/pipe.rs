@@ -12,8 +12,8 @@ use serde_json::Value;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{SystemTime, UNIX_EPOCH};
 
-pub const PIPE_PATH: &str = r"\\.\pipe\winperf-sensors";
-pub const SOURCE: &str = "winperf sensor helper";
+pub const PIPE_PATH: &str = r"\\.\pipe\fob-sensors";
+pub const SOURCE: &str = "Fob sensor helper";
 
 /// Unix ms of the last line received from the helper (0 = never).
 static LAST_LINE: AtomicU64 = AtomicU64::new(0);
@@ -246,7 +246,7 @@ impl FakeReplay {
 #[cfg(debug_assertions)]
 impl SensorSource for FakeReplay {
     fn name(&self) -> &'static str {
-        "winperf sensor helper (debug fixture replay)"
+        "Fob sensor helper (debug fixture replay)"
     }
     fn read(&mut self) -> Option<Vec<Sensor>> {
         let line = &self.lines[self.next % self.lines.len()];

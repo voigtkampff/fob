@@ -301,11 +301,13 @@ export function byKind(list) {
 
 /** What the user has to do for fan/temperature readings, from the setup status.
  * "none": nothing to offer (not Windows / dev build / already working).
- * @param {{ supported: boolean, bundled: boolean, installed: boolean, task: string, update_available: boolean, running: boolean } | null | undefined} status
- * @returns {"none" | "missing-files" | "enable" | "repair" | "update" | "starting" | "ready"}
+ * "migrate": the winperf 0.4 helper is still installed; Fob replaces it.
+ * @param {{ supported: boolean, bundled: boolean, installed: boolean, task: string, update_available: boolean, running: boolean, legacy?: boolean } | null | undefined} status
+ * @returns {"none" | "missing-files" | "migrate" | "enable" | "repair" | "update" | "starting" | "ready"}
  */
 export function setupState(status) {
   if (!status || !status.supported) return "none";
+  if (status.legacy) return status.bundled ? "migrate" : "missing-files";
   const done = status.installed && status.task === "ok";
   if (done && status.update_available)
     return status.bundled ? "update" : "ready";
@@ -315,11 +317,12 @@ export function setupState(status) {
 }
 
 /** The steps the elevated setup will take, shown before anything runs.
- * @param {{ pawnio_installed: boolean, installed: boolean, task: string }} status
+ * @param {{ pawnio_installed: boolean, installed: boolean, task: string, legacy?: boolean }} status
  * @param {Translate} [t]
  */
 export function setupSteps(status, t = tEn) {
   const steps = [];
+  if (status.legacy) steps.push(t("steps.legacy"));
   if (!status.pawnio_installed) steps.push(t("steps.pawnio"));
   steps.push(t(status.installed ? "steps.replace" : "steps.copy"));
   steps.push(t(status.task === "missing" ? "steps.task" : "steps.retask"));

@@ -190,7 +190,7 @@ fn configure(
         TrayIconBuilder::with_id(TRAY_ID)
             .icon(ghost())
             .icon_as_template(true)
-            .tooltip("winperf — system overview")
+            .tooltip("Fob — system overview")
             .menu(&menu)
             .menu_on_left_click(false)
             .on_menu_event(|app, event| {

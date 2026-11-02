@@ -1,9 +1,9 @@
-winperf bundles the following third-party components
-=====================================================
+Fob bundles the following third-party components
+==================================================
 
-sensors\  (winperf-sensors.exe, winperf's read-only sensor helper)
-  winperf-sensors.exe: part of winperf (MIT, see LICENSE.txt). Source:
-    sensors-helper/ in the winperf repository.
+sensors\  (fob-sensors.exe, Fob's read-only sensor helper)
+  fob-sensors.exe: part of Fob (MIT, see LICENSE.txt). Source:
+    sensors-helper/ in the Fob source repository.
   LibreHardwareMonitorLib.dll 0.9.6: Mozilla Public License 2.0
     (LibreHardwareMonitor-LICENSE-MPL-2.0.txt). Unmodified NuGet package.
     Source: https://github.com/LibreHardwareMonitor/LibreHardwareMonitor
@@ -22,5 +22,5 @@ PawnIO\PawnIO_setup.exe  (PawnIO 2.2.0 driver installer, unmodified)
   Official release: https://github.com/namazso/PawnIO.Setup/releases/tag/2.2.0
   Source: https://github.com/namazso/PawnIO and https://github.com/namazso/PawnIO.Modules
   SHA-256 1f519a22e47187f70a1379a48ca604981c4fcf694f4e65b734aaa74a9fba3032,
-  Authenticode-signed by namazso.eu. winperf only runs it, after asking you,
+  Authenticode-signed by namazso.eu. Fob only runs it, after asking you,
   with "-install -silent" when PawnIO is not installed yet.

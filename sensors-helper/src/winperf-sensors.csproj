@@ -6,14 +6,14 @@
     <LangVersion>latest</LangVersion>
     <PlatformTarget>x64</PlatformTarget>
     <RuntimeIdentifier>win-x64</RuntimeIdentifier>
-    <AssemblyName>winperf-sensors</AssemblyName>
+    <AssemblyName>fob-sensors</AssemblyName>
     <RootNamespace>WinperfSensors</RootNamespace>
     <Version>0.5.0</Version>
     <!-- VERSIONINFO. CompanyName lives in one place: src-tauri/Cargo.toml. -->
     <Company>$([System.Text.RegularExpressions.Regex]::Match($([System.IO.File]::ReadAllText('$(MSBuildThisFileDirectory)../../src-tauri/Cargo.toml')), 'CompanyName = "([^"]*)"').Groups[1].Value)</Company>
-    <Product>winperf</Product>
-    <AssemblyTitle>winperf sensor helper (read-only)</AssemblyTitle>
-    <Description>Reads temperatures, fan speeds and per-app network bytes for winperf. Never changes hardware settings.</Description>
+    <Product>Fob</Product>
+    <AssemblyTitle>Fob sensor helper (read-only)</AssemblyTitle>
+    <Description>Reads temperatures, fan speeds and per-app network bytes for Fob. Never changes hardware settings.</Description>
     <Copyright>Copyright (c) 2026 the owner</Copyright>
     <Deterministic>true</Deterministic>
     <IncludeSourceRevisionInInformationalVersion>false</IncludeSourceRevisionInInformationalVersion>

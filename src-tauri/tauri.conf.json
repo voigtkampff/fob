@@ -22,10 +22,10 @@
     },
     "targets": "all"
   },
-  "productName": "winperf",
-  "mainBinaryName": "winperf",
+  "productName": "Fob",
+  "mainBinaryName": "fob",
   "version": "0.5.0",
-  "identifier": "com.hcb.winperf",
+  "identifier": "com.hcb.fob",
   "plugins": {
     "os": {
       "all": true
@@ -39,7 +39,7 @@
         "theme": "Dark",
         "height": 900,
         "resizable": true,
-        "title": "winperf",
+        "title": "Fob",
         "width": 1280,
         "minWidth": 1120,
         "minHeight": 700,
@@ -52,7 +52,7 @@
       {
         "label": "overview",
         "url": "/?view=companion",
-        "title": "winperf mini",
+        "title": "Fob mini",
         "width": 360,
         "height": 640,
         "visible": false,
@@ -80,7 +80,7 @@
       {
         "label": "about",
         "url": "/?view=about",
-        "title": "About winperf",
+        "title": "About Fob",
         "width": 520,
         "height": 400,
         "visible": false,

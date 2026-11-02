@@ -12,7 +12,7 @@ namespace WinperfSensors
 {
     sealed class NetTrace : IDisposable
     {
-        public const string SessionName = "winperf-net";
+        public const string SessionName = "fob-net";
         static readonly Guid KernelNetwork = new Guid("7dd42a49-5329-4832-8dfd-43d979153a88");
         const ulong KeywordIpv4 = 0x10, KeywordIpv6 = 0x20;
 
