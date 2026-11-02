@@ -215,8 +215,6 @@ export interface SensorSetupStatus {
   task: "missing" | "ok" | "mismatch" | "unknown";
   update_available: boolean;
   running: boolean;
-  /** The winperf 0.4 helper (task "winperf-sensors") is still installed. */
-  legacy: boolean;
   fake: boolean;
 }
 export interface FrameExtra {

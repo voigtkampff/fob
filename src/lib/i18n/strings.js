@@ -17,8 +17,6 @@ export const en = {
   "uptime.kind.cold": "full boot",
   "uptime.kind.fast": "Fast Startup",
   "uptime.kind.hibernate": "resume from hibernation",
-  "steps.legacy":
-    "Stop the winperf 0.4 sensor helper and delete its scheduled task “winperf-sensors” and its folder C:\\Program Files\\winperf\\sensors.",
   "steps.pawnio":
     "Install the PawnIO driver from the bundled PawnIO_setup.exe (version 2.2.0, signed by its author namazso, GPL-2.0). Its own installer window opens; Windows needs it so programs can read CPU and motherboard sensors.",
   "steps.replace":
@@ -58,10 +56,6 @@ export const en = {
   "dash.updateHelper": "Update sensor helper",
   "dash.repair": "Repair fan/temperature",
   "dash.enable": "Enable fan/temperature",
-  "dash.migrate": "Move sensor helper to Fob",
-  "dash.migrateBanner":
-    "The winperf 0.4 sensor helper is still installed. Fob uses its own; move to it with one Windows prompt.",
-  "dash.migrateOpen": "Review…",
   "dash.topProcs": "Top processes",
   "dash.topByMemory": "Top processes by memory",
   "dash.cpuPct": "% CPU",
@@ -125,8 +119,6 @@ export const en = {
   "setup.repairMore": "Repair…",
   "setup.needHelper":
     "CPU, motherboard and fan sensors and per-app network speeds need Fob's read-only sensor helper. It is set up once, with your permission.",
-  "setup.migrate":
-    "winperf 0.4's sensor helper (task “winperf-sensors”) is still installed and Fob can't use it. Fob replaces it with its own helper: the old one is stopped and its task and folder are deleted.",
   "setup.newer":
     "This Fob comes with a newer sensor helper than the installed one.",
   "setup.incomplete":
@@ -237,8 +229,6 @@ export const zh = {
   "uptime.kind.cold": "完整启动",
   "uptime.kind.fast": "快速启动",
   "uptime.kind.hibernate": "从休眠恢复",
-  "steps.legacy":
-    "停止 winperf 0.4 的传感器助手，删除其计划任务“winperf-sensors”和文件夹 C:\\Program Files\\winperf\\sensors。",
   "steps.pawnio":
     "从随附的 PawnIO_setup.exe 安装 PawnIO 驱动（2.2.0 版，由作者 namazso 签名，GPL-2.0）。会打开它自己的安装窗口；Windows 需要它才能让程序读取 CPU 和主板传感器。",
   "steps.replace":
@@ -278,10 +268,6 @@ export const zh = {
   "dash.updateHelper": "更新传感器助手",
   "dash.repair": "修复风扇/温度",
   "dash.enable": "启用风扇/温度",
-  "dash.migrate": "将传感器助手迁移到 Fob",
-  "dash.migrateBanner":
-    "winperf 0.4 的传感器助手仍已安装。Fob 使用自己的助手，只需一次 Windows 提示即可迁移。",
-  "dash.migrateOpen": "查看…",
   "dash.topProcs": "进程排行",
   "dash.topByMemory": "按内存排序的进程",
   "dash.cpuPct": "% CPU",
@@ -345,8 +331,6 @@ export const zh = {
   "setup.repairMore": "修复…",
   "setup.needHelper":
     "CPU、主板、风扇传感器以及各应用网速需要 Fob 的只读传感器助手。只需在你同意后设置一次。",
-  "setup.migrate":
-    "winperf 0.4 的传感器助手（任务“winperf-sensors”）仍已安装，Fob 无法使用它。Fob 会用自己的助手替换它：停止旧助手并删除其任务和文件夹。",
   "setup.newer": "此版本 Fob 附带的传感器助手比已安装的更新。",
   "setup.incomplete": "传感器助手设置不完整或指向了其他位置。",
   "setup.running": "传感器助手正在运行。",

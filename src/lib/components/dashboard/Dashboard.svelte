@@ -77,7 +77,7 @@
   $: setup = setupState($sensorSetup);
   $: offerSetup =
     !hasBoard &&
-    ["migrate", "enable", "repair", "update", "missing-files"].includes(setup);
+    ["enable", "repair", "update", "missing-files"].includes(setup);
   onMount(() => void refreshSensorSetup());
   // Re-check when the temp view opens or a board source appears/disappears.
   $: if (detail === "temp" || hasBoard || !hasBoard) void refreshSensorSetup();
@@ -169,14 +169,6 @@
       </div>
     </header>
 
-    {#if setup === "migrate" && !compact}
-      <div class="migrate" role="status">
-        <span>{$t("dash.migrateBanner")}</span>
-        <button onclick={() => (detail = "temp")}
-          >{$t("dash.migrateOpen")}</button
-        >
-      </div>
-    {/if}
     <section class="grid" aria-label={$t("dash.cards")}>
       <div
         class="card"
@@ -408,13 +400,11 @@
         {#if offerSetup}
           <div class="big muted">—</div>
           <span class="enable"
-            >{setup === "migrate"
-              ? $t("dash.migrate")
-              : setup === "update"
-                ? $t("dash.updateHelper")
-                : setup === "repair"
-                  ? $t("dash.repair")
-                  : $t("dash.enable")} ›</span
+            >{setup === "update"
+              ? $t("dash.updateHelper")
+              : setup === "repair"
+                ? $t("dash.repair")
+                : $t("dash.enable")} ›</span
           >
         {/if}
       </div>
@@ -439,22 +429,6 @@
 </div>
 
 <style>
-  .migrate {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 12px;
-    padding: 8px 12px;
-    border-radius: 10px;
-    font-size: 12px;
-    border: 1px solid color-mix(in oklab, var(--blue) 45%, transparent);
-    background: color-mix(in oklab, var(--blue) 10%, transparent);
-  }
-  .migrate button {
-    flex-shrink: 0;
-    font-weight: 600;
-    color: var(--blue);
-  }
   .dash {
     flex: 1;
     min-height: 0;

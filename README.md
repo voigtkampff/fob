@@ -39,9 +39,7 @@ the old name `winperf`; everything shipped is called Fob (`fob.exe`,
   `%ProgramFiles%\Fob\sensors` (files checked against SHA-256 hashes compiled
   into fob.exe) and registers the `fob-sensors` logon task through the Task
   Scheduler API. Fob itself stays unelevated; "Disable" removes task and
-  helper. An existing winperf 0.4 helper (`winperf-sensors` task,
-  `%ProgramFiles%\winperf\sensors`) is detected and replaced in the same
-  single prompt, with consent. Nothing is faked.
+  helper. Nothing is faked.
 - **No telemetry:** NeoHtop's usage analytics were removed.
 - Not done: battery, health score, speed test.
 

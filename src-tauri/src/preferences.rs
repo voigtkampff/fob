@@ -180,25 +180,6 @@ pub fn startup_from(saved: Option<&Value>) -> Startup {
         language: config["behavior"]["language"].as_str().map(str::to_owned),
     }
 }
-/// Fob was called winperf (identifier com.hcb.winperf) until v0.5.0:
-/// copy its settings.json once if Fob has none yet. Returns whether it copied.
-pub fn carry_over(new_dir: &std::path::Path, old_dir: &std::path::Path) -> std::io::Result<bool> {
-    let (new, old) = (new_dir.join("settings.json"), old_dir.join("settings.json"));
-    if new.exists() || !old.is_file() {
-        return Ok(false);
-    }
-    fs::create_dir_all(new_dir)?;
-    fs::copy(&old, &new)?;
-    Ok(true)
-}
-pub fn carry_over_winperf_settings(app: &AppHandle) {
-    let Ok(dir) = app.path().app_config_dir() else {
-        return;
-    };
-    if let Some(old) = dir.parent().map(|p| p.join("com.hcb.winperf")) {
-        let _ = carry_over(&dir, &old);
-    }
-}
 pub fn startup(app: &AppHandle) -> Startup {
     let saved = app
         .path()
@@ -254,30 +235,6 @@ mod tests {
         assert_eq!(bad.language.as_deref(), Some("auto"));
         // Unreadable file: treat as existing with defaults.
         assert!(startup_from(Some(&Value::Null)).start_in_tray);
-    }
-    #[test]
-    fn winperf_settings_carry_over_once() {
-        let root = std::env::temp_dir().join(format!("fob-carry-{}", std::process::id()));
-        let (old, new) = (root.join("com.hcb.winperf"), root.join("com.hcb.fob"));
-        let _ = fs::remove_dir_all(&root);
-        // Nothing to carry.
-        assert!(!carry_over(&new, &old).unwrap());
-        fs::create_dir_all(&old).unwrap();
-        fs::write(
-            old.join("settings.json"),
-            r#"{"behavior":{"startInTray":false}}"#,
-        )
-        .unwrap();
-        assert!(carry_over(&new, &old).unwrap());
-        assert_eq!(
-            fs::read_to_string(new.join("settings.json")).unwrap(),
-            r#"{"behavior":{"startInTray":false}}"#
-        );
-        // Fob's own settings are never overwritten.
-        fs::write(new.join("settings.json"), "{}").unwrap();
-        assert!(!carry_over(&new, &old).unwrap());
-        assert_eq!(fs::read_to_string(new.join("settings.json")).unwrap(), "{}");
-        let _ = fs::remove_dir_all(&root);
     }
     #[test]
     fn independent_patches_do_not_overwrite_other_windows() {

@@ -5,10 +5,10 @@
 //!  1. checks the bundled files against the SHA-256 manifest compiled into
 //!     this exe (built by sensors-helper/build.sh),
 //!  2. installs the bundled, signed PawnIO driver if it is missing,
-//!  3. copies the helper to %ProgramFiles%\winperf\sensors (admin-only
+//!  3. copies the helper to %ProgramFiles%\Fob\sensors (admin-only
 //!     writable, so nothing unelevated can swap the exe the task runs elevated)
 //!     and re-checks the copies,
-//!  4. registers the `winperf-sensors` task (at logon, highest privileges,
+//!  4. registers the `fob-sensors` task (at logon, highest privileges,
 //!     interactive token) and starts it.
 //! Because the task points at the Program Files copy, moving winperf.exe does
 //! not break it; a changed bundled helper shows up as `update_available`.
@@ -52,26 +52,8 @@ pub struct SetupStatus {
     pub update_available: bool,
     /// The helper answered on the pipe within the last seconds.
     pub running: bool,
-    /// The winperf 0.4 helper (task "winperf-sensors" or
-    /// %ProgramFiles%\winperf\sensors) is still installed.
-    pub legacy: bool,
     /// Debug-only simulated status (screenshots).
     pub fake: bool,
-}
-
-/// What the old (pre-rename) install looks like from here.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum LegacyTask {
-    Present,
-    Missing,
-    /// Couldn't ask Task Scheduler (access denied / service down).
-    Unknown,
-}
-
-/// winperf 0.4 is installed if its task exists or its folder is still there.
-/// An unreadable task alone doesn't count: nothing to offer then.
-pub fn legacy_present(task: LegacyTask, dir_exists: bool) -> bool {
-    task == LegacyTask::Present || dir_exists
 }
 
 /// Parse `sha256  path` lines (sha256sum format).
@@ -208,7 +190,6 @@ pub fn exit_message(code: i32) -> String {
         12 => "Couldn't copy the sensor helper to Program Files.".into(),
         13 => "Couldn't create the fob-sensors scheduled task.".into(),
         14 => "Couldn't remove the fob-sensors scheduled task.".into(),
-        15 => "Couldn't remove the old winperf sensor helper (task winperf-sensors or C:\\Program Files\\winperf\\sensors).".into(),
         c => format!("Setup failed (code {c})."),
     }
 }
@@ -237,21 +218,10 @@ pub fn installed_helper() -> PathBuf {
     install_dir().join(HELPER_EXE)
 }
 
-/// The app was called winperf until v0.5.0: its task, ETW session and folder.
-pub const LEGACY_TASK: &str = "winperf-sensors";
-pub const LEGACY_NET_SESSION: &str = "winperf-net";
-pub fn legacy_install_dir() -> PathBuf {
-    install_dir()
-        .parent()
-        .and_then(Path::parent)
-        .map(|programs| programs.join("winperf").join("sensors"))
-        .unwrap_or_else(|| PathBuf::from(r"C:\Program Files\winperf\sensors"))
-}
-
 #[cfg(debug_assertions)]
 fn fake_status() -> Option<SetupStatus> {
     let mode = std::env::var("WINPERF_FAKE_SENSOR_SETUP").ok()?;
-    let ready = mode == "ready" || mode == "legacy";
+    let ready = mode == "ready";
     Some(SetupStatus {
         supported: true,
         bundled: true,
@@ -264,7 +234,6 @@ fn fake_status() -> Option<SetupStatus> {
         },
         update_available: false,
         running: super::pipe::helper_live(),
-        legacy: mode == "legacy",
         fake: true,
     })
 }
@@ -365,14 +334,6 @@ mod win {
                 && bundled_helper.exists()
                 && !same_file(&bundled_helper, &installed),
             running: crate::sensors::pipe::helper_live(),
-            legacy: legacy_present(
-                match task::query(LEGACY_TASK) {
-                    task::Query::Xml(_) => LegacyTask::Present,
-                    task::Query::Missing => LegacyTask::Missing,
-                    task::Query::Unknown => LegacyTask::Unknown,
-                },
-                legacy_install_dir().exists(),
-            ),
             fake: false,
         }
     }
@@ -427,34 +388,9 @@ mod win {
         task::stop_trace_session(NET_SESSION);
     }
 
-    /// Remove the winperf 0.4 helper: stop it, delete its task, stop its ETW
-    /// session and delete its folder (and C:\Program Files\winperf if empty).
-    fn remove_legacy() -> Result<(), i32> {
-        let _ = task::stop(LEGACY_TASK);
-        std::thread::sleep(std::time::Duration::from_millis(1500));
-        task::stop_trace_session(LEGACY_NET_SESSION);
-        task::delete(LEGACY_TASK).map_err(|_| 15)?;
-        let dir = legacy_install_dir();
-        for _ in 0..3 {
-            if !dir.exists() || std::fs::remove_dir_all(&dir).is_ok() {
-                break;
-            }
-            std::thread::sleep(std::time::Duration::from_secs(1));
-        }
-        if let Some(base) = dir.parent() {
-            let _ = std::fs::remove_dir(base); // only if empty
-        }
-        if dir.exists() {
-            Err(15)
-        } else {
-            Ok(())
-        }
-    }
-
     fn setup() -> Result<(), i32> {
         let source = exe_dir();
         verify(&source.join("sensors"), MANIFEST, "sensors/").map_err(|_| 10)?;
-        remove_legacy()?;
         let target = install_dir();
         let base = target
             .parent()
@@ -516,7 +452,6 @@ mod win {
     }
 
     fn remove() -> Result<(), i32> {
-        let _ = remove_legacy();
         stop_task();
         let deleted = task::delete(TASK_NAME);
         let target = install_dir();
@@ -613,28 +548,6 @@ mod tests {
         assert_eq!(task_state(Ok(&xml), moved), TaskState::Mismatch);
         assert_eq!(task_state(Err(true), exe), TaskState::Missing);
         assert_eq!(task_state(Err(false), exe), TaskState::Unknown);
-    }
-
-    #[test]
-    fn legacy_install_is_detected_by_task_or_folder() {
-        use LegacyTask::*;
-        assert!(legacy_present(Present, false));
-        assert!(legacy_present(Present, true));
-        assert!(legacy_present(Missing, true));
-        assert!(legacy_present(Unknown, true));
-        assert!(!legacy_present(Missing, false));
-        assert!(!legacy_present(Unknown, false));
-        // Old and new folders are siblings under Program Files.
-        let new = install_dir();
-        let old = legacy_install_dir();
-        assert!(new.ends_with("Fob/sensors") || new.ends_with(r"Fob\sensors"));
-        assert!(old.ends_with("winperf/sensors") || old.ends_with(r"winperf\sensors"));
-        assert_eq!(
-            new.parent().unwrap().parent(),
-            old.parent().unwrap().parent()
-        );
-        assert_ne!(LEGACY_TASK, TASK_NAME);
-        assert_ne!(LEGACY_NET_SESSION, NET_SESSION);
     }
 
     #[test]

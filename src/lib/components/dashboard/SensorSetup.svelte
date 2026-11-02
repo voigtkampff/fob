@@ -15,13 +15,11 @@
   $: state = setupState(status);
   $: steps = status ? setupSteps(status, $t) : [];
   $: action =
-    state === "migrate"
-      ? $t("dash.migrate")
-      : state === "update"
-        ? $t("dash.updateHelper")
-        : state === "repair" || state === "starting"
-          ? $t("dash.repair")
-          : $t("dash.enable");
+    state === "update"
+      ? $t("dash.updateHelper")
+      : state === "repair" || state === "starting"
+        ? $t("dash.repair")
+        : $t("dash.enable");
 
   async function run(enable: boolean) {
     busy = true;
@@ -75,23 +73,20 @@
       >
     </div>
   </div>
-{:else if state === "enable" || state === "repair" || state === "update" || state === "migrate"}
+{:else if state === "enable" || state === "repair" || state === "update"}
   <div class="setup">
     <p class="note">
-      {state === "migrate"
-        ? $t("setup.migrate")
-        : state === "enable"
-          ? $t("setup.needHelper")
-          : state === "update"
-            ? $t("setup.newer")
-            : $t("setup.incomplete")}
+      {state === "enable"
+        ? $t("setup.needHelper")
+        : state === "update"
+          ? $t("setup.newer")
+          : $t("setup.incomplete")}
     </p>
     <div class="buttons">
       <button class="primary" onclick={() => (confirm = "enable")}
         >{action}…</button
       >
-      {#if state !== "enable" && state !== "migrate"}<button
-          onclick={() => (confirm = "disable")}
+      {#if state !== "enable"}<button onclick={() => (confirm = "disable")}
           >{$t("setup.disableMore")}</button
         >{/if}
     </div>
