@@ -35,16 +35,9 @@
 </script>
 
 <div
-  class="title-bar flex h-12 shrink-0 items-center gap-3 border-b border-border bg-card pl-24 pr-4"
+  class="title-bar flex h-12 shrink-0 items-center gap-3 border-b border-border bg-card px-4"
   data-tauri-drag-region
 >
-  <div
-    class="pointer-events-none flex items-center gap-2"
-    data-tauri-drag-region
-  >
-    <img src="/fob.svg" alt="" class="size-5" />
-    <h1 class="text-sm font-semibold tracking-tight">{$t("app.name")}</h1>
-  </div>
   <div class="h-full min-w-4 flex-1" data-tauri-drag-region></div>
   <div class="flex items-center gap-1">
     <span
