@@ -12,7 +12,7 @@
   } from "$lib/utils/resource-history.js";
   import { clockTime } from "$lib/utils/chart-cursor.js";
   import { t } from "$lib/i18n";
-  type Metric = "cpu" | "memory" | "network" | "gpu" | "temp";
+  type Metric = "cpu" | "memory" | "network" | "gpu" | "temp" | "disk";
   type Key =
     | "cpu"
     | "memory"
@@ -20,7 +20,9 @@
     | "sent"
     | "gpu"
     | "cpu_temp"
-    | "gpu_temp";
+    | "gpu_temp"
+    | "disk_read"
+    | "disk_write";
   let {
     history: rawHistory = [],
     gpuId = "",
@@ -45,42 +47,57 @@
   );
   let selectedStamp = $state<number | null>(null);
   let keyboard = $state(false);
+  // Byte-rate charts: two lines, a solid one in and a dashed one out.
+  const isRate = $derived(metric === "network" || metric === "disk");
   const series = $derived(
-    metric === "network"
+    metric === "disk"
       ? [
           {
-            key: "received" as Key,
-            label: $t("stats.received"),
-            color: "var(--chart-1)",
-          },
-          {
-            key: "sent" as Key,
-            label: $t("stats.sent"),
+            key: "disk_read" as Key,
+            label: $t("stats.read"),
             color: "var(--chart-4)",
           },
+          {
+            key: "disk_write" as Key,
+            label: $t("stats.write"),
+            color: "var(--chart-2)",
+          },
         ]
-      : metric === "temp"
+      : metric === "network"
         ? [
-            { key: "cpu_temp" as Key, label: "CPU", color: "var(--chart-1)" },
-            { key: "gpu_temp" as Key, label: "GPU", color: "var(--chart-2)" },
-          ]
-        : [
             {
-              key: metric as Key,
-              label:
-                metric === "cpu"
-                  ? "CPU"
-                  : metric === "gpu"
-                    ? "GPU"
-                    : $t("stats.ramUsed"),
-              color:
-                metric === "cpu"
-                  ? "var(--chart-1)"
-                  : metric === "gpu"
-                    ? "var(--chart-2)"
-                    : "var(--chart-3)",
+              key: "received" as Key,
+              label: $t("stats.received"),
+              color: "var(--chart-1)",
             },
-          ],
+            {
+              key: "sent" as Key,
+              label: $t("stats.sent"),
+              color: "var(--chart-4)",
+            },
+          ]
+        : metric === "temp"
+          ? [
+              { key: "cpu_temp" as Key, label: "CPU", color: "var(--chart-1)" },
+              { key: "gpu_temp" as Key, label: "GPU", color: "var(--chart-2)" },
+            ]
+          : [
+              {
+                key: metric as Key,
+                label:
+                  metric === "cpu"
+                    ? "CPU"
+                    : metric === "gpu"
+                      ? "GPU"
+                      : $t("stats.ramUsed"),
+                color:
+                  metric === "cpu"
+                    ? "var(--chart-1)"
+                    : metric === "gpu"
+                      ? "var(--chart-2)"
+                      : "var(--chart-3)",
+              },
+            ],
   );
   const config = $derived(
     Object.fromEntries(
@@ -89,14 +106,16 @@
   );
   const end = $derived(history.at(-1)?.timestamp ?? 0);
   const ceiling = $derived(
-    metric === "network"
-      ? networkCeiling(history)
-      : metric === "temp"
-        ? Math.max(
-            100,
-            ...history.flatMap((p) => [p.cpu_temp ?? 0, p.gpu_temp ?? 0]),
-          )
-        : 100,
+    metric === "disk"
+      ? networkCeiling(history, ["disk_read", "disk_write"])
+      : metric === "network"
+        ? networkCeiling(history)
+        : metric === "temp"
+          ? Math.max(
+              100,
+              ...history.flatMap((p) => [p.cpu_temp ?? 0, p.gpu_temp ?? 0]),
+            )
+          : 100,
   );
   const selected = $derived(
     selectedStamp === null
@@ -113,7 +132,7 @@
   const value = (n: number | null) =>
     n === null
       ? $t("common.na")
-      : metric === "network"
+      : isRate
         ? `${formatBytes(n)}/s`
         : metric === "temp"
           ? `${n.toFixed(0)} °C`
@@ -137,7 +156,7 @@
               : $t("trend.noCounter")
             : validCount < 2
               ? $t("trend.collecting")
-              : metric === "network"
+              : isRate
                 ? `2m · 0–${formatBytes(ceiling)}/s`
                 : metric === "temp"
                   ? `2m · 0–${ceiling.toFixed(0)} °C`
@@ -176,7 +195,7 @@
     windowMs={RESOURCE_WINDOW_MS}
     max={ceiling}
     format={(n) =>
-      metric === "network"
+      isRate
         ? `${formatBytes(n)}/s`
         : metric === "temp"
           ? `${n.toFixed(0)} °C`
@@ -189,7 +208,7 @@
           ? s.key === "received"
             ? "↓"
             : "↑"
-          : metric === "temp"
+          : metric === "temp" || metric === "disk"
             ? s.label
             : undefined,
     }))}
@@ -255,7 +274,10 @@
                     line={{
                       stroke: s.color,
                       "stroke-width": 1.5,
-                      "stroke-dasharray": s.key === "sent" ? "3 2" : undefined,
+                      "stroke-dasharray":
+                        s.key === "sent" || s.key === "disk_write"
+                          ? "3 2"
+                          : undefined,
                       "stroke-linecap": "round",
                       "stroke-linejoin": "round",
                     }}

@@ -121,6 +121,10 @@ pub struct SystemStats {
     pub disk_used_bytes: u64,
     /// Free disk space in bytes
     pub disk_free_bytes: u64,
+    /// Fob: bytes/s read from and written to the counted drives (None until
+    /// two readings exist or when no drive reports I/O counters).
+    pub disk_read_bytes: Option<u64>,
+    pub disk_write_bytes: Option<u64>,
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -141,6 +145,9 @@ pub struct VolumeDetails {
     pub total: u64,
     pub available: u64,
     pub read_only: bool,
+    /// Fob: bytes/s read / written (None: not reported for this drive).
+    pub read: Option<u64>,
+    pub written: Option<u64>,
 }
 
 #[derive(Clone, Debug, Serialize)]

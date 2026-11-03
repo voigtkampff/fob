@@ -40,6 +40,9 @@ export interface ResourceDetailsData {
     total: number;
     available: number;
     read_only: boolean;
+    /** Fob: bytes/s; null when the drive reports no I/O counters. */
+    read?: number | null;
+    written?: number | null;
   }[];
   interfaces: {
     name: string;
@@ -64,6 +67,9 @@ export interface SystemStats {
   disk_total_bytes: number;
   disk_used_bytes: number;
   disk_free_bytes: number;
+  /** Fob: storage read / write, bytes/s (null: not reported). */
+  disk_read_bytes?: number | null;
+  disk_write_bytes?: number | null;
 }
 
 /** Volatile resource observations, timed at completion of the existing read. */
@@ -79,6 +85,9 @@ export interface ResourceSample {
   /** Fob: Temp & fan card headline readings, °C. */
   cpu_temp?: number | null;
   gpu_temp?: number | null;
+  /** Fob: storage read / write, bytes/s. */
+  disk_read?: number | null;
+  disk_write?: number | null;
 }
 
 export interface ProcessTreeRow {
@@ -149,6 +158,8 @@ export interface AppConfig {
     miniPinned: boolean;
     /** "auto" follows the Windows display language. */
     language: "auto" | "en" | "zh";
+    /** Fob: global hotkey that toggles the mini window ("" = off). */
+    miniHotkey?: string;
   };
 }
 

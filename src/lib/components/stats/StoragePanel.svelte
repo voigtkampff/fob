@@ -1,16 +1,22 @@
 <script lang="ts">
   import StatCard from "./StatCard.svelte";
   import StatItem from "./StatItem.svelte";
-  import { HardDrive, ArrowUpRight } from "@lucide/svelte";
-  import { Button } from "$lib/components/ui/button/index.js";
+  import ResourceDetails from "./ResourceDetails.svelte";
+  import { HardDrive } from "@lucide/svelte";
   import { Progress } from "$lib/components/ui/progress/index.js";
   import { formatBytes } from "$lib/utils";
   import { t } from "$lib/i18n";
+  import type { SystemStats, ResourceSample } from "$lib/types";
+  export let stats: SystemStats;
+  export let capturedAt = 0;
+  export let history: ResourceSample[] = [];
+  export let isFrozen = false;
+  export let unavailable = false;
   export let diskTotalBytes: number;
   export let diskUsedBytes: number;
   export let diskFreeBytes: number;
-  /** The arrow opens the disk space map. */
-  export let onOpen: () => void = () => {};
+  /** The panel's space map button. */
+  export let onSpace: () => void = () => {};
   $: ready = Number.isFinite(diskTotalBytes) && diskTotalBytes > 0;
   $: percentage = ready
     ? Math.max(0, Math.min(100, (diskUsedBytes / diskTotalBytes) * 100))
@@ -19,13 +25,15 @@
 
 <StatCard title={$t("stats.storage")} color="var(--chart-4)">
   {#snippet icon()}<HardDrive />{/snippet}
-  {#snippet action()}<Button
-      variant="ghost"
-      size="icon-xs"
-      aria-label={$t("space.open")}
-      title={$t("space.open")}
-      onclick={onOpen}><ArrowUpRight class="size-3.5" /></Button
-    >{/snippet}
+  {#snippet action()}<ResourceDetails
+      kind="storage"
+      {stats}
+      {capturedAt}
+      {isFrozen}
+      {unavailable}
+      {history}
+      {onSpace}
+    />{/snippet}
   {#snippet value()}
     <div class="text-2xl leading-8 font-semibold tracking-tight tabular-nums">
       {ready ? formatBytes(diskFreeBytes) : "—"}

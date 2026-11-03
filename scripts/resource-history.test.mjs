@@ -15,3 +15,11 @@ test("network scale covers both independent rates and leaves unknowns unknown", 
   assert.equal(nearestResourceSample(history, 10000), history[0]);
   assert.equal(nearestResourceSample([], 0), undefined);
 });
+
+test("the disk chart scales to its own keys", () => {
+  const history = [
+    { received: 999_999, disk_read: 3_000, disk_write: 41_000 },
+    { disk_read: null, disk_write: 12_000 },
+  ];
+  assert.equal(networkCeiling(history, ["disk_read", "disk_write"]), 50000);
+});

@@ -15,6 +15,9 @@ pub struct SystemMonitor {
     /// Tracks network usage between updates
     last_network_update: Instant,
     last_interfaces: BTreeMap<String, (u64, u64)>,
+    /// Fob: per-mount (read, written) byte totals at the last reading.
+    last_disk_update: Instant,
+    last_disks: BTreeMap<String, (u64, u64)>,
     identity: Option<SystemIdentity>,
 }
 
@@ -36,6 +39,8 @@ impl SystemMonitor {
                     )
                 })
                 .collect(),
+            last_disk_update: Instant::now(),
+            last_disks: BTreeMap::new(),
             identity: None,
         }
     }
@@ -53,6 +58,26 @@ impl SystemMonitor {
     ) -> SystemStats {
         let (network_rx, network_tx, interfaces) = self.calculate_network_stats(networks);
         let (disk_total, disk_used, disk_free) = self.calculate_disk_stats(disks);
+        let disk_rates = self.calculate_disk_rates(disks);
+        let counted: Vec<String> = Self::filter_disks(disks)
+            .map(|d| d.mount_point().to_string_lossy().into_owned())
+            .collect();
+        let (disk_read, disk_write) = {
+            let rates = || {
+                counted
+                    .iter()
+                    .filter_map(|m| disk_rates.get(m).copied())
+                    .filter(|r| r.0.is_some())
+            };
+            if rates().next().is_none() {
+                (None, None)
+            } else {
+                (
+                    Some(rates().filter_map(|r| r.0).sum::<u64>()),
+                    Some(rates().filter_map(|r| r.1).sum::<u64>()),
+                )
+            }
+        };
         let load_average = System::load_average();
 
         SystemStats {
@@ -85,6 +110,12 @@ impl SystemMonitor {
                             total: disk.total_space(),
                             available: disk.available_space(),
                             read_only: disk.is_read_only(),
+                            read: disk_rates
+                                .get(&*disk.mount_point().to_string_lossy())
+                                .and_then(|r| r.0),
+                            written: disk_rates
+                                .get(&*disk.mount_point().to_string_lossy())
+                                .and_then(|r| r.1),
                         })
                         .collect::<Vec<_>>();
                     volumes.sort_by(|a, b| a.mount.cmp(&b.mount));
@@ -105,7 +136,32 @@ impl SystemMonitor {
             disk_total_bytes: disk_total,
             disk_used_bytes: disk_used,
             disk_free_bytes: disk_free,
+            disk_read_bytes: disk_read,
+            disk_write_bytes: disk_write,
         }
+    }
+
+    /// Fob: read/write rates per mount from the I/O totals sysinfo reports
+    /// (Windows: IOCTL_DISK_PERFORMANCE). A drive whose totals are both 0
+    /// reports no counters (the query failed), so it gets None, not 0 B/s.
+    fn calculate_disk_rates(
+        &mut self,
+        disks: &Disks,
+    ) -> BTreeMap<String, (Option<u64>, Option<u64>)> {
+        let elapsed = self.last_disk_update.elapsed().as_secs_f64();
+        let mut next = BTreeMap::new();
+        let mut rates = BTreeMap::new();
+        for disk in disks.iter() {
+            let usage = disk.usage();
+            let totals = (usage.total_read_bytes, usage.total_written_bytes);
+            let mount = disk.mount_point().to_string_lossy().into_owned();
+            let rate = disk_rates(self.last_disks.get(&mount).copied(), totals, elapsed);
+            rates.insert(mount.clone(), rate);
+            next.insert(mount, totals);
+        }
+        self.last_disk_update = Instant::now();
+        self.last_disks = next;
+        rates
     }
 
     /// Filters disks based on platform-specific criteria
@@ -193,9 +249,33 @@ fn interface_rates(
         .unwrap_or((None, None))
 }
 
+/// Fob: like interface_rates, but (0, 0) totals mean "no counters".
+fn disk_rates(
+    previous: Option<(u64, u64)>,
+    totals: (u64, u64),
+    elapsed: f64,
+) -> (Option<u64>, Option<u64>) {
+    if totals == (0, 0) {
+        (None, None)
+    } else {
+        interface_rates(previous, totals, elapsed)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn disk_rates_need_two_readings_and_real_counters() {
+        assert_eq!(disk_rates(None, (4096, 0), 1.0), (None, None));
+        assert_eq!(
+            disk_rates(Some((1000, 500)), (5000, 2500), 2.0),
+            (Some(2000), Some(1000))
+        );
+        // A drive whose counters could not be read stays unknown, not idle.
+        assert_eq!(disk_rates(Some((0, 0)), (0, 0), 1.0), (None, None));
+    }
     use sysinfo::System;
 
     #[test]

@@ -1,11 +1,12 @@
 <script lang="ts">
   // Fob: the Temp & fan card of the process tab (same sensor source as the
-  // dashboard card); its arrow opens the dashboard's Temp & fan detail.
+  // dashboard card); its arrow opens the Temp & fan side panel.
   import StatCard from "./StatCard.svelte";
   import StatItem from "./StatItem.svelte";
   import ResourceTrend from "./ResourceTrend.svelte";
-  import type { ResourceSample, Sensor } from "$lib/types";
-  import { Thermometer, ArrowUpRight } from "@lucide/svelte";
+  import type { ResourceSample, Sensor, SystemStats } from "$lib/types";
+  import ResourceDetails from "./ResourceDetails.svelte";
+  import { Thermometer } from "@lucide/svelte";
   import { Button } from "$lib/components/ui/button/index.js";
   import {
     sensorSummary,
@@ -16,11 +17,14 @@
   import { sensorSetup, refreshSensorSetup } from "$lib/stores/sensorSetup";
   import { onMount } from "svelte";
   import { t } from "$lib/i18n";
+  export let stats: SystemStats;
+  export let capturedAt = 0;
   export let sensors: Sensor[] = [];
+  export let sources: string[] = [];
   export let history: ResourceSample[] = [];
   export let isFrozen = false;
   export let unavailable = false;
-  export let onOpen: () => void = () => {};
+  let open = false;
   $: summary = sensorSummary(sensors);
   $: fans = fanText(sensors);
   $: hasBoard = sensors.some((s) => s.source !== "NVML");
@@ -34,13 +38,17 @@
 
 <StatCard title={$t("dash.temp")} color="var(--chart-5, var(--chart-2))">
   {#snippet icon()}<Thermometer />{/snippet}
-  {#snippet action()}<Button
-      variant="ghost"
-      size="icon-xs"
-      aria-label={$t("stats.tempDetails")}
-      title={$t("stats.tempDetails")}
-      onclick={onOpen}><ArrowUpRight class="size-3.5" /></Button
-    >{/snippet}
+  {#snippet action()}<ResourceDetails
+      kind="temp"
+      bind:open
+      {stats}
+      {capturedAt}
+      {isFrozen}
+      {unavailable}
+      {history}
+      {sensors}
+      {sources}
+    />{/snippet}
   {#snippet value()}
     <div class="text-2xl leading-8 font-semibold tracking-tight tabular-nums">
       {head ? head.value.toFixed(0) : "—"}<span
@@ -59,7 +67,11 @@
   {/snippet}
   {#snippet middle()}
     {#if offerSetup}
-      <Button variant="outline" size="sm" class="h-7 text-xs" onclick={onOpen}
+      <Button
+        variant="outline"
+        size="sm"
+        class="h-7 text-xs"
+        onclick={() => (open = true)}
         >{setup === "update"
           ? $t("dash.updateHelper")
           : setup === "repair"

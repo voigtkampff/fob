@@ -1,21 +1,21 @@
 <script lang="ts">
-  import type { Snippet } from "svelte";
+  // Fob: the side panel shell every stats-row card opens: header (title,
+  // subtitle, reading time), the scrolling body, footer (pause / done).
   import * as Sheet from "$lib/components/ui/sheet/index.js";
   import { Button } from "$lib/components/ui/button/index.js";
   import { Badge } from "$lib/components/ui/badge/index.js";
   import { ArrowUpRight, Pause, Play } from "@lucide/svelte";
   import { processStore } from "$lib/stores/processes";
-  import type { SystemStats, ResourceSample } from "$lib/types";
+  import type {
+    SystemStats,
+    ResourceSample,
+    GpuDevice,
+    Sensor,
+  } from "$lib/types";
   import ResourceDetailsContent from "./ResourceDetailsContent.svelte";
+  import type { PanelKind } from "./panel";
   import { t } from "$lib/i18n";
   import { clockTime } from "$lib/utils/chart-cursor.js";
-  const panels = {
-    cpu: 0,
-    memory: 0,
-    system: 0,
-    network: 0,
-    gpu: 0,
-  } as const;
   let {
     kind,
     stats,
@@ -24,16 +24,28 @@
     unavailable = false,
     capturedAt = 0,
     started = null,
-    children,
+    gpus = [],
+    gpuId = "",
+    onGpu = () => {},
+    sensors = [],
+    sources = [],
+    onSpace = () => {},
+    open = $bindable(false),
   }: {
-    kind: keyof typeof panels;
-    stats?: SystemStats;
+    kind: PanelKind;
+    stats: SystemStats;
     history?: ResourceSample[];
     isFrozen?: boolean;
     unavailable?: boolean;
     capturedAt?: number;
     started?: [number, string] | null;
-    children?: Snippet;
+    gpus?: GpuDevice[];
+    gpuId?: string;
+    onGpu?: (id: string) => void;
+    sensors?: Sensor[];
+    sources?: string[];
+    onSpace?: () => void;
+    open?: boolean;
   } = $props();
   // Literal keys so the i18n check can see every one.
   const texts = $derived({
@@ -47,6 +59,16 @@
       label: $t("rd.memory.label"),
       description: $t("rd.memory.description"),
     },
+    gpu: {
+      title: $t("rd.gpu.title"),
+      label: $t("rd.gpu.label"),
+      description: $t("rd.gpu.description"),
+    },
+    storage: {
+      title: $t("rd.storage.title"),
+      label: $t("rd.storage.label"),
+      description: $t("rd.storage.description"),
+    },
     system: {
       title: $t("rd.system.title"),
       label: $t("rd.system.label"),
@@ -57,10 +79,10 @@
       label: $t("rd.network.label"),
       description: $t("rd.network.description"),
     },
-    gpu: {
-      title: $t("rd.gpu.title"),
-      label: $t("rd.gpu.label"),
-      description: $t("rd.gpu.description"),
+    temp: {
+      title: $t("rd.temp.title"),
+      label: $t("rd.temp.label"),
+      description: $t("rd.temp.description"),
     },
   });
   const panel = $derived(texts[kind]);
@@ -68,7 +90,7 @@
   const triggerId = $derived(`resource-trigger-${kind}`);
 </script>
 
-<Sheet.Root onOpenChange={(open) => {}}>
+<Sheet.Root bind:open>
   <Sheet.Trigger id={triggerId}
     >{#snippet child({ props })}<Button
         {...props}
@@ -79,7 +101,7 @@
       >{/snippet}</Sheet.Trigger
   >
   <Sheet.Content
-    class="data-[side=right]:sm:max-w-md"
+    class="gap-0 data-[side=right]:sm:max-w-md"
     onCloseAutoFocus={(event) => {
       event.preventDefault();
       document.getElementById(triggerId)?.focus();
@@ -89,7 +111,7 @@
       document.getElementById(headingId)?.focus();
     }}
   >
-    <Sheet.Header class="border-b border-border pb-4 pr-12">
+    <Sheet.Header class="shrink-0 border-b border-border pb-4 pr-12">
       <Sheet.Title id={headingId} tabindex={-1} class="outline-none"
         >{panel.title}</Sheet.Title
       >
@@ -110,15 +132,27 @@
         >
       </div>
     </Sheet.Header>
-    <div class="min-h-0 flex-1 overflow-y-auto px-4 pb-5 space-y-5">
-      {#if children}{@render children()}{:else if stats && kind !== "gpu"}<ResourceDetailsContent
-          {kind}
-          {stats}
-          {history}
-          {isFrozen}
-          {unavailable}
-          {started}
-        />{/if}
+    <!-- The body is the scroll container and clips at its padding box. Cards
+         draw their border as a ring (a box-shadow outside the box), so the
+         body keeps padding on every side or a first card loses its top edge. -->
+    <div class="panel-body min-h-0 flex-1 overflow-y-auto px-4 pt-5 pb-5">
+      <ResourceDetailsContent
+        {kind}
+        {stats}
+        {history}
+        {isFrozen}
+        {unavailable}
+        {started}
+        {gpus}
+        {gpuId}
+        {onGpu}
+        {sensors}
+        {sources}
+        onSpace={() => {
+          open = false;
+          onSpace();
+        }}
+      />
     </div>
     <Sheet.Footer
       class="shrink-0 flex-row items-center justify-between border-t border-border px-4 py-3"

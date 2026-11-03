@@ -1,11 +1,12 @@
 export const RESOURCE_WINDOW_MS = 120_000;
-/** One shared zero-based network scale; receive/send are not stacked.
+/** One shared zero-based byte-rate scale; the two lines are not stacked.
  * @param {import('../types').ResourceSample[]} history
+ * @param {("received" | "sent" | "disk_read" | "disk_write")[]} [keys]
  */
-export function networkCeiling(history) {
+export function networkCeiling(history, keys = ["received", "sent"]) {
   const peak = Math.max(
     1024,
-    ...history.flatMap((p) => [p.received ?? 0, p.sent ?? 0]),
+    ...history.flatMap((p) => keys.map((k) => p[k] ?? 0)),
   );
   const magnitude = 10 ** Math.floor(Math.log10(peak));
   return Math.ceil(peak / magnitude) * magnitude;

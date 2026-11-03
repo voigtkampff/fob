@@ -79,6 +79,9 @@ pub struct Sample {
     /// frontend's sensorSummary (CPU package first, then any CPU sensor).
     pub cpu_temp: Option<f64>,
     pub gpu_temp: Option<f64>,
+    /// Fob: storage read / write, bytes/s.
+    pub disk_read: Option<u64>,
+    pub disk_write: Option<u64>,
 }
 /// Fob: same rules as sensorSummary() in src/lib/utils/dashboard.js.
 fn headline_temps(sensors: &[crate::sensors::Sensor]) -> (Option<f64>, Option<f64>) {
@@ -123,6 +126,8 @@ impl Sample {
             gpus: BTreeMap::new(),
             cpu_temp: None,
             gpu_temp: None,
+            disk_read: None,
+            disk_write: None,
         }
     }
     fn from_frame(frame: &Frame, interval: u64) -> Self {
@@ -151,6 +156,8 @@ impl Sample {
                 .collect(),
             cpu_temp: temps.0,
             gpu_temp: temps.1,
+            disk_read: stats.disk_read_bytes,
+            disk_write: stats.disk_write_bytes,
             ..Self::gap(frame.captured_at, interval)
         }
     }

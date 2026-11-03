@@ -24,7 +24,7 @@
   export let unavailable = false;
   export let sensors: Sensor[] = [];
   export let started: [number, string] | null = null;
-  export let onOpenTemp: () => void = () => {};
+  export let sources: string[] = [];
   export let onOpenSpace: () => void = () => {};
 </script>
 
@@ -54,10 +54,15 @@
         {isFrozen}
         {unavailable}
       /><StoragePanel
+        stats={systemStats}
+        {capturedAt}
+        {history}
+        {isFrozen}
+        {unavailable}
         diskTotalBytes={systemStats.disk_total_bytes}
         diskUsedBytes={systemStats.disk_used_bytes}
         diskFreeBytes={systemStats.disk_free_bytes}
-        onOpen={onOpenSpace}
+        onSpace={onOpenSpace}
       /><SystemPanel
         stats={systemStats}
         {capturedAt}
@@ -73,11 +78,13 @@
         networkRxBytes={systemStats.network_rx_bytes}
         networkTxBytes={systemStats.network_tx_bytes}
       /><TempPanel
+        stats={systemStats}
+        {capturedAt}
         {sensors}
+        {sources}
         {history}
         {isFrozen}
         {unavailable}
-        onOpen={onOpenTemp}
       />
     </section></Tooltip.Provider
   >{/if}

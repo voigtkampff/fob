@@ -368,11 +368,8 @@
             unavailable={!!error}
             sensors={$processStore.extra?.sensors?.sensors ?? []}
             started={$processStore.extra?.started ?? null}
+            sources={$processStore.extra?.sensors?.sources ?? []}
             onOpenSpace={() => (tab = "space")}
-            onOpenTemp={() => {
-              tab = "dashboard";
-              detail = "temp";
-            }}
           />
         {/if}
 
