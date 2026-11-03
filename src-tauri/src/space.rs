@@ -6,6 +6,10 @@
 //! followed (no loops, no double counting); unreadable folders are skipped
 //! and counted. Small items are folded into their folder's `other` total so
 //! the tree stays small enough to cache and to send to the page in one piece.
+//!
+//! Fob keeps no tree in memory: a finished scan is written to its cache file
+//! and dropped, and `space_result` hands the page that file's bytes as they
+//! are (a big C:\\ tree is ~90 MB as Rust nodes, ~25 MB as JSON).
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::fs;
@@ -81,6 +85,7 @@ fn fold(node: &mut Node, mut kids: Vec<Node>) {
             node.other_count += 1;
         }
     }
+    node.children.shrink_to_fit();
 }
 
 struct Walker<'a> {
@@ -360,16 +365,56 @@ fn cache_file(dir: &Path, root: &str) -> PathBuf {
         .collect();
     dir.join(format!("space-{}.json", key.trim_matches('_')))
 }
+/// Streams the scan to its cache file (no second copy in memory).
 pub fn write_cache(dir: &Path, scan: &Scan) -> std::io::Result<()> {
+    use std::io::Write;
     fs::create_dir_all(dir)?;
     let path = cache_file(dir, &scan.root);
     let temp = path.with_extension("json.tmp");
-    fs::write(&temp, serde_json::to_vec(scan)?)?;
+    let mut out = std::io::BufWriter::new(fs::File::create(&temp)?);
+    serde_json::to_writer(&mut out, scan)?;
+    out.flush()?;
+    drop(out);
     fs::rename(temp, path)
 }
-pub fn read_cache(dir: &Path, root: &str) -> Option<Scan> {
-    let scan: Scan = serde_json::from_slice(&fs::read(cache_file(dir, root)).ok()?).ok()?;
-    (scan.root == root).then_some(scan)
+/// The cached scan of `root` as JSON bytes, checked but not turned into nodes.
+pub fn read_cache(dir: &Path, root: &str) -> Option<Vec<u8>> {
+    #[derive(Deserialize)]
+    struct Head {
+        root: String,
+    }
+    let bytes = fs::read(cache_file(dir, root)).ok()?;
+    let head: Head = serde_json::from_slice(&bytes).ok()?;
+    (head.root == root).then_some(bytes)
+}
+/// Gives freed scan memory back to the system.
+fn release_memory() {
+    #[cfg(windows)]
+    unsafe {
+        use windows::Win32::System::Memory::{GetProcessHeap, HeapCompact, HEAP_FLAGS};
+        if let Ok(heap) = GetProcessHeap() {
+            HeapCompact(heap, HEAP_FLAGS(0));
+        }
+    }
+    #[cfg(all(target_os = "linux", target_env = "gnu"))]
+    {
+        extern "C" {
+            fn malloc_trim(pad: usize) -> i32;
+        }
+        unsafe { malloc_trim(0) };
+    }
+}
+/// Fob's own memory (resident / working set), MB.
+fn own_memory_mb() -> u64 {
+    let Ok(pid) = sysinfo::get_current_pid() else {
+        return 0;
+    };
+    let mut sys = sysinfo::System::new();
+    sys.refresh_processes(sysinfo::ProcessesToUpdate::Some(&[pid]), true);
+    sys.process(pid).map_or(0, |p| p.memory() >> 20)
+}
+fn count_nodes(node: &Node) -> u64 {
+    1 + node.children.iter().map(count_nodes).sum::<u64>()
 }
 
 struct Running {
@@ -380,7 +425,8 @@ struct Running {
 #[derive(Default)]
 pub struct SpaceState {
     running: Mutex<Option<Running>>,
-    results: Mutex<HashMap<String, Arc<Scan>>>,
+    /// Scans whose cache file could not be written, as JSON (rare).
+    unsaved: Mutex<HashMap<String, Arc<Vec<u8>>>>,
     /// The last scan that ended: (root, stopped before it finished).
     ended: Mutex<Option<(String, bool)>>,
 }
@@ -426,6 +472,7 @@ pub fn start(app: AppHandle, root: String) -> Result<(), String> {
         .stack_size(16 << 20) // deep folder trees recurse
         .spawn(move || {
             background_priority();
+            let before_mb = own_memory_mb();
             let started = Instant::now();
             let tree = walk(Path::new(&root), &progress);
             let state = app.state::<SpaceState>();
@@ -451,10 +498,35 @@ pub fn start(app: AppHandle, root: String) -> Result<(), String> {
                     root: root.clone(),
                     tree,
                 };
-                let _ = write_cache(&dir, &scan);
-                if let Ok(mut results) = state.results.lock() {
-                    results.insert(root.clone(), Arc::new(scan));
+                let nodes = count_nodes(&scan.tree);
+                let peak_mb = own_memory_mb();
+                let saved = write_cache(&dir, &scan);
+                if let Ok(mut unsaved) = state.unsaved.lock() {
+                    unsaved.remove(&root);
+                    if saved.is_err() {
+                        if let Ok(bytes) = serde_json::to_vec(&scan) {
+                            unsaved.insert(root.clone(), Arc::new(bytes));
+                        }
+                    }
                 }
+                let files = scan.files;
+                drop(scan);
+                release_memory();
+                log_scan(
+                    &app,
+                    &format!(
+                        "{root}: {files} files, {nodes} nodes kept, {} s, cache {}; \
+                         fob memory {before_mb} MB before, {peak_mb} MB with the tree, \
+                         {} MB after",
+                        started.elapsed().as_secs_f64().round(),
+                        if saved.is_ok() {
+                            "written"
+                        } else {
+                            "NOT written"
+                        },
+                        own_memory_mb()
+                    ),
+                );
             }
             if let Ok(mut ended) = state.ended.lock() {
                 *ended = Some((root, stopped));
@@ -512,21 +584,40 @@ pub async fn space_status(app: AppHandle) -> Status {
     };
     status
 }
-/// The last scan of `root`: this session's, else the cached one.
-#[tauri::command]
-pub async fn space_result(app: AppHandle, root: String) -> Result<Option<Arc<Scan>>, String> {
-    let state = app.state::<SpaceState>();
-    if let Some(scan) = state.results.lock().map_err(|e| e.to_string())?.get(&root) {
-        return Ok(Some(scan.clone()));
-    }
-    let Some(scan) = read_cache(&cache_dir(&app)?, &root) else {
-        return Ok(None);
+/// One line per finished scan in the app log folder's space.log.
+fn log_scan(app: &AppHandle, line: &str) {
+    use std::io::Write;
+    let Ok(dir) = app.path().app_log_dir() else {
+        return;
     };
-    let scan = Arc::new(scan);
-    if let Ok(mut results) = state.results.lock() {
-        results.insert(root, scan.clone());
+    let _ = fs::create_dir_all(&dir);
+    let path = dir.join("space.log");
+    if fs::metadata(&path).is_ok_and(|m| m.len() > 256 * 1024) {
+        let _ = fs::remove_file(&path);
     }
-    Ok(Some(scan))
+    let stamp = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map_or(0, |d| d.as_secs());
+    if let Ok(mut file) = fs::OpenOptions::new().create(true).append(true).open(path) {
+        let _ = writeln!(file, "{stamp} {line}");
+    }
+}
+/// The last scan of `root` as `Scan` JSON bytes (empty: none yet), read
+/// from its cache file each time so no tree stays in Fob's memory.
+#[tauri::command]
+pub async fn space_result(app: AppHandle, root: String) -> Result<tauri::ipc::Response, String> {
+    let unsaved = app
+        .state::<SpaceState>()
+        .unsaved
+        .lock()
+        .map_err(|e| e.to_string())?
+        .get(&root)
+        .cloned();
+    let bytes = match unsaved {
+        Some(bytes) => bytes.to_vec(),
+        None => read_cache(&cache_dir(&app)?, &root).unwrap_or_default(),
+    };
+    Ok(tauri::ipc::Response::new(bytes))
 }
 /// Shows `path` selected in File Explorer (explorer.exe /select, through
 /// ShellExecute; no shell in between).
@@ -741,10 +832,8 @@ mod tests {
             tree,
         };
         write_cache(&dir.join("cache"), &scan).unwrap();
-        assert_eq!(
-            read_cache(&dir.join("cache"), &scan.root),
-            Some(scan.clone())
-        );
+        let bytes = read_cache(&dir.join("cache"), &scan.root).unwrap();
+        assert_eq!(serde_json::from_slice::<Scan>(&bytes).unwrap(), scan);
         assert_eq!(read_cache(&dir.join("cache"), "/elsewhere"), None);
         let _ = fs::remove_dir_all(dir);
     }
@@ -779,4 +868,135 @@ fn space_speed() {
         progress.skipped.load(Ordering::Relaxed),
         json / 1024
     );
+}
+
+/// Memory of a scan: WINPERF_SPACE_BENCH=/path cargo test --release
+/// space_memory -- --ignored --nocapture
+#[cfg(all(test, target_os = "linux"))]
+#[test]
+#[ignore]
+fn space_memory() {
+    fn rss() -> String {
+        let s = fs::read_to_string("/proc/self/status").unwrap();
+        s.lines()
+            .filter(|l| l.starts_with("VmRSS") || l.starts_with("VmHWM"))
+            .map(|l| l.split_whitespace().nth(1).unwrap().parse::<u64>().unwrap() / 1024)
+            .map(|mb| format!("{mb} MB"))
+            .collect::<Vec<_>>()
+            .into_iter()
+            .rev() // VmHWM comes first in the file
+            .collect::<Vec<_>>()
+            .join(" / peak ")
+    }
+    fn count(n: &Node) -> (u64, u64) {
+        n.children
+            .iter()
+            .fold((1, n.name.capacity() as u64), |(c, b), k| {
+                let (kc, kb) = count(k);
+                (c + kc, b + kb)
+            })
+    }
+    let root = std::env::var("WINPERF_SPACE_BENCH").expect("WINPERF_SPACE_BENCH");
+    println!("start: {}", rss());
+    let progress = Progress::default();
+    let tree = if root == "synthetic" {
+        // A C:\-like tree built through `fold` without touching the disk:
+        // 1.69M files in ~340k folders, sizes log-normal around 8 KB.
+        let mut seed = 0x2545_f491_4f6c_dd1du64;
+        let mut rnd = move || {
+            seed ^= seed << 13;
+            seed ^= seed >> 7;
+            seed ^= seed << 17;
+            (seed >> 11) as f64 / (1u64 << 53) as f64
+        };
+        fn grow(rnd: &mut dyn FnMut() -> f64, depth: u32, left: &mut i64, p: &Progress) -> Node {
+            let mut kids = Vec::new();
+            let files = (rnd() * 10.0) as i64;
+            for i in 0..files.min(*left) {
+                let normal =
+                    (-2.0 * rnd().max(1e-12).ln()).sqrt() * (std::f64::consts::TAU * rnd()).cos();
+                let size = ((8192.0 * (2.3 * normal).exp()) as u64).div_ceil(4096) * 4096;
+                p.files.fetch_add(1, Ordering::Relaxed);
+                kids.push(Node {
+                    name: format!("Microsoft.Windows.Component_{depth}_{i:04}.dll"),
+                    size,
+                    files: 1,
+                    ..Node::default()
+                });
+            }
+            *left -= files;
+            let dirs = if depth > 11 { 0 } else { (rnd() * 6.1) as u32 };
+            for i in 0..dirs {
+                if *left <= 0 {
+                    break;
+                }
+                let mut kid = grow(rnd, depth + 1, left, p);
+                kid.name = format!("amd64_microsoft-windows-folder_{depth}_{i}");
+                kids.push(kid);
+            }
+            let mut node = Node {
+                dir: true,
+                ..Node::default()
+            };
+            node.size = kids.iter().map(|k| k.size).sum();
+            node.files = kids.iter().map(|k| k.files).sum();
+            fold(&mut node, kids);
+            node
+        }
+        let mut left = 1_690_000i64;
+        let mut top = Vec::new();
+        for i in 0..12 {
+            let mut kid = grow(&mut rnd, 1, &mut left, &progress);
+            kid.name = format!("Top folder {i}");
+            top.push(kid);
+        }
+        let mut node = Node {
+            name: "C:\\".into(),
+            dir: true,
+            ..Node::default()
+        };
+        node.size = top.iter().map(|k| k.size).sum();
+        node.files = top.iter().map(|k| k.files).sum();
+        fold(&mut node, top);
+        node
+    } else {
+        walk(Path::new(&root), &progress).unwrap()
+    };
+    let (nodes, names) = count(&tree);
+    println!(
+        "walked {} files, {:.1} GB: {} nodes kept, names {} KB, Node {} B; rss {}",
+        progress.files.load(Ordering::Relaxed),
+        tree.size as f64 / 1e9,
+        nodes,
+        names / 1024,
+        std::mem::size_of::<Node>(),
+        rss()
+    );
+    // What `start` does with a finished tree.
+    let dir = std::env::temp_dir().join(format!("fob-space-memory-{}", std::process::id()));
+    let scan = Scan {
+        root: root.clone(),
+        sep: "/".into(),
+        scanned_at: 0,
+        elapsed_ms: 0,
+        files: tree.files,
+        skipped: 0,
+        tree,
+    };
+    write_cache(&dir, &scan).unwrap();
+    let json = fs::metadata(cache_file(&dir, &root)).unwrap().len();
+    println!("cache written, {} KB; rss {}", json / 1024, rss());
+    drop(scan);
+    release_memory();
+    println!("tree dropped: rss {}", rss());
+    let bytes = read_cache(&dir, &root).unwrap();
+    println!(
+        "space_result bytes {} KB; rss {}",
+        bytes.len() / 1024,
+        rss()
+    );
+    drop(bytes);
+    release_memory();
+    println!("after: rss {}", rss());
+    let _ = fs::remove_dir_all(dir);
 }

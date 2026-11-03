@@ -50,7 +50,8 @@
 
   let drives = $state<Drive[]>([]);
   let root = $state<string | null>(null);
-  let scan = $state<Scan | null>(null);
+  // Raw: the tree can be 300k nodes and is never changed in place.
+  let scan = $state.raw<Scan | null>(null);
   let status = $state<Status | null>(null);
   let path = $state<string[]>([]);
   let error = $state("");
@@ -64,8 +65,11 @@
   );
 
   async function load(target: string) {
-    scan =
-      (await invoke<Scan | null>("space_result", { root: target })) ?? null;
+    // Raw JSON bytes of the cache file; empty when the drive has none.
+    const bytes = await invoke<ArrayBuffer>("space_result", { root: target });
+    scan = bytes.byteLength
+      ? (JSON.parse(new TextDecoder().decode(bytes)) as Scan)
+      : null;
     if (scan && !folderAt(scan.tree, path)) path = [];
   }
   async function poll() {
