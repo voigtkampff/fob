@@ -299,6 +299,8 @@ fn set_start_in_tray(app: &AppHandle) {
 /// where winperf went. Otherwise the main window opens as before.
 pub fn launch(app: &AppHandle) -> Result<(), String> {
     let startup = crate::preferences::startup(app);
+    // Fob: the mini window hotkey works in tray-only mode too.
+    crate::hotkey::register_saved(app, &startup.mini_hotkey);
     if let Ok(mut state) = app.state::<Mutex<CompanionState>>().lock() {
         state.pinned = startup.mini_pinned;
     }
@@ -359,6 +361,29 @@ pub fn native_frame(app: &AppHandle) {
     }
     #[cfg(not(target_os = "windows"))]
     let _ = app;
+}
+
+/// Fob: the global hotkey: show the mini window at the tray if it's hidden,
+/// hide it if it's shown (pinned or not, like the tray icon).
+pub fn toggle(app: &AppHandle) {
+    let Some(window) = app.get_webview_window("overview") else {
+        return;
+    };
+    if window.is_visible().unwrap_or(false) {
+        hide(app);
+        return;
+    }
+    // Like the tray click: pressing the combo can take focus from the mini
+    // window, which then hides itself just before this runs; don't reopen it.
+    let recent = app
+        .state::<Mutex<CompanionState>>()
+        .lock()
+        .ok()
+        .and_then(|s| s.hidden_at)
+        .is_some_and(|t| t.elapsed() < Duration::from_millis(200));
+    if !recent {
+        let _ = show(app, None);
+    }
 }
 
 pub fn hide(app: &AppHandle) {

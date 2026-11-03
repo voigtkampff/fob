@@ -28,6 +28,7 @@
     "miniPinned": false,
     "language": "auto",
     "defaultStatusFilter": "all",
-    "processView": "flat"
+    "processView": "flat",
+    "miniHotkey": ""
   }
 }

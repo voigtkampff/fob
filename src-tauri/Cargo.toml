@@ -29,6 +29,7 @@ sysinfo = { version = "0.35.2", features = ["disk", "multithread", "network", "s
 listeners = "0.6"
 tauri-plugin-shell = "2"
 tauri-plugin-os = "2"
+tauri-plugin-global-shortcut = "=2.2.0"
 window-vibrancy = "0.5.2"
 
 [features]

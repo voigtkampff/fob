@@ -5,6 +5,7 @@
   import { settingsStore, settingsStatus } from "$lib/stores/settings";
   import { REFRESH_RATE_OPTIONS } from "$lib/constants";
   import ThemeGallery from "./ThemeGallery.svelte";
+  import HotkeyField from "./HotkeyField.svelte";
   import { Button } from "$lib/components/ui/button/index.js";
   import { Checkbox } from "$lib/components/ui/checkbox/index.js";
   import { Label } from "$lib/components/ui/label/index.js";
@@ -192,6 +193,24 @@
             <p class="text-xs leading-relaxed text-muted-foreground">
               {$t("settings.closeNote")}
             </p>
+          </Card.Content></Card.Root
+        >
+        <Card.Root size="sm"
+          ><Card.Header
+            ><Card.Title>{$t("hotkey.title")}</Card.Title></Card.Header
+          ><Card.Content>
+            <div class="flex items-start justify-between gap-6">
+              <div>
+                <Label for="mini-hotkey">{$t("hotkey.label")}</Label>
+                <p
+                  id="mini-hotkey-note"
+                  class="mt-1 text-xs leading-relaxed text-muted-foreground"
+                >
+                  {$t("hotkey.note")}
+                </p>
+              </div>
+              <div class="shrink-0"><HotkeyField /></div>
+            </div>
           </Card.Content></Card.Root
         >
       </fieldset>

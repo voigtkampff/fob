@@ -53,6 +53,10 @@ fn merge(config: &mut Value, patch: &Value) {
                     value.is_boolean()
                 }
                 "processView" => matches!(value.as_str(), Some("flat" | "tree")),
+                // Fob: "" (off) or a canonical combo; set via set_mini_hotkey.
+                "miniHotkey" => value.as_str().is_some_and(|s| {
+                    s.is_empty() || crate::hotkey::parse(s).is_ok_and(|c| c.canonical() == s)
+                }),
                 "language" => matches!(value.as_str(), Some("auto" | "en" | "zh")),
                 "defaultStatusFilter" => matches!(
                     value.as_str(),
@@ -153,7 +157,12 @@ pub fn apply_patch(app: &AppHandle, patch: &Value) -> Result<Snapshot, String> {
     Ok(state.clone())
 }
 #[tauri::command]
-pub async fn update_preferences(app: AppHandle, patch: Value) -> Result<Snapshot, String> {
+pub async fn update_preferences(app: AppHandle, mut patch: Value) -> Result<Snapshot, String> {
+    // Fob: the hotkey is only saved by set_mini_hotkey, once it's registered
+    // (pages send their whole behavior group, possibly with an old value).
+    if let Some(behavior) = patch["behavior"].as_object_mut() {
+        behavior.remove("miniHotkey");
+    }
     tauri::async_runtime::spawn_blocking(move || apply_patch(&app, &patch))
         .await
         .map_err(|e| e.to_string())?
@@ -170,6 +179,8 @@ pub struct Startup {
     pub mini_pinned: bool,
     /// "auto" | "en" | "zh" (validated by `merge`).
     pub language: Option<String>,
+    /// Fob: the mini window hotkey, canonical ("" = off).
+    pub mini_hotkey: String,
 }
 pub fn startup_from(saved: Option<&Value>) -> Startup {
     let mut config = defaults();
@@ -183,6 +194,10 @@ pub fn startup_from(saved: Option<&Value>) -> Startup {
         start_in_tray: flag("startInTray"),
         mini_pinned: config["behavior"]["miniPinned"].as_bool().unwrap_or(false),
         language: config["behavior"]["language"].as_str().map(str::to_owned),
+        mini_hotkey: config["behavior"]["miniHotkey"]
+            .as_str()
+            .unwrap_or_default()
+            .to_owned(),
     }
 }
 pub fn startup(app: &AppHandle) -> Startup {
@@ -215,6 +230,24 @@ mod tests {
             .is_none());
     }
     #[test]
+    fn the_mini_hotkey_is_off_by_default_and_only_saved_canonical() {
+        let mut config = defaults();
+        assert_eq!(config["behavior"]["miniHotkey"], "");
+        merge(
+            &mut config,
+            &json!({"behavior":{"miniHotkey":"Ctrl+Alt+F"}}),
+        );
+        assert_eq!(config["behavior"]["miniHotkey"], "Ctrl+Alt+F");
+        for bad in [json!("ctrl+alt+f"), json!("F"), json!(5)] {
+            merge(&mut config, &json!({"behavior":{"miniHotkey":bad}}));
+            assert_eq!(config["behavior"]["miniHotkey"], "Ctrl+Alt+F");
+        }
+        merge(&mut config, &json!({"behavior":{"miniHotkey":""}}));
+        assert_eq!(config["behavior"]["miniHotkey"], "");
+        let saved = startup_from(Some(&json!({"behavior":{"miniHotkey":"Ctrl+Shift+F"}})));
+        assert_eq!(saved.mini_hotkey, "Ctrl+Shift+F");
+    }
+    #[test]
     fn start_in_tray_defaults_on_for_new_and_existing_installs() {
         let first = startup_from(None);
         assert_eq!(
@@ -225,6 +258,7 @@ mod tests {
                 start_in_tray: true,
                 mini_pinned: false,
                 language: Some("auto".into()),
+                mini_hotkey: String::new(),
             }
         );
         // v0.3 settings files have no startInTray key: still on.

@@ -9,6 +9,7 @@ mod commands;
 mod companion;
 mod desktop;
 mod gpu;
+mod hotkey;
 mod i18n;
 mod monitoring;
 mod native_icons;
@@ -54,6 +55,8 @@ fn main() {
         })
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_os::init())
+        .plugin(hotkey::plugin())
+        .manage(hotkey::HotkeyState::default())
         .manage(AppState::new())
         .manage(space::SpaceState::default())
         .manage(preferences::Preferences::default())
@@ -88,6 +91,9 @@ fn main() {
             space::space_status,
             space::space_result,
             space::space_reveal,
+            hotkey::get_mini_hotkey,
+            hotkey::set_mini_hotkey,
+            hotkey::suspend_mini_hotkey,
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application")
