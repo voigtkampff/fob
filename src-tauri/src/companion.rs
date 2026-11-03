@@ -410,8 +410,17 @@ struct Screen {
 #[derive(Clone, Copy, Debug, PartialEq)]
 struct Placed {
     pos: PhysicalPosition<i32>,
-    /// false: the panel is larger than the work area (minus gaps).
+    /// The panel size: the requested one, or smaller when the work area
+    /// (minus gaps) is smaller than that.
+    size: (u32, u32),
+    /// false: the requested panel was larger than the work area, so `size`
+    /// was shrunk to keep it off the taskbar.
     fits: bool,
+}
+impl Placed {
+    fn rect(&self) -> PxRect {
+        PxRect::new(self.pos.x, self.pos.y, self.size.0, self.size.1)
+    }
 }
 
 /// Fob: where the mini window goes. All geometry is physical pixels. The
@@ -485,17 +494,103 @@ fn placement(
     };
     let fits_x = pw + 2 * gap <= area.right - area.left;
     let fits_y = ph + 2 * gap <= area.bottom - area.top;
-    // Too big for the work area: keep the top-left visible rather than
-    // pushing it off screen (the caller reports it).
-    let clamp =
-        |v: i32, lo: i32, hi: i32, fits: bool| if fits { v.clamp(lo, hi) } else { lo - gap };
+    // Larger than the work area: shrink to it (never over the taskbar).
+    let pw = pw.min(area.right - area.left - 2 * gap).max(1);
+    let ph = ph.min(area.bottom - area.top - 2 * gap).max(1);
+    let clamp = |v: i32, lo: i32, hi: i32| v.clamp(lo, hi.max(lo));
     Placed {
         pos: PhysicalPosition::new(
-            clamp(x, area.left + gap, area.right - gap - pw, fits_x),
-            clamp(y, area.top + gap, area.bottom - gap - ph, fits_y),
+            clamp(x, area.left + gap, area.right - gap - pw),
+            clamp(y, area.top + gap, area.bottom - gap - ph),
         ),
+        size: (pw as u32, ph as u32),
         fits: fits_x && fits_y,
     }
+}
+
+/// The window rect that makes the window's VISIBLE rect `planned`, given
+/// the window's current rect and visible rect (DWM frame bounds): invisible
+/// resize borders or a shadow margin, if any, are added around `planned`.
+#[cfg_attr(not(target_os = "windows"), allow(dead_code))]
+fn window_rect_for(planned: PxRect, window: PxRect, visible: PxRect) -> PxRect {
+    PxRect {
+        left: planned.left - (visible.left - window.left),
+        top: planned.top - (visible.top - window.top),
+        right: planned.right + (window.right - visible.right),
+        bottom: planned.bottom + (window.bottom - visible.bottom),
+    }
+}
+fn contains(outer: &PxRect, inner: &PxRect) -> bool {
+    inner.left >= outer.left
+        && inner.top >= outer.top
+        && inner.right <= outer.right
+        && inner.bottom <= outer.bottom
+}
+
+/// Windows: sets the window's rect directly (physical px) and reads back
+/// what it really got. Tauri's set_size is not usable here: for an
+/// undecorated window with a shadow, tao's set_inner_size computes the new
+/// size from the CURRENT window rect and keeps it unchanged, and the window
+/// was created larger than asked (AdjustWindowRectEx adds the WS_CAPTION
+/// title bar and frame that WM_NCCALCSIZE then turns into client area).
+/// Returns (window rect, visible rect) after placing.
+#[cfg(target_os = "windows")]
+fn set_window_rect(
+    window: &tauri::WebviewWindow,
+    planned: PxRect,
+) -> Result<(PxRect, PxRect), String> {
+    use windows::Win32::Foundation::{HWND, RECT};
+    use windows::Win32::Graphics::Dwm::{DwmGetWindowAttribute, DWMWA_EXTENDED_FRAME_BOUNDS};
+    use windows::Win32::UI::WindowsAndMessaging::{
+        GetWindowRect, SetWindowPos, SWP_NOACTIVATE, SWP_NOSIZE, SWP_NOZORDER,
+    };
+    let hwnd = HWND(window.hwnd().map_err(|e| e.to_string())?.0 as _);
+    let px = |r: RECT| PxRect {
+        left: r.left,
+        top: r.top,
+        right: r.right,
+        bottom: r.bottom,
+    };
+    let rects = || unsafe {
+        let mut rc = RECT::default();
+        GetWindowRect(hwnd, &mut rc).map_err(|e| e.to_string())?;
+        let mut frame = RECT::default();
+        let visible = DwmGetWindowAttribute(
+            hwnd,
+            DWMWA_EXTENDED_FRAME_BOUNDS,
+            &mut frame as *mut RECT as *mut std::ffi::c_void,
+            std::mem::size_of::<RECT>() as u32,
+        )
+        .ok()
+        .map(|_| px(frame))
+        .filter(|f| f.right > f.left && f.bottom > f.top)
+        .unwrap_or(px(rc));
+        Ok::<_, String>((px(rc), visible))
+    };
+    let set = |r: PxRect, flags| unsafe {
+        SetWindowPos(
+            hwnd,
+            None,
+            r.left,
+            r.top,
+            r.right - r.left,
+            r.bottom - r.top,
+            SWP_NOZORDER | SWP_NOACTIVATE | flags,
+        )
+        .map_err(|e| e.to_string())
+    };
+    // Move first, so a change of monitor (and DPI) happens before the size
+    // is set; then the exact rect.
+    set(planned, SWP_NOSIZE)?;
+    set(planned, Default::default())?;
+    let (win, visible) = rects()?;
+    if visible != planned {
+        // Invisible borders or a size Windows adjusted: correct once from
+        // what the window really has.
+        set(window_rect_for(planned, win, visible), Default::default())?;
+        return rects();
+    }
+    Ok((win, visible))
 }
 
 /// The monitor containing `point` (the tray icon), its work area and the taskbar.
@@ -627,13 +722,33 @@ fn place(
     );
     let screen = screen_at(point, bounds);
     let placed = placement(&screen, (size.width, size.height), anchor, scale);
-    record_placement(app, &screen, anchor, scale, size, &placed);
-    // Position first, then size: the window is already on the target monitor
-    // (and DPI) when it gets its size, so Windows does not rescale it.
-    window.set_position(placed.pos).map_err(|e| e.to_string())?;
-    window
-        .set_size(tauri::Size::Physical(size))
-        .map_err(|e| e.to_string())
+    #[cfg(target_os = "windows")]
+    {
+        let result = set_window_rect(window, placed.rect());
+        record_placement(
+            app,
+            &screen,
+            anchor,
+            scale,
+            size,
+            &placed,
+            result.as_ref().ok(),
+        );
+        result.map(|_| ())
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        record_placement(app, &screen, anchor, scale, size, &placed, None);
+        // Position first, then size: the window is already on the target
+        // monitor when it gets its size.
+        window.set_position(placed.pos).map_err(|e| e.to_string())?;
+        window
+            .set_size(tauri::Size::Physical(tauri::PhysicalSize::new(
+                placed.size.0,
+                placed.size.1,
+            )))
+            .map_err(|e| e.to_string())
+    }
 }
 /// Fob: the last placement's numbers, overwritten on every show, in the app
 /// log folder (mini-placement.txt) so a misplaced window can be explained.
@@ -644,25 +759,48 @@ fn record_placement(
     scale: f64,
     size: tauri::PhysicalSize<u32>,
     placed: &Placed,
+    actual: Option<&(PxRect, PxRect)>,
 ) {
     let Ok(dir) = app.path().app_log_dir() else {
         return;
     };
-    let text = format!(
+    let mut text = format!(
         "scale {scale}\nmonitor {:?}\nwork {:?}\ntaskbar {:?}\ntray icon {:?}\n\
-         panel {}x{} at {},{}\nfits work area: {}\n",
+         panel wanted {}x{}\nplanned {:?}\nfits work area: {}\n",
         screen.monitor,
         screen.work,
         screen.taskbar,
         anchor,
         size.width,
         size.height,
-        placed.pos.x,
-        placed.pos.y,
+        placed.rect(),
         placed.fits,
     );
+    if let Some((window, visible)) = actual {
+        text += &format!(
+            "window rect {window:?}\nvisible rect {visible:?}\ninside work area: {}\n",
+            contains(&screen.work, visible)
+        );
+    }
     let _ = std::fs::create_dir_all(&dir);
-    let _ = std::fs::write(dir.join("mini-placement.txt"), text);
+    let _ = std::fs::write(dir.join("mini-placement.txt"), &text);
+    // And one line per show in mini-placement.log (restarted past 256 KB).
+    let log = dir.join("mini-placement.log");
+    if std::fs::metadata(&log).is_ok_and(|m| m.len() > 256 * 1024) {
+        let _ = std::fs::remove_file(&log);
+    }
+    let stamp = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |d| d.as_secs());
+    let line = format!("{stamp} {}\n", text.trim_end().replace('\n', " | "));
+    use std::io::Write;
+    if let Ok(mut file) = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(log)
+    {
+        let _ = file.write_all(line.as_bytes());
+    }
 }
 /// Fob: an unpinned mini window closes like a flyout when another window gets
 /// focus; a pinned one stays open (and on top) until the tray icon, Esc or
@@ -888,7 +1026,11 @@ mod tests {
         let src = include_str!("companion.rs");
         let code = src.split("#[cfg(test)]").next().unwrap();
         let callers = |needle: &str| code.matches(needle).count();
-        assert_eq!(callers(concat!(" place", "(")), 2); // the fn and its one call in `show`
+        // `place`: the fn and its one call in `show`. Windows: one exact
+        // SetWindowPos path; elsewhere set_position + set_size.
+        assert_eq!(callers(concat!(" place", "(")), 2);
+        assert_eq!(callers(concat!("set_window", "_rect(")), 2);
+        assert_eq!(callers(concat!("SetWindow", "Pos(")), 1);
         assert_eq!(callers(concat!(".set_", "size(")), 1);
         assert_eq!(callers(concat!(".set_", "position(")), 1);
         assert!(!code.contains(concat!("fit_", "companion")));
@@ -977,6 +1119,7 @@ mod tests {
     }
     fn inside(p: &Placed, size: tauri::PhysicalSize<u32>, area: &PxRect, gap: i32) {
         assert!(p.fits);
+        assert_eq!(p.size, (size.width, size.height));
         assert!(
             p.pos.x >= area.left + gap && p.pos.y >= area.top + gap,
             "{p:?} {area:?}"
@@ -992,7 +1135,7 @@ mod tests {
     }
     #[test]
     fn bottom_taskbar_100_125_150_percent_stays_above_the_taskbar() {
-        for scale in [1.0, 1.25, 1.5] {
+        for scale in [1.0, 1.25, 1.5, 1.75] {
             let (screen, icon) = hd(scale, Edge::Bottom, (0, 0));
             let size = mini_size(scale);
             let gap = (12.0 * scale).round() as i32;
@@ -1032,7 +1175,7 @@ mod tests {
     }
     #[test]
     fn taskbar_on_top_left_and_right() {
-        for scale in [1.0, 1.25, 1.5] {
+        for scale in [1.0, 1.25, 1.5, 1.75] {
             let size = mini_size(scale);
             let gap = (12.0 * scale).round() as i32;
             for edge in [Edge::Top, Edge::Left, Edge::Right] {
@@ -1083,7 +1226,7 @@ mod tests {
         assert!(p.fits);
     }
     #[test]
-    fn too_tall_for_the_work_area_is_reported_not_hidden() {
+    fn too_tall_for_the_work_area_shrinks_and_still_clears_the_taskbar() {
         // 1920x1080 at 175 %: 1141 px panel, 1080 - 84 px taskbar = 996 px work area.
         let m = PxRect::new(0, 0, 1920, 1080);
         let screen = Screen {
@@ -1100,6 +1243,61 @@ mod tests {
             1.75,
         );
         assert!(!p.fits);
-        assert_eq!(p.pos.y, 0); // top visible; fits = false is recorded
+        let gap = 21; // 12 px at 175 %
+        assert_eq!(p.size, (size.width, 996 - 2 * gap as u32));
+        assert_eq!((p.pos.y, p.rect().bottom), (gap, 996 - gap));
+        assert!(contains(&screen.work, &p.rect()));
+    }
+    #[test]
+    fn negative_coordinates_at_every_scale_and_edge() {
+        // A monitor left of and above the primary one (negative origin).
+        for scale in [1.0, 1.25, 1.5, 1.75] {
+            for edge in [Edge::Bottom, Edge::Top, Edge::Left, Edge::Right] {
+                let (screen, icon) = hd(scale, edge, (-2400, -1300));
+                let size = mini_size(scale);
+                let gap = (12.0 * scale).round() as i32;
+                let p = placement(&screen, (size.width, size.height), Some(icon), scale);
+                inside(&p, size, &screen.work, gap);
+            }
+        }
+    }
+    #[test]
+    fn the_visible_rect_lands_on_the_plan_despite_invisible_borders() {
+        let planned = PxRect::new(1300, 300, 540, 978);
+        // A window whose rect is 7 px wider on the left/right/bottom than
+        // what DWM shows (classic invisible resize borders), currently
+        // somewhere else and the wrong size.
+        let window = PxRect::new(100, 100, 600, 1050);
+        let visible = PxRect {
+            left: window.left + 7,
+            top: window.top,
+            right: window.right - 7,
+            bottom: window.bottom - 7,
+        };
+        let target = window_rect_for(planned, window, visible);
+        assert_eq!(
+            target,
+            PxRect {
+                left: 1293,
+                top: 300,
+                right: 1847,
+                bottom: 1285
+            }
+        );
+        // Without borders the window rect is the plan itself.
+        assert_eq!(window_rect_for(planned, window, window), planned);
+    }
+    #[test]
+    fn the_v0_6_0_window_was_taller_than_planned() {
+        // What v0.6.0 did at 150 %: planned 540x978 above a 72 px taskbar,
+        // but the window kept its creation size (title bar + frame added by
+        // AdjustWindowRectEx, ~45 px taller), so its bottom crossed the
+        // taskbar. Planning with the window's real height shows the overlap;
+        // the fix sets the exact rect and checks the visible one.
+        let (screen, icon) = hd(1.5, Edge::Bottom, (0, 0));
+        let p = placement(&screen, (540, 978), Some(icon), 1.5);
+        let actual = PxRect::new(p.pos.x, p.pos.y, 540 + 12, 978 + 45);
+        assert!(!contains(&screen.work, &actual));
+        assert!(contains(&screen.work, &p.rect()));
     }
 }
