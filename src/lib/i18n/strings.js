@@ -768,11 +768,12 @@ export const zh = {
   "mini.dragHint": "拖动可移动 · 双击恢复到托盘旁",
   "mini.resetHint": "钉住后可拖动移动 · 双击恢复到托盘旁",
   "opacity.value": "百分之 {v}",
-  "settings.miniOpacity": "小窗不透明度",
-  "settings.miniOpacityNote": "只淡化背景，文字保持清晰。小窗标题栏里也能调。",
+  "settings.miniOpacity": "迷你窗口不透明度",
+  "settings.miniOpacityNote":
+    "只淡化背景，文字保持清晰。迷你窗口标题栏里也能调。",
   "settings.miniPosition": "位置",
   "settings.miniPositionNote":
-    "钉住小窗后拖动标题栏即可移动，下次在原处打开。双击标题栏恢复到托盘旁。",
+    "钉住迷你窗口后拖动标题栏即可移动，下次在原处打开。双击标题栏恢复到托盘旁。",
   "settings.resetPosition": "恢复到托盘旁",
   "settings.showTray": "显示托盘图标",
   "settings.showTrayNote": "让 CPU、内存、显卡和网络读数随手可查。",
@@ -910,10 +911,10 @@ export const zh = {
   "hotkey.atLaunch": "启动时：",
   "hotkey.noKey":
     "Fob 只收到了修饰键。如果你按下了完整的组合键，它可能已被其他程序占用，请换一个。",
-  "hotkey.label": "显示或隐藏小窗",
+  "hotkey.label": "显示或隐藏迷你窗口",
   "hotkey.note":
     "在任何程序里都能用，Fob 只在托盘运行时也有效。点一下输入框，再按下带 Ctrl、Alt 或 Win 的组合键（例如 Ctrl+Alt+F）。按 Esc 取消。",
-  "hotkey.fieldAria": "小窗快捷键：点击后按下组合键",
+  "hotkey.fieldAria": "迷你窗口快捷键：点击后按下组合键",
   "hotkey.press": "请按下组合键…",
   "hotkey.none": "未设置",
   "hotkey.clear": "清除快捷键",

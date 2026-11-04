@@ -55,6 +55,20 @@
   export let onSpace: (() => void) | null = null;
 
   $: title = $t(`detail.${kind}`);
+  const TEMP_MAX = 100;
+  const tempText = (v: number) => `${v.toFixed(0)} °C`;
+  const TEMP_LINES = [
+    {
+      pick: (s: ResourceSample) => s.cpu_temp,
+      color: "var(--chart-1)",
+      label: "CPU",
+    },
+    {
+      pick: (s: ResourceSample) => s.gpu_temp,
+      color: "var(--chart-2)",
+      label: "GPU",
+    },
+  ];
   const W = 300;
   const H = 70;
   $: n = compact ? 8 : 10;
@@ -440,6 +454,35 @@
             {/if}
           {/each}
         </div>
+        <ChartCursor
+          {history}
+          max={TEMP_MAX}
+          format={tempText}
+          lines={TEMP_LINES}
+        >
+          <svg
+            viewBox={`0 0 ${W} ${H}`}
+            preserveAspectRatio="none"
+            class="graph"
+          >
+            <path
+              d={sparklinePath(history, (s) => s.gpu_temp, {
+                width: W,
+                height: H,
+                max: TEMP_MAX,
+              })}
+              class="line t2"
+            />
+            <path
+              d={sparklinePath(history, (s) => s.cpu_temp, {
+                width: W,
+                height: H,
+                max: TEMP_MAX,
+              })}
+              class="line t1"
+            />
+          </svg>
+        </ChartCursor>
       </div>
     {/if}
     {#if fans.length}
@@ -642,6 +685,12 @@
   }
   .line.peach {
     stroke: var(--peach);
+  }
+  .line.t1 {
+    stroke: var(--chart-1);
+  }
+  .line.t2 {
+    stroke: var(--chart-2);
   }
   .dot {
     display: inline-block;

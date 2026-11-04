@@ -96,6 +96,22 @@
     memory: topMemory ?? topBy(processes, (p) => p.memory_usage),
   };
 
+  // Temperature history: the same samples and series as the Processes
+  // page card (ResourceTrend metric "temp"), 0–100 °C.
+  const TEMP_MAX = 100;
+  const tempText = (v: number) => `${v.toFixed(0)} °C`;
+  const TEMP_LINES = [
+    {
+      pick: (s: ResourceSample) => s.cpu_temp,
+      color: "var(--chart-1)",
+      label: "CPU",
+    },
+    {
+      pick: (s: ResourceSample) => s.gpu_temp,
+      color: "var(--chart-2)",
+      label: "GPU",
+    },
+  ];
   const W = 260;
   const H = 36;
 
@@ -420,7 +436,36 @@
               >°C {summary.cpuTemp ? "CPU" : "GPU"}</small
             >
           </div>
-          <div class="foot wrap2">
+          <ChartCursor
+            {history}
+            max={TEMP_MAX}
+            format={tempText}
+            lines={TEMP_LINES}
+          >
+            <svg
+              viewBox={`0 0 ${W} ${H}`}
+              preserveAspectRatio="none"
+              class="spark"
+            >
+              <path
+                d={sparklinePath(history, (s) => s.gpu_temp, {
+                  width: W,
+                  height: H,
+                  max: TEMP_MAX,
+                })}
+                class="line t2"
+              />
+              <path
+                d={sparklinePath(history, (s) => s.cpu_temp, {
+                  width: W,
+                  height: H,
+                  max: TEMP_MAX,
+                })}
+                class="line t1"
+              />
+            </svg>
+          </ChartCursor>
+          <div class="foot">
             {[
               summary.cpuTemp && summary.gpuTemp
                 ? `GPU ${formatSensor(summary.gpuTemp)}`
@@ -628,6 +673,12 @@
   .line.peach {
     stroke: var(--peach);
   }
+  .line.t1 {
+    stroke: var(--chart-1);
+  }
+  .line.t2 {
+    stroke: var(--chart-2);
+  }
   .track {
     height: 10px;
     border-radius: 999px;
@@ -749,8 +800,7 @@
     white-space: nowrap;
     flex-shrink: 0;
   }
-  /* The temperature card has no graph: its fan line may take two lines. */
-  .compact .grid .foot.wrap2,
+  /* The "no sensor" note may take two lines. */
   .compact .grid .note {
     white-space: normal;
     display: -webkit-box;

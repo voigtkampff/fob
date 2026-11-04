@@ -87,7 +87,7 @@
       <div class="cursor-values">
         {#each lines as line, i}
           {@const v = value(line)}
-          {#if i}<span class="sep"> </span>{/if}<span
+          <span
             >{line.label ? `${line.label} ` : ""}{v === null
               ? $t("chart.noReading")
               : format(v)}</span
@@ -147,7 +147,11 @@
     pointer-events: none;
     box-shadow: 0 1px 4px rgb(0 0 0 / 0.12);
   }
+  /* Several series sit side by side with a clear gap (a plain space
+     between spans was dropped, so "CPU 44 °CGPU 44 °C" ran together). */
   .cursor-values {
+    display: flex;
+    gap: 8px;
     font-weight: 600;
   }
   .cursor-time {

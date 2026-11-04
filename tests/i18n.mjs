@@ -10,6 +10,12 @@ const placeholders = (text) =>
   [...text.matchAll(/\{(\w+)\}/g)].map((m) => m[1]).sort();
 
 assert.deepEqual(Object.keys(zh), Object.keys(en), "same keys, same order");
+for (const [key, text] of Object.entries(zh))
+  assert.ok(!text.includes("小窗"), `zh ${key}: say 迷你窗口, not 小窗`);
+assert.ok(
+  !readFileSync("src-tauri/src/i18n.rs", "utf8").includes("小窗"),
+  "tray/native strings: say 迷你窗口, not 小窗",
+);
 for (const key of Object.keys(en)) {
   assert.ok(en[key].trim(), `en.${key} is empty`);
   assert.ok(zh[key].trim(), `zh.${key} is empty`);
