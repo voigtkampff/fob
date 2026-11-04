@@ -197,6 +197,10 @@ export const en = {
   "lang.zh": "中文",
   "settings.tray": "Tray mini window",
   "mini.opacity": "Window opacity",
+  "mini.tint": "Frost",
+  "settings.miniTint": "Mini window frost",
+  "settings.miniTintNote":
+    "How strongly the glass is tinted. Windows fixes the blur itself; more frost hides more of the desktop.",
   "mini.dragHint": "Drag to move · double-click: back to the tray position",
   "mini.resetHint":
     "Pin to move by dragging · double-click: back to the tray position",
@@ -765,6 +769,10 @@ export const zh = {
   "lang.zh": "中文",
   "settings.tray": "托盘迷你窗口",
   "mini.opacity": "窗口不透明度",
+  "mini.tint": "磨砂浓度",
+  "settings.miniTint": "小窗磨砂浓度",
+  "settings.miniTintNote":
+    "玻璃着色的浓淡。模糊半径由 Windows 固定；磨砂越浓，桌面越看不清。",
   "mini.dragHint": "拖动可移动 · 双击恢复到托盘旁",
   "mini.resetHint": "钉住后可拖动移动 · 双击恢复到托盘旁",
   "opacity.value": "百分之 {v}",

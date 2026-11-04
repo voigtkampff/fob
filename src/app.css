@@ -286,16 +286,28 @@ html[data-companion] .panel {
    inset edge light, an inner glow and a soft shadow. Popups in the mini
    window use the same alpha, plus an in-page blur of what is under them. */
 html[data-companion] {
-  --glass-tint: rgb(255 255 255 / 0.14);
+  --glass-tint: rgb(255 255 255 / calc(0.04 + 0.5 * var(--mini-tint, 0.3)));
   --glass-edge: rgb(255 255 255 / 0.55);
   --glass-rim: rgb(255 255 255 / 0.22);
   --glass-glow: rgb(255 255 255 / 0.1);
+  --ink-halo: 255 255 255;
 }
 html[data-companion].dark {
-  --glass-tint: rgb(20 20 24 / 0.28);
+  --glass-tint: rgb(20 20 24 / calc(0.06 + 0.6 * var(--mini-tint, 0.3)));
   --glass-edge: rgb(255 255 255 / 0.18);
   --glass-rim: rgb(255 255 255 / 0.08);
   --glass-glow: rgb(255 255 255 / 0.04);
+  --ink-halo: 0 0 0;
+}
+/* Fob v0.6.5: text legibility follows opacity (--ink-boost, set with the
+   boosted --foreground copies in MenuBarOverview): a soft halo in the
+   opposite tone grows as the window clears. No desktop sampling. */
+html[data-companion] body {
+  text-shadow:
+    0 0 calc(var(--ink-boost, 0) * 4px)
+      rgb(var(--ink-halo) / calc(var(--ink-boost, 0) * 0.9)),
+    0 1px calc(var(--ink-boost, 0) * 2px)
+      rgb(var(--ink-halo) / calc(var(--ink-boost, 0) * 0.6));
 }
 html[data-companion] .card,
 html[data-companion] .panel {
@@ -312,13 +324,16 @@ html[data-companion] [data-slot="dropdown-menu-sub-content"],
 html[data-companion] [data-slot="sheet-content"],
 html[data-companion] [data-slot="dialog-content"],
 html[data-companion] [data-slot="alert-dialog-content"] {
+  /* A popup can sit over clear window, where there is nothing in the page
+     to blur: it never drops below a frosted 72 %. */
   background-color: color-mix(
     in oklab,
-    var(--popover) calc(var(--mini-alpha, 1) * 100%),
+    var(--popover) calc(max(var(--mini-alpha, 1), 0.72) * 100%),
     transparent
   );
   background-image: linear-gradient(var(--glass-tint), var(--glass-tint));
-  backdrop-filter: blur(14px) saturate(160%);
+  -webkit-backdrop-filter: blur(16px) saturate(160%);
+  backdrop-filter: blur(16px) saturate(160%);
   box-shadow:
     inset 0 1px 0 var(--glass-edge),
     inset 0 0 0 1px var(--glass-rim),
@@ -326,4 +341,36 @@ html[data-companion] [data-slot="alert-dialog-content"] {
 }
 html[data-companion] body {
   overflow: hidden;
+}
+
+/* Fob v0.6.5: continuous-curvature (squircle) corners. The window outline
+   is the same curve, cut by Windows (ui/window.rs MINI_RADIUS_CSS = 22).
+   Nested radii: inner = outer - padding (shell 22, padding 10 -> card 12,
+   card padding ~6 -> control 6..8). Without corner-shape support the plain
+   radius is used. */
+html[data-companion] .mini {
+  border-radius: 22px;
+}
+html[data-companion] .card,
+html[data-companion] .panel {
+  border-radius: 12px;
+}
+html[data-companion] [data-slot="popover-content"],
+html[data-companion] [data-slot="dropdown-menu-content"] {
+  border-radius: 14px;
+}
+html[data-companion] button,
+html[data-companion] [data-slot="badge"] {
+  border-radius: 8px;
+}
+@supports (corner-shape: squircle) {
+  html[data-companion] .mini,
+  html[data-companion] .card,
+  html[data-companion] .panel,
+  html[data-companion] [data-slot="popover-content"],
+  html[data-companion] [data-slot="dropdown-menu-content"],
+  html[data-companion] button,
+  html[data-companion] [data-slot="badge"] {
+    corner-shape: squircle;
+  }
 }

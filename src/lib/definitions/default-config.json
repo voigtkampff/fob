@@ -30,6 +30,7 @@
     "defaultStatusFilter": "all",
     "processView": "flat",
     "miniHotkey": "",
-    "miniOpacity": 100
+    "miniOpacity": 100,
+    "miniTint": 30
   }
 }

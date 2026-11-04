@@ -358,12 +358,20 @@ pub async fn collapse_to_tray(app: AppHandle) -> Result<(), String> {
 pub fn native_frame(app: &AppHandle) {
     #[cfg(target_os = "windows")]
     if let Some(window) = app.get_webview_window("overview") {
+        if let Ok(h) = window.hwnd() {
+            crate::ui::apply_mini_shape(h.0 as isize, window.scale_factor().unwrap_or(1.0));
+        }
+    }
+    #[cfg(target_os = "windows")]
+    if let Some(window) = app.get_webview_window("overview") {
         use windows::Win32::Foundation::HWND;
         use windows::Win32::Graphics::Dwm::{
-            DwmSetWindowAttribute, DWMWA_WINDOW_CORNER_PREFERENCE, DWMWCP_ROUND,
+            DwmSetWindowAttribute, DWMWA_WINDOW_CORNER_PREFERENCE, DWMWCP_DONOTROUND,
         };
         if let Ok(hwnd) = window.hwnd() {
-            let preference = DWMWCP_ROUND;
+            // Fob v0.6.5: Windows' round corners are off; the squircle
+            // region (ui::apply_mini_shape) shapes the window instead.
+            let preference = DWMWCP_DONOTROUND;
             unsafe {
                 let _ = DwmSetWindowAttribute(
                     HWND(hwnd.0 as _),
@@ -1130,6 +1138,17 @@ pub fn window_event(window: &tauri::Window, event: &WindowEvent) {
     let app = window.app_handle();
     if let WindowEvent::ScaleFactorChanged { .. } = event {
         crate::window_icon::apply(window);
+    }
+    if window.label() == "overview"
+        && matches!(
+            event,
+            WindowEvent::Resized(_) | WindowEvent::ScaleFactorChanged { .. }
+        )
+    {
+        #[cfg(target_os = "windows")]
+        if let Ok(h) = window.hwnd() {
+            crate::ui::apply_mini_shape(h.0 as isize, window.scale_factor().unwrap_or(1.0));
+        }
     }
     match (window.label(), event) {
         ("overview", WindowEvent::Moved(_)) => moved(app),

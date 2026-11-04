@@ -8,7 +8,7 @@
     <RuntimeIdentifier>win-x64</RuntimeIdentifier>
     <AssemblyName>fob-sensors</AssemblyName>
     <RootNamespace>WinperfSensors</RootNamespace>
-    <Version>0.6.4</Version>
+    <Version>0.6.5</Version>
     <!-- VERSIONINFO. CompanyName lives in one place: src-tauri/Cargo.toml. -->
     <Company>$([System.Text.RegularExpressions.Regex]::Match($([System.IO.File]::ReadAllText('$(MSBuildThisFileDirectory)../../src-tauri/Cargo.toml')), 'CompanyName = "([^"]*)"').Groups[1].Value)</Company>
     <Product>Fob</Product>
