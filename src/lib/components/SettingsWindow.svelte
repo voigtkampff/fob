@@ -220,24 +220,6 @@
             </div>
             <div class="flex items-start justify-between gap-6">
               <div>
-                <Label for="mini-tint">{$t("settings.miniTint")}</Label>
-                <p
-                  id="mini-tint-note"
-                  class="mt-1 text-xs leading-relaxed text-muted-foreground"
-                >
-                  {$t("settings.miniTintNote")}
-                </p>
-              </div>
-              <div class="shrink-0 pt-1">
-                <OpacitySlider
-                  id="mini-tint"
-                  setting="miniTint"
-                  describedby="mini-tint-note"
-                />
-              </div>
-            </div>
-            <div class="flex items-start justify-between gap-6">
-              <div>
                 <p class="text-sm leading-none font-medium">
                   {$t("settings.miniPosition")}
                 </p>

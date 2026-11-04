@@ -16,7 +16,7 @@
   import * as Popover from "$lib/components/ui/popover/index.js";
   import OpacitySlider from "./OpacitySlider.svelte";
   import { settingsStore } from "$lib/stores/settings";
-  import { miniOpacity, miniTint, inkBoost } from "$lib/utils/mini-opacity.js";
+  import { miniOpacity } from "$lib/utils/mini-opacity.js";
   import Dashboard from "./dashboard/Dashboard.svelte";
   import type { DetailKind } from "./dashboard/detail";
   import { themeStore } from "$lib/stores/theme";
@@ -135,38 +135,8 @@
   }
   // Fob: only backgrounds fade (app.css, --mini-alpha); text stays opaque.
   $: alpha = miniOpacity($settingsStore.behavior.miniOpacity) / 100;
-  $: tint = miniTint($settingsStore.behavior.miniTint) / 100;
-  $: boost = inkBoost(alpha * 100, tint * 100);
-  $: if (typeof document !== "undefined") {
-    const root = document.documentElement.style;
-    root.setProperty("--mini-alpha", String(alpha));
-    root.setProperty("--mini-tint", String(tint));
-    root.setProperty("--ink-boost", String(boost));
-    applyInk($themeStore, boost);
-  }
-  // Fob: text pushed toward full contrast as the window clears. The theme
-  // writes --foreground on <html>; the boosted copies live on <body>, which
-  // holds every view and popup portal.
-  function applyInk(_theme: unknown, k: number) {
-    const css = getComputedStyle(document.documentElement);
-    const ink = document.documentElement.classList.contains("dark")
-      ? "#fff"
-      : "#000";
-    const pct = (f: number) => `${Math.round(Math.min(1, k * f) * 100)}%`;
-    for (const [name, f] of [
-      ["foreground", 1],
-      ["card-foreground", 1],
-      ["popover-foreground", 1],
-      ["muted-foreground", 1.4],
-    ] as const) {
-      const base = css.getPropertyValue(`--${name}`).trim();
-      if (base)
-        document.body.style.setProperty(
-          `--${name}`,
-          `color-mix(in oklab, ${base}, ${ink} ${pct(f)})`,
-        );
-    }
-  }
+  $: if (typeof document !== "undefined")
+    document.documentElement.style.setProperty("--mini-alpha", String(alpha));
   let opacityOpen = false;
   async function pause() {
     try {
@@ -268,11 +238,6 @@
             >{$t("mini.opacity")}</label
           >
           <OpacitySlider id="mini-opacity-quick" />
-          <label
-            for="mini-tint-quick"
-            class="mt-3 mb-2 block text-xs font-medium">{$t("mini.tint")}</label
-          >
-          <OpacitySlider id="mini-tint-quick" setting="miniTint" />
         </Popover.Content>
       </Popover.Root>
       <Button

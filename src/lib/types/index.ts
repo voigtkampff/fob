@@ -162,8 +162,6 @@ export interface AppConfig {
     miniHotkey?: string;
     /** Fob: mini window opacity, 0–100 (%). */
     miniOpacity?: number;
-    /** Fob: mini window frost (tint strength), 0–100 (%). */
-    miniTint?: number;
   };
 }
 

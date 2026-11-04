@@ -286,25 +286,16 @@ html[data-companion] .panel {
    inset edge light, an inner glow and a soft shadow. Popups in the mini
    window use the same alpha, plus an in-page blur of what is under them. */
 html[data-companion] {
-  --glass-tint: rgb(255 255 255 / calc(0.04 + 0.5 * var(--mini-tint, 0.3)));
+  --glass-tint: rgb(255 255 255 / 0.14);
   --glass-edge: rgb(255 255 255 / 0.55);
   --glass-rim: rgb(255 255 255 / 0.22);
   --glass-glow: rgb(255 255 255 / 0.1);
-  --ink-halo: 255 255 255;
 }
 html[data-companion].dark {
-  --glass-tint: rgb(20 20 24 / calc(0.06 + 0.6 * var(--mini-tint, 0.3)));
+  --glass-tint: rgb(20 20 24 / 0.28);
   --glass-edge: rgb(255 255 255 / 0.18);
   --glass-rim: rgb(255 255 255 / 0.08);
   --glass-glow: rgb(255 255 255 / 0.04);
-  --ink-halo: 20 20 24;
-}
-/* Fob v0.6.5: text legibility follows opacity (--ink-boost, set with the
-   boosted --foreground copies in MenuBarOverview): a soft halo in the
-   opposite tone grows as the window clears. No desktop sampling. */
-html[data-companion] body {
-  text-shadow: 0 0 calc(var(--ink-boost, 0) * 3px)
-    rgb(var(--ink-halo) / calc(var(--ink-boost, 0) * 0.32));
 }
 html[data-companion] .card,
 html[data-companion] .panel {
@@ -321,15 +312,13 @@ html[data-companion] [data-slot="dropdown-menu-sub-content"],
 html[data-companion] [data-slot="sheet-content"],
 html[data-companion] [data-slot="dialog-content"],
 html[data-companion] [data-slot="alert-dialog-content"] {
-  /* Popups keep a solid frosted floor (88 %) whatever the window opacity.
-     No backdrop-filter: on a transparent WebView2 it washed the popup out
-     to near-clear (v0.6.5 on Windows), and it cannot blur the desktop. */
   background-color: color-mix(
     in oklab,
-    var(--popover) calc(max(var(--mini-alpha, 1), 0.88) * 100%),
+    var(--popover) calc(var(--mini-alpha, 1) * 100%),
     transparent
   );
   background-image: linear-gradient(var(--glass-tint), var(--glass-tint));
+  backdrop-filter: blur(14px) saturate(160%);
   box-shadow:
     inset 0 1px 0 var(--glass-edge),
     inset 0 0 0 1px var(--glass-rim),
@@ -337,32 +326,4 @@ html[data-companion] [data-slot="alert-dialog-content"] {
 }
 html[data-companion] body {
   overflow: hidden;
-}
-
-/* Fob: continuous-curvature (squircle) corners inside the window. The
-   window outline is Windows' own rounding (ui/window.rs), so the shell
-   fills the window square. Nested radii: inner = outer - padding (card 12,
-   card padding ~6 -> control 8). Without corner-shape support the plain
-   radius is used. */
-html[data-companion] .card,
-html[data-companion] .panel {
-  border-radius: 12px;
-}
-html[data-companion] [data-slot="popover-content"],
-html[data-companion] [data-slot="dropdown-menu-content"] {
-  border-radius: 14px;
-}
-html[data-companion] button,
-html[data-companion] [data-slot="badge"] {
-  border-radius: 8px;
-}
-@supports (corner-shape: squircle) {
-  html[data-companion] .card,
-  html[data-companion] .panel,
-  html[data-companion] [data-slot="popover-content"],
-  html[data-companion] [data-slot="dropdown-menu-content"],
-  html[data-companion] button,
-  html[data-companion] [data-slot="badge"] {
-    corner-shape: squircle;
-  }
 }

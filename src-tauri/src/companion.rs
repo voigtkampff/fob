@@ -358,12 +358,6 @@ pub async fn collapse_to_tray(app: AppHandle) -> Result<(), String> {
 pub fn native_frame(app: &AppHandle) {
     #[cfg(target_os = "windows")]
     if let Some(window) = app.get_webview_window("overview") {
-        if let Ok(h) = window.hwnd() {
-            crate::ui::apply_mini_frame(h.0 as isize);
-        }
-    }
-    #[cfg(target_os = "windows")]
-    if let Some(window) = app.get_webview_window("overview") {
         use windows::Win32::Foundation::HWND;
         use windows::Win32::Graphics::Dwm::{
             DwmSetWindowAttribute, DWMWA_WINDOW_CORNER_PREFERENCE, DWMWCP_ROUND,
@@ -1136,17 +1130,6 @@ pub fn window_event(window: &tauri::Window, event: &WindowEvent) {
     let app = window.app_handle();
     if let WindowEvent::ScaleFactorChanged { .. } = event {
         crate::window_icon::apply(window);
-    }
-    if window.label() == "overview"
-        && matches!(
-            event,
-            WindowEvent::Resized(_) | WindowEvent::ScaleFactorChanged { .. }
-        )
-    {
-        #[cfg(target_os = "windows")]
-        if let Ok(h) = window.hwnd() {
-            crate::ui::apply_mini_frame(h.0 as isize);
-        }
     }
     match (window.label(), event) {
         ("overview", WindowEvent::Moved(_)) => moved(app),

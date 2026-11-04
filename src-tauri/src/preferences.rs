@@ -53,9 +53,7 @@ fn merge(config: &mut Value, patch: &Value) {
                     value.is_boolean()
                 }
                 // Fob: mini window opacity in percent (Settings and the mini window).
-                "miniOpacity" | "miniTint" => {
-                    value.as_u64().is_some_and(|n| (0..=100).contains(&n))
-                }
+                "miniOpacity" => value.as_u64().is_some_and(|n| (0..=100).contains(&n)),
                 "processView" => matches!(value.as_str(), Some("flat" | "tree")),
                 // Fob: "" (off) or a canonical combo; set via set_mini_hotkey.
                 "miniHotkey" => value.as_str().is_some_and(|s| {
@@ -284,11 +282,6 @@ mod tests {
     fn mini_opacity_is_opaque_by_default_and_kept_in_range() {
         let mut config = defaults();
         assert_eq!(config["behavior"]["miniOpacity"], 100);
-        assert_eq!(config["behavior"]["miniTint"], 30);
-        merge(&mut config, &json!({"behavior":{"miniTint":0}}));
-        assert_eq!(config["behavior"]["miniTint"], 0);
-        merge(&mut config, &json!({"behavior":{"miniTint":101}}));
-        assert_eq!(config["behavior"]["miniTint"], 0);
         merge(&mut config, &json!({"behavior":{"miniOpacity":70}}));
         assert_eq!(config["behavior"]["miniOpacity"], 70);
         merge(&mut config, &json!({"behavior":{"miniOpacity":0}}));

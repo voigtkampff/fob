@@ -1,11 +1,10 @@
 <script lang="ts">
-  // Fob: the mini window opacity (miniOpacity) or frost (miniTint) slider,
-  // in Settings and in the mini window's title bar popover. Every window
-  // follows the saved value (preferences-change).
+  // Fob: the mini window opacity slider, in Settings and in the mini
+  // window's title bar popover. Both write behavior.miniOpacity; every
+  // window follows the saved value (preferences-change).
   import { settingsStore } from "$lib/stores/settings";
   import {
     miniOpacity,
-    miniTint,
     OPACITY_MIN,
     OPACITY_MAX,
     OPACITY_STEP,
@@ -14,15 +13,12 @@
 
   export let id = "mini-opacity";
   export let describedby: string | undefined = undefined;
-  export let setting: "miniOpacity" | "miniTint" = "miniOpacity";
-  let parse: (v: unknown) => number;
-  $: parse = setting === "miniTint" ? miniTint : miniOpacity;
-  $: value = parse($settingsStore.behavior[setting]);
+  $: value = miniOpacity($settingsStore.behavior.miniOpacity);
   function set(next: number) {
-    const v = parse(next);
+    const v = miniOpacity(next);
     if (v === value) return;
     settingsStore.updateConfig({
-      behavior: { ...$settingsStore.behavior, [setting]: v },
+      behavior: { ...$settingsStore.behavior, miniOpacity: v },
     });
   }
 </script>

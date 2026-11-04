@@ -16,14 +16,14 @@ pub fn setup_window_effects(window: &WebviewWindow) -> Result<(), Box<dyn std::e
     Ok(())
 }
 
-/// Fob: the mini window's glass on Windows 11: the accent-policy acrylic
-/// (SetWindowCompositionAttribute, ACCENT_ENABLE_ACRYLICBLURBEHIND). Unlike
-/// the DWM system backdrop (DWMWA_SYSTEMBACKDROP_TYPE), which Windows swaps
-/// for a flat fallback whenever the window is inactive, the accent blur stays
-/// when another window has focus. Known cost: on some builds it lags while
-/// the window is dragged. Windows 10 keeps plain translucency (lags worse).
-/// The tint is drawn by CSS (theme + frost setting), so the accent tint is
-/// almost clear.
+/// Fob: the mini window's glass: the Windows 11 system backdrop
+/// (DWMWA_SYSTEMBACKDROP_TYPE), Acrylic by default. Windows draws a backdrop
+/// in its inactive look whenever the window's frame is inactive, so the
+/// window proc keeps the frame painted active (see `keep_frame_active`).
+/// Before build 22523 window-vibrancy would fall back to the accent-policy
+/// acrylic, which lags while dragging; those builds and Windows 10 keep plain
+/// translucency. `FOB_MINI_BACKDROP=mica|tabbed` (hidden, for comparison)
+/// picks Mica or Mica Alt instead.
 #[cfg(target_os = "windows")]
 pub fn setup_mini_glass(window: &WebviewWindow) {
     let build = sysinfo::System::kernel_version()
@@ -31,136 +31,100 @@ pub fn setup_mini_glass(window: &WebviewWindow) {
     if !acrylic_supported(build) {
         return;
     }
-    let Ok(hwnd) = window.hwnd() else { return };
-    if let Err(e) = accent_acrylic(hwnd.0 as isize, 0x0100_0000) {
+    let kind = backdrop_kind(std::env::var("FOB_MINI_BACKDROP").ok().as_deref());
+    let applied = match kind {
+        Backdrop::Acrylic => apply_acrylic(window, Some((0, 0, 0, 0))),
+        Backdrop::Mica => window_vibrancy::apply_mica(window, None),
+        Backdrop::Tabbed => window_vibrancy::apply_tabbed(window, None),
+    };
+    if let Err(e) = applied {
         eprintln!("mini glass: {e}");
+        return;
+    }
+    if let Ok(hwnd) = window.hwnd() {
+        keep_frame_active(hwnd.0 as isize);
     }
 }
 
+#[cfg_attr(not(target_os = "windows"), allow(dead_code))]
+#[derive(Debug, PartialEq, Clone, Copy)]
+enum Backdrop {
+    Acrylic,
+    Mica,
+    Tabbed,
+}
+
+#[cfg_attr(not(target_os = "windows"), allow(dead_code))]
+fn backdrop_kind(name: Option<&str>) -> Backdrop {
+    match name.map(str::to_ascii_lowercase).as_deref() {
+        Some("mica") => Backdrop::Mica,
+        Some("tabbed") => Backdrop::Tabbed,
+        _ => Backdrop::Acrylic,
+    }
+}
+
+/// Subclass the mini window so WM_NCACTIVATE always paints the active frame
+/// (wParam = TRUE), which keeps the system backdrop in its active look.
+/// Focus itself is untouched: activation, WM_ACTIVATE and WM_KILLFOCUS still
+/// happen, so tao's Focused(false) (auto-hide when unpinned) still fires.
 #[cfg(target_os = "windows")]
-fn accent_acrylic(hwnd: isize, abgr: u32) -> Result<(), String> {
-    use windows::core::s;
-    use windows::Win32::System::LibraryLoader::{GetProcAddress, LoadLibraryA};
-    #[repr(C)]
-    struct AccentPolicy {
-        state: u32,
-        flags: u32,
-        gradient: u32,
-        animation: u32,
+fn keep_frame_active(hwnd: isize) {
+    use windows::Win32::Foundation::{HWND, LPARAM, LRESULT, WPARAM};
+    use windows::Win32::UI::Shell::{DefSubclassProc, SetWindowSubclass};
+    use windows::Win32::UI::WindowsAndMessaging::WM_NCACTIVATE;
+    unsafe extern "system" fn proc(
+        hwnd: HWND,
+        msg: u32,
+        wparam: WPARAM,
+        lparam: LPARAM,
+        _id: usize,
+        _data: usize,
+    ) -> LRESULT {
+        if msg == WM_NCACTIVATE {
+            // lParam -1: don't repaint the non-client area. The window has
+            // no visible caption, and repainting it is what could draw the
+            // hidden "Fob mini" title under the transparent page.
+            let _ = lparam;
+            return DefSubclassProc(hwnd, msg, WPARAM(1), LPARAM(-1));
+        }
+        DefSubclassProc(hwnd, msg, wparam, lparam)
     }
-    #[repr(C)]
-    struct CompositionData {
-        attribute: u32,
-        data: *mut std::ffi::c_void,
-        size: usize,
-    }
-    const ACCENT_ENABLE_ACRYLICBLURBEHIND: u32 = 4;
-    const WCA_ACCENT_POLICY: u32 = 19;
-    type SetWca = unsafe extern "system" fn(isize, *mut CompositionData) -> i32;
     unsafe {
-        let user32 = LoadLibraryA(s!("user32.dll")).map_err(|e| e.to_string())?;
-        let f = GetProcAddress(user32, s!("SetWindowCompositionAttribute"))
-            .ok_or("SetWindowCompositionAttribute missing")?;
-        let f: SetWca = std::mem::transmute(f);
-        let mut policy = AccentPolicy {
-            state: ACCENT_ENABLE_ACRYLICBLURBEHIND,
-            flags: 2,
-            gradient: abgr,
-            animation: 0,
-        };
-        let mut data = CompositionData {
-            attribute: WCA_ACCENT_POLICY,
-            data: &mut policy as *mut _ as *mut _,
-            size: std::mem::size_of::<AccentPolicy>(),
-        };
-        if f(hwnd, &mut data) == 0 {
-            return Err("SetWindowCompositionAttribute failed".into());
+        if !SetWindowSubclass(HWND(hwnd as _), Some(proc), 0xF0B, 0).as_bool() {
+            eprintln!("mini glass: SetWindowSubclass failed");
         }
     }
-    Ok(())
 }
 
 #[cfg(not(target_os = "windows"))]
 pub fn setup_mini_glass(_window: &WebviewWindow) {}
 
-/// Fob: the mini window's native frame. Windows rounds the corners (anti-
-/// aliased, with its shadow); the squircle is only inside (app.css). The
-/// caption bits that tao keeps on an undecorated window (WS_CAPTION,
-/// system menu, min/max boxes) are stripped: with a transparent client
-/// area DWM painted that hidden caption ("Fob mini" and its buttons) under
-/// the page. WS_THICKFRAME stays; it is what gives the window its shadow.
-/// tao rewrites styles when some flags change, so this runs again on
-/// focus and resize.
-#[cfg(target_os = "windows")]
-pub fn apply_mini_frame(hwnd: isize) {
-    use windows::Win32::Foundation::HWND;
-    use windows::Win32::Graphics::Dwm::{
-        DwmSetWindowAttribute, DWMWA_WINDOW_CORNER_PREFERENCE, DWMWCP_ROUND,
-    };
-    use windows::Win32::Graphics::Gdi::SetWindowRgn;
-    use windows::Win32::UI::WindowsAndMessaging::{
-        GetWindowLongPtrW, SetWindowLongPtrW, SetWindowPos, GWL_STYLE, SWP_FRAMECHANGED,
-        SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE, SWP_NOZORDER, WS_CAPTION, WS_MAXIMIZEBOX,
-        WS_MINIMIZEBOX, WS_SYSMENU,
-    };
-    let hwnd = HWND(hwnd as _);
-    unsafe {
-        let pref = DWMWCP_ROUND;
-        let _ = DwmSetWindowAttribute(
-            hwnd,
-            DWMWA_WINDOW_CORNER_PREFERENCE,
-            &pref as *const _ as *const std::ffi::c_void,
-            std::mem::size_of_val(&pref) as u32,
-        );
-        let _ = SetWindowRgn(hwnd, None, true);
-        let style = GetWindowLongPtrW(hwnd, GWL_STYLE);
-        let strip = (WS_CAPTION.0 | WS_SYSMENU.0 | WS_MINIMIZEBOX.0 | WS_MAXIMIZEBOX.0) as isize;
-        let next = strip_caption(style, strip);
-        if next != style {
-            SetWindowLongPtrW(hwnd, GWL_STYLE, next);
-            let _ = SetWindowPos(
-                hwnd,
-                None,
-                0,
-                0,
-                0,
-                0,
-                SWP_FRAMECHANGED | SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE,
-            );
-        }
-    }
-}
-
-/// WS_CAPTION is two bits (WS_BORDER | WS_DLGFRAME); clear all of them.
-#[cfg_attr(not(target_os = "windows"), allow(dead_code))]
-fn strip_caption(style: isize, strip: isize) -> isize {
-    style & !strip
-}
-
-/// Windows 11 starts at build 22000.
+/// DWMWA_SYSTEMBACKDROP_TYPE exists from build 22523 (Windows 11 22H2).
 #[cfg_attr(not(target_os = "windows"), allow(dead_code))]
 fn acrylic_supported(build: Option<u32>) -> bool {
-    build.is_some_and(|b| b >= 22000)
+    build.is_some_and(|b| b >= 22523)
 }
 
 #[cfg(test)]
 mod tests {
     #[test]
-    fn acrylic_only_on_windows_11() {
-        assert!(super::acrylic_supported(Some(22631)));
-        assert!(super::acrylic_supported(Some(22000)));
-        assert!(!super::acrylic_supported(Some(19045)));
-        assert!(!super::acrylic_supported(None));
+    fn backdrop_defaults_to_acrylic() {
+        use super::{backdrop_kind, Backdrop};
+        assert_eq!(backdrop_kind(None), Backdrop::Acrylic);
+        assert_eq!(backdrop_kind(Some("MICA")), Backdrop::Mica);
+        assert_eq!(backdrop_kind(Some("tabbed")), Backdrop::Tabbed);
+        assert_eq!(backdrop_kind(Some("junk")), Backdrop::Acrylic);
     }
     #[test]
-    fn caption_bits_are_cleared_and_the_frame_kept() {
-        let (caption, sysmenu, thick, visible) =
-            (0x00C0_0000, 0x0008_0000, 0x0004_0000, 0x1000_0000);
-        let style = caption | sysmenu | thick | visible;
-        let out = super::strip_caption(style, caption | sysmenu);
-        assert_eq!(out & caption, 0);
-        assert_eq!(out & sysmenu, 0);
-        assert_eq!(out & (thick | visible), thick | visible);
+    fn acrylic_only_on_windows_11() {
+        assert!(super::acrylic_supported(Some(22631)));
+        assert!(super::acrylic_supported(Some(22523)));
+        assert!(
+            !super::acrylic_supported(Some(22000)),
+            "21H2: accent fallback lags"
+        );
+        assert!(!super::acrylic_supported(Some(19045)));
+        assert!(!super::acrylic_supported(None));
     }
 }
 
