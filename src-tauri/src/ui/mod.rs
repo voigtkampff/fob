@@ -4,4 +4,4 @@
 //! and platform-specific visual customizations.
 
 mod window;
-pub use window::setup_window_effects;
+pub use window::{setup_mini_glass, setup_window_effects};

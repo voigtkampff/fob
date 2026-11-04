@@ -27,7 +27,8 @@
   <input
     {id}
     type="range"
-    class="h-1.5 w-40 cursor-pointer accent-primary"
+    class="fob-range w-40 cursor-pointer"
+    style:--fill="{value}%"
     min={OPACITY_MIN}
     max={OPACITY_MAX}
     step={OPACITY_STEP}
@@ -40,3 +41,53 @@
     >{value}%</span
   >
 </div>
+
+<style>
+  /* Fob: track fill and thumb follow the theme accent (--primary). */
+  .fob-range {
+    appearance: none;
+    height: 16px;
+    background: transparent;
+  }
+  .fob-range::-webkit-slider-runnable-track {
+    height: 6px;
+    border-radius: 999px;
+    background: linear-gradient(
+      to right,
+      var(--primary) var(--fill),
+      color-mix(in oklab, var(--foreground) 16%, transparent) var(--fill)
+    );
+  }
+  .fob-range::-webkit-slider-thumb {
+    appearance: none;
+    width: 14px;
+    height: 14px;
+    margin-top: -4px;
+    border-radius: 50%;
+    background: var(--primary);
+    border: 2px solid var(--primary-foreground);
+    box-shadow: 0 1px 3px rgb(0 0 0 / 0.35);
+  }
+  .fob-range::-moz-range-track {
+    height: 6px;
+    border-radius: 999px;
+    background: color-mix(in oklab, var(--foreground) 16%, transparent);
+  }
+  .fob-range::-moz-range-progress {
+    height: 6px;
+    border-radius: 999px;
+    background: var(--primary);
+  }
+  .fob-range::-moz-range-thumb {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    background: var(--primary);
+    border: 2px solid var(--primary-foreground);
+  }
+  .fob-range:focus-visible {
+    outline: 2px solid var(--ring);
+    outline-offset: 2px;
+    border-radius: 4px;
+  }
+</style>

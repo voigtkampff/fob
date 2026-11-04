@@ -319,10 +319,15 @@
     height: 100vh;
     /* Fob: the window is transparent; this panel is its (fading) surface. */
     background: color-mix(
-      in oklab,
-      var(--background) calc(var(--mini-alpha, 1) * 100%),
-      transparent
-    );
+        in oklab,
+        var(--background) calc(var(--mini-alpha, 1) * 100%),
+        transparent
+      )
+      linear-gradient(var(--glass-tint), var(--glass-tint));
+    box-shadow:
+      inset 0 1px 0 var(--glass-edge),
+      inset 0 0 0 1px var(--glass-rim),
+      inset 0 0 32px var(--glass-glow);
     box-sizing: border-box;
     overflow-y: auto;
     /* Only long detail lists scroll; keep the bar thin and trackless. */

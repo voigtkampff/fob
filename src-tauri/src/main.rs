@@ -46,6 +46,9 @@ fn main() {
         .setup(|app| {
             let window = app.get_webview_window("main").unwrap();
             ui::setup_window_effects(&window).expect("Failed to apply window effects");
+            if let Some(mini) = app.get_webview_window("overview") {
+                ui::setup_mini_glass(&mini);
+            }
             companion::native_frame(app.handle());
             window_icon::apply_all(app.handle());
             sampling::sample_in_background(app.handle().clone());
