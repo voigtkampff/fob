@@ -33,6 +33,9 @@
     !hasBoard &&
     ["enable", "repair", "update", "missing-files"].includes(setup);
   $: head = summary.cpuTemp ?? summary.gpuTemp;
+  $: sub = head
+    ? `${summary.cpuTemp ? "CPU" : "GPU"} · ${head.name}`
+    : $t("stats.noTemp");
   onMount(() => void refreshSensorSetup());
 </script>
 
@@ -56,13 +59,8 @@
         >{head ? "°C" : ""}</span
       >
     </div>
-    <p
-      class="truncate text-xs leading-4 text-muted-foreground"
-      title={head?.name}
-    >
-      {head
-        ? `${summary.cpuTemp ? "CPU" : "GPU"} · ${head.name}`
-        : $t("stats.noTemp")}
+    <p class="truncate text-xs leading-4 text-muted-foreground" title={sub}>
+      {sub}
     </p>
   {/snippet}
   {#snippet middle()}
@@ -70,7 +68,7 @@
       <Button
         variant="outline"
         size="sm"
-        class="h-7 text-xs"
+        class="h-auto min-h-7 w-full py-1 text-xs leading-4 whitespace-normal"
         onclick={() => (open = true)}
         >{setup === "update"
           ? $t("dash.updateHelper")

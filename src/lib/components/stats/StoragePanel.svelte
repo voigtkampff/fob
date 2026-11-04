@@ -18,6 +18,9 @@
   /** The panel's space map button. */
   export let onSpace: () => void = () => {};
   $: ready = Number.isFinite(diskTotalBytes) && diskTotalBytes > 0;
+  $: sub = ready
+    ? $t("stats.freeOf", { v: formatBytes(diskTotalBytes) })
+    : $t("stats.unknownCapacity");
   $: percentage = ready
     ? Math.max(0, Math.min(100, (diskUsedBytes / diskTotalBytes) * 100))
     : null;
@@ -38,10 +41,8 @@
     <div class="text-2xl leading-8 font-semibold tracking-tight tabular-nums">
       {ready ? formatBytes(diskFreeBytes) : "—"}
     </div>
-    <p class="truncate text-xs leading-4 text-muted-foreground">
-      {ready
-        ? $t("stats.freeOf", { v: formatBytes(diskTotalBytes) })
-        : $t("stats.unknownCapacity")}
+    <p class="truncate text-xs leading-4 text-muted-foreground" title={sub}>
+      {sub}
     </p>
   {/snippet}
   {#snippet middle()}

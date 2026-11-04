@@ -85,15 +85,18 @@ impl SystemMonitor {
                 identity: self
                     .identity
                     .get_or_insert_with(|| SystemIdentity {
-                        cpu_model: sys
-                            .cpus()
-                            .first()
-                            .map(|c| c.brand().trim().to_owned())
-                            .filter(|s| !s.is_empty()),
+                        cpu_model: fake_identity("WINPERF_FAKE_CPU").or_else(|| {
+                            sys.cpus()
+                                .first()
+                                .map(|c| c.brand().trim().to_owned())
+                                .filter(|s| !s.is_empty())
+                        }),
                         physical_cores: System::physical_core_count(),
                         architecture: std::env::consts::ARCH.into(),
                         platform: std::env::consts::OS.into(),
-                        os_version: System::long_os_version().or_else(System::name),
+                        os_version: fake_identity("WINPERF_FAKE_OS")
+                            .or_else(System::long_os_version)
+                            .or_else(System::name),
                         kernel_version: System::kernel_version(),
                     })
                     .clone(),
@@ -260,6 +263,15 @@ fn disk_rates(
     } else {
         interface_rates(previous, totals, elapsed)
     }
+}
+
+/// Debug builds only (screenshots with real-world long names):
+/// WINPERF_FAKE_OS / WINPERF_FAKE_CPU replace the OS and CPU names.
+fn fake_identity(var: &str) -> Option<String> {
+    if !cfg!(debug_assertions) {
+        return None;
+    }
+    std::env::var(var).ok().filter(|s| !s.is_empty())
 }
 
 #[cfg(test)]

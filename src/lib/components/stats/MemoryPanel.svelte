@@ -19,6 +19,9 @@
     Number.isFinite(memoryTotal) &&
     memoryTotal > 0 &&
     Number.isFinite(memoryUsed);
+  $: sub = ready
+    ? $t("stats.usedOf", { v: formatMemorySize(memoryTotal) })
+    : $t("stats.unknownTotal");
   $: percentage = ready
     ? Math.max(0, Math.min(100, (memoryUsed / memoryTotal) * 100))
     : null;
@@ -38,10 +41,8 @@
     <div class="text-2xl leading-8 font-semibold tracking-tight tabular-nums">
       {ready ? formatMemorySize(memoryUsed) : "—"}
     </div>
-    <p class="truncate text-xs leading-4 text-muted-foreground">
-      {ready
-        ? $t("stats.usedOf", { v: formatMemorySize(memoryTotal) })
-        : $t("stats.unknownTotal")}
+    <p class="truncate text-xs leading-4 text-muted-foreground" title={sub}>
+      {sub}
     </p>
   {/snippet}
   {#snippet middle()}

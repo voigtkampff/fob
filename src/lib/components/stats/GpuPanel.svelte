@@ -49,7 +49,7 @@
     </div>
     <p
       class="truncate text-xs leading-4 text-muted-foreground"
-      title={device?.name}
+      title={device?.name ?? $t("dash.noGpu")}
     >
       {device?.name ?? $t("dash.noGpu")}
     </p>

@@ -34,7 +34,7 @@
         class={`sc-icon size-5 shrink-0 rounded-md border-0 p-0 [&>svg]:size-3! ${color ? "bg-primary/10 text-primary" : "bg-muted text-muted-foreground"}`}
         style={color ? `--primary:${color}` : ""}
         aria-hidden="true">{@render icon()}</Badge
-      ><span class="truncate">{title}</span></span
+      ><span class="truncate" {title}>{title}</span></span
     >
     {#if badge}<Badge
         variant="secondary"

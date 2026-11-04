@@ -29,6 +29,9 @@
   {#snippet value()}
     <div
       class="truncate text-2xl leading-8 font-semibold tracking-tight tabular-nums"
+      title={networkRxBytes !== null && Number.isFinite(networkRxBytes)
+        ? `${formatBytes(networkRxBytes)}/s`
+        : undefined}
     >
       {networkRxBytes !== null && Number.isFinite(networkRxBytes)
         ? formatBytes(networkRxBytes)

@@ -9,6 +9,7 @@
   import { Server } from "@lucide/svelte";
   import { formatDuration, uptimeInfo } from "$lib/utils/dashboard.js";
   import { clockTime } from "$lib/utils/chart-cursor.js";
+  import { shortOs } from "$lib/utils/os-name.js";
   import { t } from "$lib/i18n";
   export let stats: SystemStats;
   export let capturedAt = 0;
@@ -21,6 +22,10 @@
     started?.[0],
     (capturedAt || Date.now()) / 1000,
   );
+  $: sub =
+    since.sinceStart && started
+      ? $t("stats.sincePowerOn", { how: $t(`uptime.kind.${started[1]}`) })
+      : $t("stats.kernelUptime");
   $: bootedAt = started
     ? new Date(started[0] * 1000)
     : new Date((capturedAt || Date.now()) - stats.uptime * 1000);
@@ -39,19 +44,21 @@
   {#snippet value()}
     <div
       class="truncate text-xl leading-8 font-semibold tracking-tight tabular-nums"
+      title={Number.isFinite(since.seconds)
+        ? formatDuration(since.seconds, $t)
+        : undefined}
     >
       {Number.isFinite(since.seconds) ? formatDuration(since.seconds, $t) : "—"}
     </div>
-    <p class="truncate text-xs leading-4 text-muted-foreground">
-      {since.sinceStart && started
-        ? $t("stats.sincePowerOn", { how: $t(`uptime.kind.${started[1]}`) })
-        : $t("stats.kernelUptime")}
+    <p class="truncate text-xs leading-4 text-muted-foreground" title={sub}>
+      {sub}
     </p>
   {/snippet}
   {#snippet middle()}
     {#if stats.details.identity.os_version}<StatItem
         label={$t("stats.os")}
-        value={stats.details.identity.os_version}
+        value={shortOs(stats.details.identity.os_version)}
+        full={stats.details.identity.os_version}
       />{/if}
     {#if since.sinceStart}<StatItem
         label={$t("stats.kernel")}
