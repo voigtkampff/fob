@@ -1,6 +1,6 @@
 {
   "name": "neohtop",
-  "version": "0.6.7",
+  "version": "0.6.8",
   "description": "",
   "type": "module",
   "scripts": {
@@ -13,6 +13,7 @@
     "test:dashboard": "node tests/dashboard.mjs",
     "test:i18n": "node tests/i18n.mjs",
     "test:english": "node tests/english-strings.mjs",
+    "test:ink": "node tests/mini-ink.mjs",
     "test:glass": "node tests/glass.mjs",
     "tauri": "tauri",
     "format": "prettier --write ./src ./scripts ./docs ./site .github/workflows && cargo fmt --manifest-path src-tauri/Cargo.toml",

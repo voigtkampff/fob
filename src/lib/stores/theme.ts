@@ -13,10 +13,9 @@ function applyTheme(theme: Theme) {
   const dark = themeIsDark(theme.colors);
   root.classList.toggle("dark", dark);
   root.style.colorScheme = dark ? "dark" : "light";
-  if (
-    isTauri() &&
-    new URLSearchParams(window.location.search).get("view") !== "companion"
-  )
+  // Every window, the mini window included: its Acrylic tint follows the
+  // window's dark/light mode, and mini-ink.js assumes it matches the theme.
+  if (isTauri())
     void getCurrentWindow()
       .setTheme(dark ? "dark" : "light")
       .catch(() => {});

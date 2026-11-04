@@ -17,6 +17,8 @@
   import OpacitySlider from "./OpacitySlider.svelte";
   import { settingsStore } from "$lib/stores/settings";
   import { miniOpacity } from "$lib/utils/mini-opacity.js";
+  import { miniInk } from "$lib/utils/mini-ink.js";
+  import { themeTokens, themeIsDark } from "$lib/utils/theme-tokens.js";
   import Dashboard from "./dashboard/Dashboard.svelte";
   import type { DetailKind } from "./dashboard/detail";
   import { themeStore } from "$lib/stores/theme";
@@ -137,6 +139,18 @@
   $: alpha = miniOpacity($settingsStore.behavior.miniOpacity) / 100;
   $: if (typeof document !== "undefined")
     document.documentElement.style.setProperty("--mini-alpha", String(alpha));
+  // Fob: text keeps contrast against the acrylic + faded panel (mini-ink.js).
+  // Set on <body>, which holds the view and every popup portal.
+  $: if (typeof document !== "undefined") {
+    const theme = $themeStore;
+    const ink = miniInk(
+      themeTokens(theme.colors, { name: theme.name }),
+      themeIsDark(theme.colors),
+      alpha * 100,
+    );
+    for (const [name, value] of Object.entries(ink))
+      document.body.style.setProperty(`--${name}`, value);
+  }
   let opacityOpen = false;
   async function pause() {
     try {
