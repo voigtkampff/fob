@@ -359,19 +359,17 @@ pub fn native_frame(app: &AppHandle) {
     #[cfg(target_os = "windows")]
     if let Some(window) = app.get_webview_window("overview") {
         if let Ok(h) = window.hwnd() {
-            crate::ui::apply_mini_shape(h.0 as isize, window.scale_factor().unwrap_or(1.0));
+            crate::ui::apply_mini_frame(h.0 as isize);
         }
     }
     #[cfg(target_os = "windows")]
     if let Some(window) = app.get_webview_window("overview") {
         use windows::Win32::Foundation::HWND;
         use windows::Win32::Graphics::Dwm::{
-            DwmSetWindowAttribute, DWMWA_WINDOW_CORNER_PREFERENCE, DWMWCP_DONOTROUND,
+            DwmSetWindowAttribute, DWMWA_WINDOW_CORNER_PREFERENCE, DWMWCP_ROUND,
         };
         if let Ok(hwnd) = window.hwnd() {
-            // Fob v0.6.5: Windows' round corners are off; the squircle
-            // region (ui::apply_mini_shape) shapes the window instead.
-            let preference = DWMWCP_DONOTROUND;
+            let preference = DWMWCP_ROUND;
             unsafe {
                 let _ = DwmSetWindowAttribute(
                     HWND(hwnd.0 as _),
@@ -1147,7 +1145,7 @@ pub fn window_event(window: &tauri::Window, event: &WindowEvent) {
     {
         #[cfg(target_os = "windows")]
         if let Ok(h) = window.hwnd() {
-            crate::ui::apply_mini_shape(h.0 as isize, window.scale_factor().unwrap_or(1.0));
+            crate::ui::apply_mini_frame(h.0 as isize);
         }
     }
     match (window.label(), event) {
