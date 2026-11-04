@@ -141,11 +141,9 @@
   $: top = topByMemory(processes, MINI.procRows);
   // The mini window always shows exactly MINI.procRows rows (fixed height).
   $: topRows = compact ? fixedRows(top, MINI.procRows) : top;
-  $: chips = [
-    identity.cpu_model,
-    formatGB(systemStats.memory_total, 0),
-    identity.os_version,
-  ].filter(Boolean);
+  // Two fixed rows: CPU + RAM, then Windows edition + uptime. Long names
+  // shrink with an ellipsis (full text in the tooltip) instead of wrapping.
+  $: ram = formatGB(systemStats.memory_total, 0);
   // Re-evaluated with every new sample (systemStats changes).
   $: since = uptimeInfo(
     systemStats.uptime,
@@ -192,8 +190,20 @@
         <Activity class="size-5 text-[var(--green)]" />{$t("dash.system")}
       </div>
       <div class="chips">
-        {#each chips as chip}<span class="chip">{chip}</span>{/each}
-        <span class="chip" title={upTitle}>{upText}</span>
+        <div class="chip-row">
+          {#if identity.cpu_model}<span
+              class="chip shrink"
+              title={identity.cpu_model}>{identity.cpu_model}</span
+            >{/if}
+          {#if ram}<span class="chip">{ram}</span>{/if}
+        </div>
+        <div class="chip-row">
+          {#if identity.os_version}<span
+              class="chip shrink"
+              title={identity.os_version}>{identity.os_version}</span
+            >{/if}
+          <span class="chip" title={upTitle}>{upText}</span>
+        </div>
       </div>
     </header>
 
@@ -555,8 +565,23 @@
   }
   .chips {
     display: flex;
-    flex-wrap: wrap;
+    flex-direction: column;
     gap: 6px;
+    min-width: 0;
+  }
+  .chip-row {
+    display: flex;
+    gap: 6px;
+    min-width: 0;
+  }
+  .chip-row > .chip {
+    flex: none;
+  }
+  .chip-row > .chip.shrink {
+    flex: 0 1 auto;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
   }
   .chip {
     font-size: 11.5px;
@@ -779,7 +804,9 @@
     gap: 4px;
     height: var(--mini-chips, 40px);
     overflow: hidden;
-    align-content: flex-start;
+  }
+  .compact .chip-row {
+    gap: 4px;
   }
   .compact .grid {
     gap: var(--mini-cardGap, 8px);
