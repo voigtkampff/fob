@@ -4,7 +4,19 @@
   import { listen, type UnlistenFn } from "@tauri-apps/api/event";
   import { getCurrentWindow } from "@tauri-apps/api/window";
   import { Button } from "$lib/components/ui/button/index.js";
-  import { Pause, Play, Maximize2, Power, Pin, PinOff } from "@lucide/svelte";
+  import {
+    Pause,
+    Play,
+    Maximize2,
+    Power,
+    Pin,
+    PinOff,
+    Blend,
+  } from "@lucide/svelte";
+  import * as Popover from "$lib/components/ui/popover/index.js";
+  import OpacitySlider from "./OpacitySlider.svelte";
+  import { settingsStore } from "$lib/stores/settings";
+  import { miniOpacity } from "$lib/utils/mini-opacity.js";
   import Dashboard from "./dashboard/Dashboard.svelte";
   import type { DetailKind } from "./dashboard/detail";
   import { themeStore } from "$lib/stores/theme";
@@ -94,6 +106,25 @@
       error = String(e);
     }
   }
+  // Fob: the pinned window moves by dragging its title bar (not its
+  // buttons); the backend saves where it settles. Double-click: back to
+  // the tray position.
+  function drag(event: MouseEvent) {
+    if (!pinned || event.button !== 0 || event.detail > 1) return;
+    if ((event.target as HTMLElement).closest("button, a, input")) return;
+    void getCurrentWindow()
+      .startDragging()
+      .catch((e) => (error = String(e)));
+  }
+  function backToTray(event: MouseEvent) {
+    if ((event.target as HTMLElement).closest("button, a, input")) return;
+    void invoke("reset_mini_position").catch((e) => (error = String(e)));
+  }
+  // Fob: only backgrounds fade (app.css, --mini-alpha); text stays opaque.
+  $: alpha = miniOpacity($settingsStore.behavior.miniOpacity) / 100;
+  $: if (typeof document !== "undefined")
+    document.documentElement.style.setProperty("--mini-alpha", String(alpha));
+  let opacityOpen = false;
   async function pause() {
     try {
       await invoke("set_monitor_paused", { paused: !data?.paused });
@@ -112,6 +143,7 @@
   onMount(() => {
     document.documentElement.dataset.companion = "true";
     themeStore.init();
+    void settingsStore.init();
     void (async () => {
       for (const [event, callback] of [
         [
@@ -156,7 +188,14 @@
 
 <div class="mini-shell">
   <div class="mini" bind:this={panel} style={miniStyle()}>
-    <div class="mini-bar">
+    <!-- svelte-ignore a11y_no_static_element_interactions -->
+    <div
+      class="mini-bar"
+      class:movable={pinned}
+      title={pinned ? $t("mini.dragHint") : $t("mini.resetHint")}
+      onmousedown={drag}
+      ondblclick={backToTray}
+    >
       <img src="/fob.svg" alt="" class="size-4" />
       <span class="mini-title">{$t("app.name")}</span>
       <span class="mini-status"
@@ -169,6 +208,23 @@
               : $t("mini.reading")}</span
       >
       <span class="flex-1"></span>
+      <Popover.Root bind:open={opacityOpen}>
+        <Popover.Trigger
+          >{#snippet child({ props })}<Button
+              {...props}
+              variant="ghost"
+              size="icon-sm"
+              aria-label={$t("mini.opacity")}
+              title={$t("mini.opacity")}><Blend /></Button
+            >{/snippet}</Popover.Trigger
+        >
+        <Popover.Content align="end" class="w-auto p-3">
+          <label for="mini-opacity-quick" class="mb-2 block text-xs font-medium"
+            >{$t("mini.opacity")}</label
+          >
+          <OpacitySlider id="mini-opacity-quick" />
+        </Popover.Content>
+      </Popover.Root>
       <Button
         variant={pinned ? "secondary" : "ghost"}
         size="icon-sm"
@@ -246,6 +302,12 @@
   }
   .mini {
     height: 100vh;
+    /* Fob: the window is transparent; this panel is its (fading) surface. */
+    background: color-mix(
+      in oklab,
+      var(--background) calc(var(--mini-alpha, 1) * 100%),
+      transparent
+    );
     box-sizing: border-box;
     overflow-y: auto;
     /* Only long detail lists scroll; keep the bar thin and trackless. */
@@ -256,7 +318,6 @@
         transparent
       )
       transparent;
-    background: var(--background);
     padding: var(--mini-padTop) 10px var(--mini-padBottom);
   }
   .mini-bar {
@@ -265,6 +326,9 @@
     gap: 6px;
     height: var(--mini-bar);
     margin-bottom: var(--mini-barGap);
+  }
+  .mini-bar.movable {
+    cursor: move;
   }
   .mini-title {
     font-size: 13px;

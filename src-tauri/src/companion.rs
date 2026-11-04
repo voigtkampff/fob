@@ -23,6 +23,16 @@ pub struct CompanionState {
     pub start_item: Option<CheckMenuItem<tauri::Wry>>,
     /// winperf: tray items whose text follows the UI language.
     pub items: Option<TrayItems>,
+    /// Fob: where the user dragged the pinned mini window (its visible
+    /// rect, physical px), saved in mini-position.json. None: at the tray.
+    user_rect: Option<PxRect>,
+    /// Fob: the visible rect `place` last gave the window and when, so its
+    /// own moves are not taken for a drag.
+    placed: Option<(PxRect, Instant)>,
+    /// Fob: the latest dragged rect and when it moved; saved once the
+    /// window has been still for a moment (`saving`: a saver is waiting).
+    moved: Option<(PxRect, Instant)>,
+    saving: bool,
 }
 
 pub struct TrayItems {
@@ -295,32 +305,37 @@ fn set_start_in_tray(app: &AppHandle) {
 }
 
 /// winperf launch: with "Start in tray only" (default) only the tray icon
-/// appears; the first launch also pops the mini window once so it's clear
-/// where winperf went. Otherwise the main window opens as before.
+/// appears, except on the first launch (see `shows_main_at_launch`).
+/// Otherwise the main window opens as before.
 pub fn launch(app: &AppHandle) -> Result<(), String> {
     let startup = crate::preferences::startup(app);
     // Fob: the mini window hotkey works in tray-only mode too.
     crate::hotkey::register_saved(app, &startup.mini_hotkey);
+    let saved = load_position(app);
     if let Ok(mut state) = app.state::<Mutex<CompanionState>>().lock() {
         state.pinned = startup.mini_pinned;
+        state.user_rect = saved;
     }
-    // No tray (or it can't be created): the main window must appear.
-    if startup.tray
+    let tray_only = startup.tray
         && startup.start_in_tray
-        && configure(app, true, true, Some(true), startup.language.as_deref()).is_ok()
-    {
-        // Debug builds: WINPERF_SHOW_MINI=1 pops it every time (screenshots).
-        let forced = cfg!(debug_assertions) && std::env::var_os("WINPERF_SHOW_MINI").is_some();
-        if startup.first_launch || forced {
-            show(app, None)?;
-        }
-        Ok(())
-    } else {
+        && configure(app, true, true, Some(true), startup.language.as_deref()).is_ok();
+    if shows_main_at_launch(tray_only, startup.first_launch) {
         let window = app
             .get_webview_window("main")
             .ok_or("Main window unavailable")?;
-        window.show().map_err(|e| e.to_string())
+        return window.show().map_err(|e| e.to_string());
     }
+    // Debug builds: WINPERF_SHOW_MINI=1 pops it every time (screenshots).
+    if cfg!(debug_assertions) && std::env::var_os("WINPERF_SHOW_MINI").is_some() {
+        show(app, None)?;
+    }
+    Ok(())
+}
+/// Fob: the main window opens at launch without tray-only mode (or without
+/// a tray), and on the very first launch (no settings file yet) so the user
+/// sees Fob started; later launches in tray-only mode show only the icon.
+fn shows_main_at_launch(tray_only: bool, first_launch: bool) -> bool {
+    !tray_only || first_launch
 }
 
 /// Title bar "Collapse to tray": hide the main window (minimize without a tray).
@@ -559,16 +574,12 @@ fn contains(outer: &PxRect, inner: &PxRect) -> bool {
 /// was created larger than asked (AdjustWindowRectEx adds the WS_CAPTION
 /// title bar and frame that WM_NCCALCSIZE then turns into client area).
 /// Returns (window rect, visible rect) after placing.
+/// Windows: (window rect, visible rect = DWM extended frame bounds).
 #[cfg(target_os = "windows")]
-fn set_window_rect(
-    window: &tauri::WebviewWindow,
-    planned: PxRect,
-) -> Result<(PxRect, PxRect), String> {
+fn window_rects(window: &tauri::WebviewWindow) -> Result<(PxRect, PxRect), String> {
     use windows::Win32::Foundation::{HWND, RECT};
     use windows::Win32::Graphics::Dwm::{DwmGetWindowAttribute, DWMWA_EXTENDED_FRAME_BOUNDS};
-    use windows::Win32::UI::WindowsAndMessaging::{
-        GetWindowRect, SetWindowPos, SWP_NOACTIVATE, SWP_NOSIZE, SWP_NOZORDER,
-    };
+    use windows::Win32::UI::WindowsAndMessaging::GetWindowRect;
     let hwnd = HWND(window.hwnd().map_err(|e| e.to_string())?.0 as _);
     let px = |r: RECT| PxRect {
         left: r.left,
@@ -576,7 +587,7 @@ fn set_window_rect(
         right: r.right,
         bottom: r.bottom,
     };
-    let rects = || unsafe {
+    unsafe {
         let mut rc = RECT::default();
         GetWindowRect(hwnd, &mut rc).map_err(|e| e.to_string())?;
         let mut frame = RECT::default();
@@ -590,8 +601,21 @@ fn set_window_rect(
         .map(|_| px(frame))
         .filter(|f| f.right > f.left && f.bottom > f.top)
         .unwrap_or(px(rc));
-        Ok::<_, String>((px(rc), visible))
+        Ok((px(rc), visible))
+    }
+}
+/// Windows: sets the window's rect directly (see the comment above).
+#[cfg(target_os = "windows")]
+fn set_window_rect(
+    window: &tauri::WebviewWindow,
+    planned: PxRect,
+) -> Result<(PxRect, PxRect), String> {
+    use windows::Win32::Foundation::HWND;
+    use windows::Win32::UI::WindowsAndMessaging::{
+        SetWindowPos, SWP_NOACTIVATE, SWP_NOSIZE, SWP_NOZORDER,
     };
+    let hwnd = HWND(window.hwnd().map_err(|e| e.to_string())?.0 as _);
+    let rects = || window_rects(window);
     let set = |r: PxRect, flags| unsafe {
         SetWindowPos(
             hwnd,
@@ -707,21 +731,89 @@ fn show(app: &AppHandle, rect: Option<Rect>) -> Result<(), String> {
     app.emit_to("overview", "companion-visibility", true)
         .map_err(|e| e.to_string())
 }
-/// Fob: give the mini window its fixed size and put it next to the tray icon
-/// (above it for a bottom taskbar), clamped to the monitor. Only `show` calls this.
+/// Fob: give the mini window its fixed size and put it where the user
+/// dragged it (clamped into that monitor's work area) or, by default or when
+/// that monitor is gone, next to the tray icon (above it for a bottom
+/// taskbar). Only `show` calls this.
 fn place(
     app: &AppHandle,
     window: &tauri::WebviewWindow,
     anchor: Option<(f64, f64, f64, f64)>,
 ) -> Result<(), String> {
-    let anchor = {
+    let (anchor, saved) = {
         let state = app.state::<Mutex<CompanionState>>();
         let mut state = state.lock().map_err(|e| e.to_string())?;
         if anchor.is_some() {
             state.anchor = anchor;
         }
-        state.anchor
+        (state.anchor, state.user_rect)
     };
+    let monitors: Vec<(PxRect, f64)> = window
+        .available_monitors()
+        .unwrap_or_default()
+        .iter()
+        .map(|m| {
+            let (p, s) = (m.position(), m.size());
+            (PxRect::new(p.x, p.y, s.width, s.height), m.scale_factor())
+        })
+        .collect();
+    let restored = saved.and_then(|rect| {
+        let (bounds, scale) = monitor_of(&rect, &monitors)?;
+        let size = mini_size(scale);
+        let screen = screen_at(center(&rect), bounds);
+        Some((screen, scale, size, restore(rect, &screen.work, size)))
+    });
+    let (source, (screen, scale, size, placed)) = match (saved, restored) {
+        (Some(_), Some(found)) => ("dragged position", found),
+        (Some(_), None) => (
+            "dragged position's monitor is gone: tray",
+            at_tray(app, window, anchor)?,
+        ),
+        (None, _) => ("tray", at_tray(app, window, anchor)?),
+    };
+    if let Ok(mut state) = app.state::<Mutex<CompanionState>>().lock() {
+        state.placed = Some((placed.rect(), Instant::now()));
+    }
+    #[cfg(target_os = "windows")]
+    {
+        let result = set_window_rect(window, placed.rect());
+        if let (Ok((_, visible)), Ok(mut state)) =
+            (&result, app.state::<Mutex<CompanionState>>().lock())
+        {
+            state.placed = Some((*visible, Instant::now()));
+        }
+        record_placement(
+            app,
+            source,
+            &screen,
+            anchor,
+            scale,
+            size,
+            &placed,
+            result.as_ref().ok(),
+        );
+        result.map(|_| ())
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        record_placement(app, source, &screen, anchor, scale, size, &placed, None);
+        // Position first, then size: the window is already on the target
+        // monitor when it gets its size.
+        window.set_position(placed.pos).map_err(|e| e.to_string())?;
+        window
+            .set_size(tauri::Size::Physical(tauri::PhysicalSize::new(
+                placed.size.0,
+                placed.size.1,
+            )))
+            .map_err(|e| e.to_string())
+    }
+}
+/// The tray-anchored placement: screen, scale, panel size and rect.
+fn at_tray(
+    app: &AppHandle,
+    window: &tauri::WebviewWindow,
+    anchor: Option<(f64, f64, f64, f64)>,
+) -> Result<(Screen, f64, tauri::PhysicalSize<u32>, Placed), String> {
     let monitor = anchor
         .and_then(|(x, y, _, _)| window.monitor_from_point(x, y).ok().flatten())
         .or_else(|| {
@@ -747,38 +839,45 @@ fn place(
     );
     let screen = screen_at(point, bounds);
     let placed = placement(&screen, (size.width, size.height), anchor, scale);
-    #[cfg(target_os = "windows")]
-    {
-        let result = set_window_rect(window, placed.rect());
-        record_placement(
-            app,
-            &screen,
-            anchor,
-            scale,
-            size,
-            &placed,
-            result.as_ref().ok(),
-        );
-        result.map(|_| ())
-    }
-    #[cfg(not(target_os = "windows"))]
-    {
-        record_placement(app, &screen, anchor, scale, size, &placed, None);
-        // Position first, then size: the window is already on the target
-        // monitor when it gets its size.
-        window.set_position(placed.pos).map_err(|e| e.to_string())?;
-        window
-            .set_size(tauri::Size::Physical(tauri::PhysicalSize::new(
-                placed.size.0,
-                placed.size.1,
-            )))
-            .map_err(|e| e.to_string())
+    Ok((screen, scale, size, placed))
+}
+fn center(r: &PxRect) -> (f64, f64) {
+    (
+        (r.left as f64 + r.right as f64) / 2.0,
+        (r.top as f64 + r.bottom as f64) / 2.0,
+    )
+}
+/// The monitor (rect, scale) that contains the centre of `rect`, if any is
+/// still connected there.
+fn monitor_of(rect: &PxRect, monitors: &[(PxRect, f64)]) -> Option<(PxRect, f64)> {
+    let (x, y) = center(rect);
+    monitors.iter().copied().find(|(m, _)| {
+        x >= m.left as f64 && x < m.right as f64 && y >= m.top as f64 && y < m.bottom as f64
+    })
+}
+/// Fob: the dragged position at the panel size of the monitor it's on, kept
+/// at its top-left but moved (and if need be shrunk) fully into `work`.
+fn restore(saved: PxRect, work: &PxRect, panel: tauri::PhysicalSize<u32>) -> Placed {
+    let (aw, ah) = (work.right - work.left, work.bottom - work.top);
+    let (pw, ph) = (
+        (panel.width as i32).min(aw).max(1),
+        (panel.height as i32).min(ah).max(1),
+    );
+    Placed {
+        pos: PhysicalPosition::new(
+            saved.left.clamp(work.left, work.right - pw),
+            saved.top.clamp(work.top, work.bottom - ph),
+        ),
+        size: (pw as u32, ph as u32),
+        fits: panel.width as i32 <= aw && panel.height as i32 <= ah,
     }
 }
 /// Fob: the last placement's numbers, overwritten on every show, in the app
 /// log folder (mini-placement.txt) so a misplaced window can be explained.
+#[allow(clippy::too_many_arguments)]
 fn record_placement(
     app: &AppHandle,
+    source: &str,
     screen: &Screen,
     anchor: Option<(f64, f64, f64, f64)>,
     scale: f64,
@@ -786,11 +885,8 @@ fn record_placement(
     placed: &Placed,
     actual: Option<&(PxRect, PxRect)>,
 ) {
-    let Ok(dir) = app.path().app_log_dir() else {
-        return;
-    };
     let mut text = format!(
-        "scale {scale}\nmonitor {:?}\nwork {:?}\ntaskbar {:?}\ntray icon {:?}\n\
+        "source {source}\nscale {scale}\nmonitor {:?}\nwork {:?}\ntaskbar {:?}\ntray icon {:?}\n\
          panel wanted {}x{}\nplanned {:?}\nfits work area: {}\n",
         screen.monitor,
         screen.work,
@@ -807,8 +903,16 @@ fn record_placement(
             contains(&screen.work, visible)
         );
     }
+    write_placement(app, &text);
+}
+/// mini-placement.txt: the last placement or drag; mini-placement.log: one
+/// line per event.
+fn write_placement(app: &AppHandle, text: &str) {
+    let Ok(dir) = app.path().app_log_dir() else {
+        return;
+    };
     let _ = std::fs::create_dir_all(&dir);
-    let _ = std::fs::write(dir.join("mini-placement.txt"), &text);
+    let _ = std::fs::write(dir.join("mini-placement.txt"), text);
     // And one line per show in mini-placement.log (restarted past 256 KB).
     let log = dir.join("mini-placement.log");
     if std::fs::metadata(&log).is_ok_and(|m| m.len() > 256 * 1024) {
@@ -826,6 +930,142 @@ fn record_placement(
     {
         let _ = file.write_all(line.as_bytes());
     }
+}
+/// Fob: mini-position.json in the settings folder: the dragged visible rect.
+fn position_file(app: &AppHandle) -> Option<std::path::PathBuf> {
+    Some(app.path().app_config_dir().ok()?.join("mini-position.json"))
+}
+fn rect_from_json(value: &serde_json::Value) -> Option<PxRect> {
+    let n = |k: &str| value[k].as_i64().and_then(|v| i32::try_from(v).ok());
+    let rect = PxRect {
+        left: n("left")?,
+        top: n("top")?,
+        right: n("right")?,
+        bottom: n("bottom")?,
+    };
+    (rect.right > rect.left && rect.bottom > rect.top).then_some(rect)
+}
+fn load_position(app: &AppHandle) -> Option<PxRect> {
+    let bytes = std::fs::read(position_file(app)?).ok()?;
+    rect_from_json(&serde_json::from_slice(&bytes).ok()?)
+}
+fn save_position(app: &AppHandle, rect: Option<PxRect>) {
+    let Some(path) = position_file(app) else {
+        return;
+    };
+    match rect {
+        Some(r) => {
+            let _ = std::fs::create_dir_all(path.parent().unwrap_or(&path));
+            let json = serde_json::json!({
+                "left": r.left, "top": r.top, "right": r.right, "bottom": r.bottom
+            });
+            let _ = std::fs::write(&path, json.to_string());
+        }
+        None => {
+            let _ = std::fs::remove_file(&path);
+        }
+    }
+}
+/// The window's visible rect now (Windows: DWM frame bounds).
+fn visible_rect(window: &tauri::WebviewWindow) -> Option<PxRect> {
+    #[cfg(target_os = "windows")]
+    {
+        window_rects(window).ok().map(|(_, visible)| visible)
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        let (p, s) = (window.outer_position().ok()?, window.outer_size().ok()?);
+        Some(PxRect::new(p.x, p.y, s.width, s.height))
+    }
+}
+/// A move that `place` did not make, within this long after it, is still
+/// taken as its own (Windows applies the rect in steps).
+const OWN_MOVE: Duration = Duration::from_millis(400);
+/// Saved once the window has been still this long (a drag is many moves).
+const SETTLE: Duration = Duration::from_millis(500);
+/// Is this move the user's drag? Only a pinned, visible window can be
+/// dragged; `place`'s own rect (and its moves just after) are not drags.
+fn is_drag(pinned: bool, placed: Option<(PxRect, Instant)>, now: PxRect) -> bool {
+    pinned
+        && match placed {
+            Some((rect, at)) => rect != now && at.elapsed() >= OWN_MOVE,
+            None => true,
+        }
+}
+/// Fob: the overview window moved. A drag of the pinned window is kept in
+/// memory and saved when the window settles, then wins over the tray spot.
+fn moved(app: &AppHandle) {
+    let Some(window) = app.get_webview_window("overview") else {
+        return;
+    };
+    if !window.is_visible().unwrap_or(false) {
+        return;
+    }
+    let Some(now) = visible_rect(&window) else {
+        return;
+    };
+    let service = app.state::<Mutex<CompanionState>>();
+    let Ok(mut state) = service.lock() else {
+        return;
+    };
+    if !is_drag(state.pinned, state.placed, now) {
+        return;
+    }
+    state.moved = Some((now, Instant::now()));
+    if std::mem::replace(&mut state.saving, true) {
+        return; // a saver is already waiting
+    }
+    let app = app.clone();
+    std::thread::spawn(move || loop {
+        std::thread::sleep(Duration::from_millis(200));
+        let service = app.state::<Mutex<CompanionState>>();
+        let Ok(mut state) = service.lock() else {
+            return;
+        };
+        let Some((rect, at)) = state.moved else {
+            state.saving = false;
+            return;
+        };
+        if at.elapsed() < SETTLE {
+            continue;
+        }
+        state.moved = None;
+        state.saving = false;
+        state.user_rect = Some(rect);
+        state.placed = Some((rect, Instant::now()));
+        drop(state);
+        save_position(&app, Some(rect));
+        write_placement(
+            &app,
+            &format!("source dragged\nsaved visible rect {rect:?}\n"),
+        );
+        return;
+    });
+}
+/// Fob: double-click on the mini title bar: forget the dragged position and
+/// go back to the tray.
+#[tauri::command]
+pub async fn reset_mini_position(app: AppHandle) -> Result<(), String> {
+    if let Ok(mut state) = app.state::<Mutex<CompanionState>>().lock() {
+        state.user_rect = None;
+        state.moved = None;
+    }
+    save_position(&app, None);
+    write_placement(&app, "source reset to the tray position\n");
+    let visible = app
+        .get_webview_window("overview")
+        .is_some_and(|w| w.is_visible().unwrap_or(false));
+    if visible {
+        show(&app, None)?;
+    }
+    Ok(())
+}
+/// Whether the mini window has a dragged position (Settings shows reset).
+#[tauri::command]
+pub async fn get_mini_position_saved(
+    state: tauri::State<'_, Mutex<CompanionState>>,
+) -> Result<bool, String> {
+    Ok(state.lock().map_err(|e| e.to_string())?.user_rect.is_some())
 }
 /// Fob: an unpinned mini window closes like a flyout when another window gets
 /// focus; a pinned one stays open (and on top) until the tray icon, Esc or
@@ -878,6 +1118,7 @@ pub fn window_event(window: &tauri::Window, event: &WindowEvent) {
         crate::window_icon::apply(window);
     }
     match (window.label(), event) {
+        ("overview", WindowEvent::Moved(_)) => moved(app),
         ("overview", WindowEvent::Focused(false)) => {
             let pinned = app
                 .state::<Mutex<CompanionState>>()
@@ -1324,5 +1565,68 @@ mod tests {
         let actual = PxRect::new(p.pos.x, p.pos.y, 540 + 12, 978 + 45);
         assert!(!contains(&screen.work, &actual));
         assert!(contains(&screen.work, &p.rect()));
+    }
+    #[test]
+    fn the_first_launch_shows_the_main_window_even_in_tray_only_mode() {
+        assert!(shows_main_at_launch(true, true));
+        assert!(!shows_main_at_launch(true, false));
+        assert!(shows_main_at_launch(false, false));
+        assert!(shows_main_at_launch(false, true));
+    }
+    #[test]
+    fn only_a_pinned_window_moved_by_someone_else_is_a_drag() {
+        let placed = PxRect::new(100, 100, 360, 652);
+        let moved = PxRect::new(300, 50, 360, 652);
+        let long_ago = Instant::now() - Duration::from_secs(2);
+        assert!(is_drag(true, Some((placed, long_ago)), moved));
+        assert!(!is_drag(false, Some((placed, long_ago)), moved), "unpinned");
+        assert!(!is_drag(true, Some((placed, long_ago)), placed), "our rect");
+        assert!(
+            !is_drag(true, Some((placed, Instant::now())), moved),
+            "just placed: our own intermediate move"
+        );
+        assert!(is_drag(true, None, moved));
+    }
+    #[test]
+    fn a_dragged_position_comes_back_inside_its_monitor() {
+        let left = (PxRect::new(-1920, 0, 1920, 1080), 1.0);
+        let main = (PxRect::new(0, 0, 2880, 1620), 1.5);
+        let monitors = [left, main];
+        let size = mini_size(1.5);
+        // On the main monitor, fully inside: kept as is.
+        let saved = PxRect::new(1000, 200, size.width, size.height);
+        assert_eq!(monitor_of(&saved, &monitors), Some(main));
+        let work = PxRect::new(0, 0, 2880, 1548); // 72 px taskbar
+        let p = restore(saved, &work, size);
+        assert_eq!(p.rect(), saved);
+        assert!(p.fits);
+        // Hanging over the taskbar and the right edge: pulled inside.
+        let over = PxRect::new(2700, 1200, size.width, size.height);
+        let p = restore(over, &work, size);
+        assert!(contains(&work, &p.rect()), "{p:?}");
+        assert_eq!(p.size, (size.width, size.height));
+        // Saved on the left monitor at 100 %, which now is the panel size
+        // there (the caller passes mini_size(1.0)).
+        let on_left = PxRect::new(-800, 300, 360, 652);
+        assert_eq!(monitor_of(&on_left, &monitors), Some(left));
+        // That monitor unplugged: no monitor, so the tray position is used.
+        assert_eq!(monitor_of(&on_left, &[main]), None);
+        // A work area smaller than the panel: shrunk, still inside.
+        let tiny = PxRect::new(0, 0, 800, 600);
+        let p = restore(saved, &tiny, size);
+        assert!(!p.fits && contains(&tiny, &p.rect()));
+    }
+    #[test]
+    fn the_saved_position_file_rejects_junk() {
+        let ok = serde_json::json!({"left":-10,"top":5,"right":350,"bottom":657});
+        assert_eq!(rect_from_json(&ok), Some(PxRect::new(-10, 5, 360, 652)));
+        for bad in [
+            serde_json::json!({"left":0,"top":0,"right":0,"bottom":10}),
+            serde_json::json!({"left":"0","top":0,"right":5,"bottom":10}),
+            serde_json::json!({"left":0,"top":0,"right":5}),
+            serde_json::json!(null),
+        ] {
+            assert_eq!(rect_from_json(&bad), None, "{bad}");
+        }
     }
 }

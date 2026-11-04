@@ -262,12 +262,24 @@
   }
 }
 
-/* winperf mini window: an opaque panel that fills the window. Windows 11
-   rounds the corners and draws the shadow natively (DWM); no CSS radius or
-   shadow, which a window's rectangular bounds would clip. */
+/* winperf mini window: a panel that fills the window. Windows 11 rounds the
+   corners and draws the shadow natively (DWM); no CSS radius or shadow,
+   which a window's rectangular bounds would clip.
+   Fob opacity: the window is transparent (tauri.conf.json) and the panel
+   (.mini) and card backgrounds are mixed with transparency by --mini-alpha
+   (behavior.miniOpacity); text and icons keep full opacity. 100 % looks
+   exactly like an opaque window. */
 html[data-companion],
 html[data-companion] body {
-  background: var(--background) !important;
+  background: transparent !important;
+}
+html[data-companion] .card,
+html[data-companion] .panel {
+  background: color-mix(
+    in oklab,
+    var(--card) calc(var(--mini-alpha, 1) * 100%),
+    transparent
+  );
 }
 html[data-companion] body {
   overflow: hidden;

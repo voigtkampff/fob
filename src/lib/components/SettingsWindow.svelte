@@ -6,6 +6,7 @@
   import { REFRESH_RATE_OPTIONS } from "$lib/constants";
   import ThemeGallery from "./ThemeGallery.svelte";
   import HotkeyField from "./HotkeyField.svelte";
+  import OpacitySlider from "./OpacitySlider.svelte";
   import { Button } from "$lib/components/ui/button/index.js";
   import { Checkbox } from "$lib/components/ui/checkbox/index.js";
   import { Label } from "$lib/components/ui/label/index.js";
@@ -16,6 +17,16 @@
   import { t } from "$lib/i18n";
   let pane = "general";
   let runtimeError = "";
+  // Fob: the mini window has a dragged position (reset button enabled).
+  let dragged = false;
+  const readDragged = () =>
+    invoke<boolean>("get_mini_position_saved")
+      .then((v) => (dragged = v))
+      .catch(() => {});
+  async function backToTray() {
+    await invoke("reset_mini_position").catch(() => {});
+    await readDragged();
+  }
   $: rate = $settingsStore.behavior.refreshRate;
   $: options = REFRESH_RATE_OPTIONS.some((o) => o.value === rate)
     ? REFRESH_RATE_OPTIONS
@@ -67,6 +78,7 @@
           "general",
       );
       await settingsStore.init();
+      await readDragged();
       await emit("preferences-runtime-status-request");
     })();
     return () => {
@@ -75,6 +87,8 @@
     };
   });
 </script>
+
+<svelte:window onfocus={readDragged} />
 
 <div class="flex h-screen flex-col bg-background">
   <header
@@ -189,6 +203,37 @@
                   {$t("settings.startInTrayNote")}
                 </p>
               </div>
+            </div>
+            <div class="flex items-start justify-between gap-6">
+              <div>
+                <Label for="mini-opacity">{$t("settings.miniOpacity")}</Label>
+                <p
+                  id="mini-opacity-note"
+                  class="mt-1 text-xs leading-relaxed text-muted-foreground"
+                >
+                  {$t("settings.miniOpacityNote")}
+                </p>
+              </div>
+              <div class="shrink-0 pt-1">
+                <OpacitySlider describedby="mini-opacity-note" />
+              </div>
+            </div>
+            <div class="flex items-start justify-between gap-6">
+              <div>
+                <p class="text-sm leading-none font-medium">
+                  {$t("settings.miniPosition")}
+                </p>
+                <p class="mt-1 text-xs leading-relaxed text-muted-foreground">
+                  {$t("settings.miniPositionNote")}
+                </p>
+              </div>
+              <Button
+                variant="outline"
+                size="sm"
+                class="shrink-0"
+                disabled={!dragged}
+                onclick={backToTray}>{$t("settings.resetPosition")}</Button
+              >
             </div>
             <p class="text-xs leading-relaxed text-muted-foreground">
               {$t("settings.closeNote")}

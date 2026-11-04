@@ -160,6 +160,8 @@ export interface AppConfig {
     language: "auto" | "en" | "zh";
     /** Fob: global hotkey that toggles the mini window ("" = off). */
     miniHotkey?: string;
+    /** Fob: mini window opacity, 40–100 (%). */
+    miniOpacity?: number;
   };
 }
 

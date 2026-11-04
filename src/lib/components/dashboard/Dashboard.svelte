@@ -530,6 +530,7 @@
   .enable {
     align-self: flex-start;
     max-width: 100%;
+    text-align: center;
     margin-top: 6px;
     font-size: 11px;
     font-weight: 600;

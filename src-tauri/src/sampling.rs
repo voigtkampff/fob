@@ -422,7 +422,14 @@ impl From<Snapshot> for Overview {
 
 #[tauri::command]
 pub async fn get_overview(app: tauri::AppHandle) -> Result<Overview, String> {
-    read(app).await.map(Into::into)
+    let overview: Overview = read(app).await?.into();
+    // Debug builds only: WINPERF_DUMP_OVERVIEW=path writes the last reading
+    // (screenshots of the mini page rendered outside the app).
+    #[cfg(debug_assertions)]
+    if let Some(path) = std::env::var_os("WINPERF_DUMP_OVERVIEW") {
+        let _ = std::fs::write(path, serde_json::to_vec(&overview).unwrap_or_default());
+    }
+    Ok(overview)
 }
 pub async fn read(app: tauri::AppHandle) -> Result<Snapshot, String> {
     tauri::async_runtime::spawn_blocking(move || {

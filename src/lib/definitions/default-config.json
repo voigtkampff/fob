@@ -29,6 +29,7 @@
     "language": "auto",
     "defaultStatusFilter": "all",
     "processView": "flat",
-    "miniHotkey": ""
+    "miniHotkey": "",
+    "miniOpacity": 100
   }
 }
