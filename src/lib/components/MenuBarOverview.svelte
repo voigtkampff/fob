@@ -109,15 +109,28 @@
   // Fob: the pinned window moves by dragging its title bar (not its
   // buttons); the backend saves where it settles. Double-click: back to
   // the tray position.
-  function drag(event: MouseEvent) {
-    if (!pinned || event.button !== 0 || event.detail > 1) return;
-    if ((event.target as HTMLElement).closest("button, a, input")) return;
+  // The OS move loop starts only once the pointer moves with the button
+  // held: started on the press, it swallows the release, and a double-click
+  // never arrives.
+  let press: { x: number; y: number } | null = null;
+  const onBar = (event: MouseEvent) =>
+    event.button === 0 &&
+    !(event.target as HTMLElement).closest("button, a, input");
+  function pressBar(event: MouseEvent) {
+    press =
+      pinned && onBar(event) ? { x: event.screenX, y: event.screenY } : null;
+  }
+  function moveBar(event: MouseEvent) {
+    if (!press || (event.buttons & 1) === 0) return void (press = null);
+    if (Math.hypot(event.screenX - press.x, event.screenY - press.y) < 4)
+      return;
+    press = null;
     void getCurrentWindow()
       .startDragging()
       .catch((e) => (error = String(e)));
   }
   function backToTray(event: MouseEvent) {
-    if ((event.target as HTMLElement).closest("button, a, input")) return;
+    if (!onBar(event)) return;
     void invoke("reset_mini_position").catch((e) => (error = String(e)));
   }
   // Fob: only backgrounds fade (app.css, --mini-alpha); text stays opaque.
@@ -193,7 +206,9 @@
       class="mini-bar"
       class:movable={pinned}
       title={pinned ? $t("mini.dragHint") : $t("mini.resetHint")}
-      onmousedown={drag}
+      onmousedown={pressBar}
+      onmousemove={moveBar}
+      onmouseup={() => (press = null)}
       ondblclick={backToTray}
     >
       <img src="/fob.svg" alt="" class="size-4" />

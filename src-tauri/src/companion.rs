@@ -760,16 +760,16 @@ fn place(
     let restored = saved.and_then(|rect| {
         let (bounds, scale) = monitor_of(&rect, &monitors)?;
         let size = mini_size(scale);
-        let screen = screen_at(center(&rect), bounds);
+        let screen = screen_at(center(&overlap(&rect, &bounds)?), bounds);
         Some((screen, scale, size, restore(rect, &screen.work, size)))
     });
     let (source, (screen, scale, size, placed)) = match (saved, restored) {
-        (Some(_), Some(found)) => ("dragged position", found),
-        (Some(_), None) => (
-            "dragged position's monitor is gone: tray",
+        (Some(_), Some(found)) => ("dragged position".to_owned(), found),
+        (Some(rect), None) => (
+            format!("dragged position {rect:?} is on no monitor {monitors:?}: tray"),
             at_tray(app, window, anchor)?,
         ),
-        (None, _) => ("tray", at_tray(app, window, anchor)?),
+        (None, _) => ("tray".to_owned(), at_tray(app, window, anchor)?),
     };
     if let Ok(mut state) = app.state::<Mutex<CompanionState>>().lock() {
         state.placed = Some((placed.rect(), Instant::now()));
@@ -784,7 +784,7 @@ fn place(
         }
         record_placement(
             app,
-            source,
+            &source,
             &screen,
             anchor,
             scale,
@@ -796,7 +796,7 @@ fn place(
     }
     #[cfg(not(target_os = "windows"))]
     {
-        record_placement(app, source, &screen, anchor, scale, size, &placed, None);
+        record_placement(app, &source, &screen, anchor, scale, size, &placed, None);
         // Position first, then size: the window is already on the target
         // monitor when it gets its size.
         window.set_position(placed.pos).map_err(|e| e.to_string())?;
@@ -847,13 +847,27 @@ fn center(r: &PxRect) -> (f64, f64) {
         (r.top as f64 + r.bottom as f64) / 2.0,
     )
 }
-/// The monitor (rect, scale) that contains the centre of `rect`, if any is
-/// still connected there.
+/// The part of `a` inside `b`, if they overlap.
+fn overlap(a: &PxRect, b: &PxRect) -> Option<PxRect> {
+    let r = PxRect {
+        left: a.left.max(b.left),
+        top: a.top.max(b.top),
+        right: a.right.min(b.right),
+        bottom: a.bottom.min(b.bottom),
+    };
+    (r.right > r.left && r.bottom > r.top).then_some(r)
+}
+/// The monitor (rect, scale) holding most of `rect`, if one still overlaps
+/// it. A window dragged half off the bottom has its centre off-screen but
+/// still belongs to that monitor.
 fn monitor_of(rect: &PxRect, monitors: &[(PxRect, f64)]) -> Option<(PxRect, f64)> {
-    let (x, y) = center(rect);
-    monitors.iter().copied().find(|(m, _)| {
-        x >= m.left as f64 && x < m.right as f64 && y >= m.top as f64 && y < m.bottom as f64
-    })
+    let area = |r: PxRect| (r.right - r.left) as i64 * (r.bottom - r.top) as i64;
+    monitors
+        .iter()
+        .copied()
+        .filter_map(|(m, s)| Some((area(overlap(rect, &m)?), (m, s))))
+        .max_by_key(|(a, _)| *a)
+        .map(|(_, found)| found)
 }
 /// Fob: the dragged position at the panel size of the monitor it's on, kept
 /// at its top-left but moved (and if need be shrunk) fully into `work`.
@@ -1609,6 +1623,11 @@ mod tests {
         // there (the caller passes mini_size(1.0)).
         let on_left = PxRect::new(-800, 300, 360, 652);
         assert_eq!(monitor_of(&on_left, &monitors), Some(left));
+        // Dragged half off the bottom: the centre is off-screen, the monitor
+        // is still the one it hangs from, and the restore pulls it inside.
+        let hanging = PxRect::new(1500, 1300, size.width, size.height);
+        assert_eq!(monitor_of(&hanging, &monitors), Some(main));
+        assert!(contains(&work, &restore(hanging, &work, size).rect()));
         // That monitor unplugged: no monitor, so the tray position is used.
         assert_eq!(monitor_of(&on_left, &[main]), None);
         // A work area smaller than the panel: shrunk, still inside.
