@@ -88,17 +88,27 @@ fn fold(node: &mut Node, mut kids: Vec<Node>) {
     node.children.shrink_to_fit();
 }
 
+/// One directory entry as listed (links already dropped).
+struct Entry {
+    name: String,
+    dir: bool,
+    /// Allocated bytes (files).
+    size: u64,
+}
+
 struct Walker<'a> {
     progress: &'a Progress,
     /// Allocation unit; file sizes round up to it (Windows).
     #[cfg_attr(not(windows), allow(dead_code))]
     cluster: u64,
+    /// Subfolders are walked on the current rayon pool (one per thread).
+    parallel: bool,
     /// The scanned volume; other file systems mounted inside are not entered.
     #[cfg(unix)]
     device: u64,
     /// Hard-linked files already counted (device, inode).
     #[cfg(unix)]
-    seen: std::collections::HashSet<(u64, u64)>,
+    seen: Mutex<std::collections::HashSet<(u64, u64)>>,
 }
 
 impl Walker<'_> {
@@ -106,56 +116,129 @@ impl Walker<'_> {
         self.progress.cancel.load(Ordering::Relaxed)
     }
 
-    /// Links are never followed: symlinks, junctions, mount points and any
-    /// other directory reparse point (Windows), symlinks (Unix).
-    fn is_link(meta: &fs::Metadata) -> bool {
-        if meta.file_type().is_symlink() {
-            return true;
-        }
-        #[cfg(windows)]
-        {
-            use std::os::windows::fs::MetadataExt;
-            const FILE_ATTRIBUTE_REPARSE_POINT: u32 = 0x400;
-            if meta.is_dir() && meta.file_attributes() & FILE_ATTRIBUTE_REPARSE_POINT != 0 {
-                return true;
+    /// The folder's files and subfolders. Links are never followed:
+    /// symlinks, junctions, mount points and any other directory reparse
+    /// point (Windows), symlinks and other devices' folders (Unix).
+    #[cfg(unix)]
+    fn list(&self, path: &Path) -> std::io::Result<Vec<Entry>> {
+        use std::os::unix::fs::MetadataExt;
+        let mut out = Vec::new();
+        for entry in fs::read_dir(path)?.flatten() {
+            let Ok(meta) = entry.metadata() else { continue };
+            if meta.file_type().is_symlink() {
+                continue;
+            }
+            let name = entry.file_name().to_string_lossy().into_owned();
+            if meta.is_dir() {
+                if meta.dev() == self.device {
+                    out.push(Entry {
+                        name,
+                        dir: true,
+                        size: 0,
+                    });
+                }
+            } else if meta.is_file() {
+                let first = meta.nlink() <= 1
+                    || self
+                        .seen
+                        .lock()
+                        .is_ok_and(|mut s| s.insert((meta.dev(), meta.ino())));
+                let size = if first { meta.blocks() * 512 } else { 0 };
+                out.push(Entry {
+                    name,
+                    dir: false,
+                    size,
+                });
             }
         }
-        false
+        Ok(out)
+    }
+
+    /// FindFirstFileExW with the basic info level and large fetches (fewer
+    /// kernel round trips), without the large-fetch flag where a file
+    /// system refuses it.
+    #[cfg(windows)]
+    fn list(&self, path: &Path) -> std::io::Result<Vec<Entry>> {
+        use windows::Win32::Foundation::ERROR_INVALID_PARAMETER;
+        use windows::Win32::Storage::FileSystem::{
+            FindClose, FindExInfoBasic, FindExSearchNameMatch, FindFirstFileExW, FindNextFileW,
+            FIND_FIRST_EX_FLAGS, FIND_FIRST_EX_LARGE_FETCH, WIN32_FIND_DATAW,
+        };
+        const REPARSE: u32 = 0x400;
+        const DIRECTORY: u32 = 0x10;
+        const NAME_SURROGATE: u32 = 0x2000_0000;
+        let pattern = windows::core::HSTRING::from(find_pattern(path).as_os_str());
+        let mut data = WIN32_FIND_DATAW::default();
+        let mut open = |flags| unsafe {
+            FindFirstFileExW(
+                &pattern,
+                FindExInfoBasic,
+                &mut data as *mut _ as *mut _,
+                FindExSearchNameMatch,
+                None,
+                flags,
+            )
+        };
+        let handle = match open(FIND_FIRST_EX_LARGE_FETCH) {
+            Ok(h) => h,
+            Err(e) if e.code() == ERROR_INVALID_PARAMETER.to_hresult() => {
+                open(FIND_FIRST_EX_FLAGS(0)).map_err(|e| std::io::Error::other(e.to_string()))?
+            }
+            Err(e) => return Err(std::io::Error::other(e.to_string())),
+        };
+        let mut out = Vec::new();
+        loop {
+            let len = data
+                .cFileName
+                .iter()
+                .position(|&c| c == 0)
+                .unwrap_or(data.cFileName.len());
+            let name = String::from_utf16_lossy(&data.cFileName[..len]);
+            let attrs = data.dwFileAttributes;
+            let dir = attrs & DIRECTORY != 0;
+            let reparse = attrs & REPARSE != 0;
+            // Folders: no reparse point at all. Files: only name-surrogate
+            // tags are links (symlinks); cloud placeholders are kept.
+            let link = reparse && (dir || data.dwReserved0 & NAME_SURROGATE != 0);
+            if name != "." && name != ".." && !link {
+                let size = if dir {
+                    0
+                } else {
+                    let len = (u64::from(data.nFileSizeHigh) << 32) | u64::from(data.nFileSizeLow);
+                    self.allocated(&path.join(&name), attrs, len)
+                };
+                out.push(Entry { name, dir, size });
+            }
+            if unsafe { FindNextFileW(handle, &mut data) }.is_err() {
+                break;
+            }
+        }
+        unsafe {
+            let _ = FindClose(handle);
+        }
+        Ok(out)
     }
 
     /// Bytes the file takes on disk.
-    fn allocated(&mut self, _path: &Path, meta: &fs::Metadata) -> u64 {
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::MetadataExt;
-            if meta.nlink() > 1 && !self.seen.insert((meta.dev(), meta.ino())) {
-                return 0;
-            }
-            meta.blocks() * 512
+    #[cfg(windows)]
+    fn allocated(&self, path: &Path, attrs: u32, len: u64) -> u64 {
+        // Compressed, sparse and cloud placeholder files: ask the file
+        // system; others take their size rounded up to whole clusters.
+        const SPECIAL: u32 = 0x800 | 0x200 | 0x400 | 0x1000 | 0x40_0000;
+        let size = if attrs & SPECIAL != 0 {
+            compressed_size(path).unwrap_or(len)
+        } else {
+            len
+        };
+        if self.cluster > 1 {
+            size.div_ceil(self.cluster) * self.cluster
+        } else {
+            size
         }
-        #[cfg(windows)]
-        {
-            use std::os::windows::fs::MetadataExt;
-            // Compressed, sparse and cloud placeholder files: ask the file
-            // system; others take their size rounded up to whole clusters.
-            const SPECIAL: u32 = 0x800 | 0x200 | 0x400 | 0x1000 | 0x40_0000;
-            let size = if meta.file_attributes() & SPECIAL != 0 {
-                compressed_size(_path).unwrap_or(meta.file_size())
-            } else {
-                meta.file_size()
-            };
-            if self.cluster > 1 {
-                size.div_ceil(self.cluster) * self.cluster
-            } else {
-                size
-            }
-        }
-        #[cfg(not(any(unix, windows)))]
-        meta.len()
     }
 
     /// Walks one folder; `None` once the scan is cancelled.
-    fn folder(&mut self, path: &Path, name: String) -> Option<Node> {
+    fn folder(&self, path: &Path, name: String) -> Option<Node> {
         if self.cancelled() {
             return None;
         }
@@ -168,7 +251,7 @@ impl Walker<'_> {
             dir: true,
             ..Node::default()
         };
-        let entries = match fs::read_dir(path) {
+        let entries = match self.list(path) {
             Ok(entries) => entries,
             Err(_) => {
                 self.progress.skipped.fetch_add(1, Ordering::Relaxed);
@@ -176,52 +259,66 @@ impl Walker<'_> {
                 return Some(node);
             }
         };
-        let mut kids = Vec::new();
-        for entry in entries.flatten() {
-            if self.cancelled() {
-                return None;
-            }
-            // DirEntry::metadata does not follow links (Unix: lstat;
-            // Windows: the directory listing's own data).
-            let Ok(meta) = entry.metadata() else { continue };
-            if Self::is_link(&meta) {
-                continue;
-            }
-            let name = entry.file_name().to_string_lossy().into_owned();
-            if meta.is_dir() {
-                #[cfg(unix)]
-                {
-                    use std::os::unix::fs::MetadataExt;
-                    if meta.dev() != self.device {
-                        continue;
-                    }
-                }
-                kids.push(self.folder(&entry.path(), name)?);
-            } else if meta.is_file() {
-                let size = self.allocated(&entry.path(), &meta);
+        let mut kids = Vec::with_capacity(entries.len());
+        let mut dirs = Vec::new();
+        for e in entries {
+            if e.dir {
+                dirs.push(e.name);
+            } else {
                 self.progress.files.fetch_add(1, Ordering::Relaxed);
-                self.progress.bytes.fetch_add(size, Ordering::Relaxed);
+                self.progress.bytes.fetch_add(e.size, Ordering::Relaxed);
                 kids.push(Node {
-                    name,
-                    size,
+                    name: e.name,
+                    size: e.size,
                     files: 1,
                     ..Node::default()
                 });
             }
         }
+        let sub = |name: &String| self.folder(&path.join(name), name.clone());
+        let subs: Option<Vec<Node>> = if self.parallel && dirs.len() > 1 {
+            use rayon::prelude::*;
+            dirs.par_iter().map(sub).collect()
+        } else {
+            dirs.iter().map(sub).collect()
+        };
+        kids.extend(subs?);
         node.size = kids.iter().map(|k| k.size).sum();
         node.files = kids.iter().map(|k| k.files).sum();
+        // fold sorts by size, then name: the result does not depend on the
+        // order folders finished in.
         fold(&mut node, kids);
         Some(node)
     }
 }
 
-/// Walks `root`; `None` if `progress.cancel` was set before it finished.
+/// `\\?\C:\path\*`: no MAX_PATH limit.
+#[cfg(windows)]
+fn find_pattern(path: &Path) -> PathBuf {
+    let text = path.to_string_lossy();
+    let base = if text.starts_with(r"\\?\") {
+        text.into_owned()
+    } else if let Some(unc) = text.strip_prefix(r"\\") {
+        format!(r"\\?\UNC\{unc}")
+    } else {
+        format!(r"\\?\{text}")
+    };
+    PathBuf::from(base).join("*")
+}
+
+/// Walks `root` on the calling thread; `None` if `progress.cancel` was set
+/// before it finished.
 pub fn walk(root: &Path, progress: &Progress) -> Option<Node> {
+    walk_with(root, progress, false)
+}
+
+/// Walks `root`; with `parallel`, subfolders go to the current rayon pool.
+fn walk_with(root: &Path, progress: &Progress, parallel: bool) -> Option<Node> {
     let meta = fs::metadata(root).ok()?;
-    let mut walker = Walker {
+    let walker = Walker {
         progress,
         cluster: cluster_size(root),
+        parallel,
         #[cfg(unix)]
         device: {
             use std::os::unix::fs::MetadataExt;
@@ -232,6 +329,114 @@ pub fn walk(root: &Path, progress: &Progress) -> Option<Node> {
     };
     let _ = &meta;
     walker.folder(root, root.to_string_lossy().into_owned())
+}
+
+/// What the volume is, for how many threads walk it.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum DriveKind {
+    Ssd,
+    Hdd,
+    /// Removable, network, or the seek-penalty query gave no answer.
+    Unknown,
+}
+
+/// SSD: many threads hide per-folder latency. HDD: one thread, because
+/// parallel reads make the heads seek. Unknown: a cautious two.
+pub fn scan_threads(kind: DriveKind, logical: usize) -> usize {
+    match kind {
+        DriveKind::Ssd => (logical * 2).clamp(2, 16),
+        DriveKind::Hdd => 1,
+        DriveKind::Unknown => 2,
+    }
+}
+
+/// IOCTL_STORAGE_QUERY_PROPERTY / StorageDeviceSeekPenaltyProperty on
+/// `\\.\X:`, opened with no access rights (no admin needed). No seek
+/// penalty means solid state.
+pub fn drive_kind(_root: &str) -> DriveKind {
+    #[cfg(windows)]
+    unsafe {
+        use windows::core::HSTRING;
+        use windows::Win32::Foundation::CloseHandle;
+        use windows::Win32::Storage::FileSystem::{
+            CreateFileW, GetDriveTypeW, FILE_FLAGS_AND_ATTRIBUTES, FILE_SHARE_READ,
+            FILE_SHARE_WRITE, OPEN_EXISTING,
+        };
+        use windows::Win32::System::Ioctl::{
+            PropertyStandardQuery, StorageDeviceSeekPenaltyProperty,
+            DEVICE_SEEK_PENALTY_DESCRIPTOR, IOCTL_STORAGE_QUERY_PROPERTY, STORAGE_PROPERTY_QUERY,
+        };
+        use windows::Win32::System::IO::DeviceIoControl;
+        const DRIVE_FIXED: u32 = 3;
+        if GetDriveTypeW(&HSTRING::from(_root)) != DRIVE_FIXED {
+            return DriveKind::Unknown;
+        }
+        let letter = _root.trim_end_matches('\\');
+        let Ok(handle) = CreateFileW(
+            &HSTRING::from(format!(r"\\.\{letter}")),
+            0,
+            FILE_SHARE_READ | FILE_SHARE_WRITE,
+            None,
+            OPEN_EXISTING,
+            FILE_FLAGS_AND_ATTRIBUTES(0),
+            None,
+        ) else {
+            return DriveKind::Unknown;
+        };
+        let query = STORAGE_PROPERTY_QUERY {
+            PropertyId: StorageDeviceSeekPenaltyProperty,
+            QueryType: PropertyStandardQuery,
+            ..Default::default()
+        };
+        let mut desc = DEVICE_SEEK_PENALTY_DESCRIPTOR::default();
+        let mut got = 0u32;
+        let ok = DeviceIoControl(
+            handle,
+            IOCTL_STORAGE_QUERY_PROPERTY,
+            Some(&query as *const _ as *const _),
+            std::mem::size_of_val(&query) as u32,
+            Some(&mut desc as *mut _ as *mut _),
+            std::mem::size_of_val(&desc) as u32,
+            Some(&mut got),
+            None,
+        )
+        .is_ok();
+        let _ = CloseHandle(handle);
+        if !ok || (got as usize) < std::mem::size_of_val(&desc) {
+            return DriveKind::Unknown;
+        }
+        if desc.IncursSeekPenalty {
+            DriveKind::Hdd
+        } else {
+            DriveKind::Ssd
+        }
+    }
+    #[cfg(not(windows))]
+    DriveKind::Unknown
+}
+
+/// Walks `root` on a pool sized for its drive; every worker runs at
+/// background priority. Returns the tree and the thread count used.
+pub fn walk_drive(root: &Path, progress: &Progress, kind: DriveKind) -> (Option<Node>, usize) {
+    let logical = std::thread::available_parallelism().map_or(4, |n| n.get());
+    let threads = std::env::var("WINPERF_SPACE_THREADS")
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or_else(|| scan_threads(kind, logical))
+        .max(1);
+    if threads == 1 {
+        return (walk(root, progress), 1);
+    }
+    let pool = rayon::ThreadPoolBuilder::new()
+        .num_threads(threads)
+        .thread_name(|i| format!("fob-space-{i}"))
+        .stack_size(16 << 20) // deep folder trees recurse
+        .start_handler(|_| background_priority())
+        .build();
+    match pool {
+        Ok(pool) => (pool.install(|| walk_with(root, progress, true)), threads),
+        Err(_) => (walk(root, progress), 1),
+    }
 }
 
 #[cfg(windows)]
@@ -429,6 +634,8 @@ pub struct SpaceState {
     unsaved: Mutex<HashMap<String, Arc<Vec<u8>>>>,
     /// The last scan that ended: (root, stopped before it finished).
     ended: Mutex<Option<(String, bool)>>,
+    /// The last "other" listing (folder path, items), for its later pages.
+    folded: Mutex<Option<(String, Arc<Vec<Folded>>)>>,
 }
 
 #[derive(Serialize)]
@@ -474,7 +681,8 @@ pub fn start(app: AppHandle, root: String) -> Result<(), String> {
             background_priority();
             let before_mb = own_memory_mb();
             let started = Instant::now();
-            let tree = walk(Path::new(&root), &progress);
+            let kind = drive_kind(&root);
+            let (tree, threads) = walk_drive(Path::new(&root), &progress, kind);
             let state = app.state::<SpaceState>();
             if let Ok(mut running) = state.running.lock() {
                 if running
@@ -515,10 +723,10 @@ pub fn start(app: AppHandle, root: String) -> Result<(), String> {
                 log_scan(
                     &app,
                     &format!(
-                        "{root}: {files} files, {nodes} nodes kept, {} s, cache {}; \
+                        "{root}: {kind:?}, {threads} threads, {files} files, {nodes} nodes kept, {} s, cache {}; \
                          fob memory {before_mb} MB before, {peak_mb} MB with the tree, \
                          {} MB after",
-                        started.elapsed().as_secs_f64().round(),
+                        (started.elapsed().as_secs_f64() * 10.0).round() / 10.0,
                         if saved.is_ok() {
                             "written"
                         } else {
@@ -619,6 +827,130 @@ pub async fn space_result(app: AppHandle, root: String) -> Result<tauri::ipc::Re
     };
     Ok(tauri::ipc::Response::new(bytes))
 }
+/// An item of a folder's "other" block, as the page lists it.
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+pub struct Folded {
+    pub n: String,
+    pub s: u64,
+    pub f: u64,
+    #[serde(default)]
+    pub d: bool,
+    /// In the scan's tree (a folder here can open in the map); false: the
+    /// scan folded it away and its size was read now from the disk.
+    #[serde(default)]
+    pub t: bool,
+}
+
+#[derive(Serialize)]
+pub struct FoldedPage {
+    pub total: usize,
+    pub items: Vec<Folded>,
+}
+
+/// Everything in `path` except the `shown` map blocks: the `known` items
+/// (merged on the page, sizes from the scan) as they are, the rest (folded
+/// by the scan, names not cached) listed and measured now. Largest first.
+pub fn folded_items(path: &Path, shown: &[String], known: Vec<Folded>) -> Vec<Folded> {
+    use std::collections::{HashMap, HashSet};
+    let shown: HashSet<&str> = shown.iter().map(String::as_str).collect();
+    let mut known: HashMap<String, Folded> = known.into_iter().map(|k| (k.n.clone(), k)).collect();
+    let progress = Progress::default();
+    let Ok(meta) = fs::metadata(path) else {
+        return Vec::new();
+    };
+    let walker = Walker {
+        progress: &progress,
+        cluster: cluster_size(path),
+        parallel: false,
+        #[cfg(unix)]
+        device: {
+            use std::os::unix::fs::MetadataExt;
+            meta.dev()
+        },
+        #[cfg(unix)]
+        seen: Default::default(),
+    };
+    let _ = &meta;
+    let mut out: Vec<Folded> = Vec::new();
+    for e in walker.list(path).unwrap_or_default() {
+        if shown.contains(e.name.as_str()) {
+            continue;
+        }
+        if let Some(k) = known.remove(&e.name) {
+            out.push(Folded { t: true, ..k });
+        } else if e.dir {
+            let node = walker
+                .folder(&path.join(&e.name), e.name.clone())
+                .unwrap_or_default();
+            out.push(Folded {
+                n: e.name,
+                s: node.size,
+                f: node.files,
+                d: true,
+                t: false,
+            });
+        } else {
+            out.push(Folded {
+                n: e.name,
+                s: e.size,
+                f: 1,
+                d: false,
+                t: false,
+            });
+        }
+    }
+    // Known items that vanished since the scan are still shown as scanned.
+    out.extend(known.into_values().map(|k| Folded { t: true, ..k }));
+    out.sort_by(|a, b| b.s.cmp(&a.s).then_with(|| a.n.cmp(&b.n)));
+    out
+}
+
+/// One page of `folded_items`. Offset 0 lists the folder again; later pages
+/// come from that listing (one folder at a time is kept).
+#[tauri::command]
+pub async fn space_folded(
+    app: AppHandle,
+    path: String,
+    shown: Vec<String>,
+    known: Vec<Folded>,
+    offset: usize,
+    limit: usize,
+) -> Result<FoldedPage, String> {
+    let target = PathBuf::from(&path);
+    if !target.is_absolute() || !drives().iter().any(|d| path.starts_with(d.root.as_str())) {
+        return Err("Not inside a drive Fob scans".into());
+    }
+    let state = app.state::<SpaceState>();
+    let cached = state
+        .folded
+        .lock()
+        .ok()
+        .and_then(|c| c.clone())
+        .filter(|(p, _)| offset > 0 && *p == path)
+        .map(|(_, items)| items);
+    let items = match cached {
+        Some(items) => items,
+        None => {
+            let items = tauri::async_runtime::spawn_blocking(move || {
+                background_priority();
+                folded_items(&target, &shown, known)
+            })
+            .await
+            .map_err(|e| e.to_string())?;
+            let items = Arc::new(items);
+            if let Ok(mut c) = state.folded.lock() {
+                *c = Some((path, items.clone()));
+            }
+            items
+        }
+    };
+    let end = offset.saturating_add(limit.min(1000)).min(items.len());
+    Ok(FoldedPage {
+        total: items.len(),
+        items: items.get(offset.min(end)..end).unwrap_or(&[]).to_vec(),
+    })
+}
+
 /// Shows `path` selected in File Explorer (explorer.exe /select, through
 /// ShellExecute; no shell in between).
 #[tauri::command]
@@ -750,7 +1082,12 @@ mod tests {
         // a.bin, b.bin, small.txt and the hard link entry (0 extra bytes).
         assert_eq!(tree.files, 4);
         assert_eq!(progress.files.load(Ordering::Relaxed), 4);
-        assert_eq!(tree.size, big.size + tree.other + 0);
+        // Which of the two hard links carries the bytes depends on listing
+        // order; the total counts them once either way.
+        assert_eq!(
+            tree.size,
+            tree.children.iter().map(|c| c.size).sum::<u64>() + tree.other
+        );
         assert!(
             tree.size < 1_100_000,
             "hard link counted twice: {}",
@@ -816,6 +1153,96 @@ mod tests {
     }
 
     #[test]
+    fn a_parallel_walk_equals_the_serial_walk() {
+        let root = temp("parallel");
+        let mut seed = 0x9e37_79b9_7f4a_7c15u64;
+        let mut rnd = move |n: u64| {
+            seed ^= seed << 13;
+            seed ^= seed >> 7;
+            seed ^= seed << 17;
+            seed % n
+        };
+        // ~60 folders up to 4 deep, 0-30 files each, sizes 0..2 MB, some
+        // folders far over KEEP_MAX so folding is exercised.
+        let mut dirs = vec![root.clone()];
+        for i in 0..60 {
+            let parent = dirs[rnd(dirs.len() as u64) as usize].clone();
+            if parent.components().count() - root.components().count() >= 4 {
+                continue;
+            }
+            let dir = parent.join(format!("d{i}"));
+            fs::create_dir_all(&dir).unwrap();
+            let files = if i % 17 == 0 {
+                KEEP_MAX as u64 + 40
+            } else {
+                rnd(30)
+            };
+            for f in 0..files {
+                file(&dir.join(format!("f{f}.bin")), rnd(2_000_000) as usize);
+            }
+            dirs.push(dir);
+        }
+        let serial = walk(&root, &Progress::default()).unwrap();
+        for threads in [2, 4, 16] {
+            let pool = rayon::ThreadPoolBuilder::new()
+                .num_threads(threads)
+                .build()
+                .unwrap();
+            let progress = Progress::default();
+            let parallel = pool.install(|| walk_with(&root, &progress, true)).unwrap();
+            assert_eq!(
+                parallel, serial,
+                "{threads} threads differ from the serial walk"
+            );
+            assert_eq!(progress.files.load(Ordering::Relaxed), serial.files);
+        }
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn the_other_list_holds_everything_but_the_shown_blocks() {
+        let root = temp("folded");
+        fs::create_dir_all(root.join("shown")).unwrap();
+        fs::create_dir_all(root.join("merged")).unwrap();
+        fs::create_dir_all(root.join("tiny/inner")).unwrap();
+        file(&root.join("shown/a.bin"), 900_000);
+        file(&root.join("tiny/inner/x.bin"), 5000);
+        file(&root.join("small.txt"), 100);
+        let merged = Folded {
+            n: "merged".into(),
+            s: 777,
+            f: 3,
+            d: true,
+            t: false,
+        };
+        let items = folded_items(&root, &["shown".into()], vec![merged]);
+        let names: Vec<&str> = items.iter().map(|i| i.n.as_str()).collect();
+        assert!(!names.contains(&"shown"));
+        let m = items.iter().find(|i| i.n == "merged").unwrap();
+        assert!(
+            m.t && m.d && m.s == 777,
+            "merged items keep their scanned size"
+        );
+        let tiny = items.iter().find(|i| i.n == "tiny").unwrap();
+        assert!(
+            !tiny.t && tiny.d && tiny.f == 1 && tiny.s >= 5000,
+            "folded folders are measured"
+        );
+        assert!(items.iter().any(|i| i.n == "small.txt" && !i.d));
+        assert!(items.windows(2).all(|w| w[0].s >= w[1].s), "largest first");
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn threads_follow_the_drive_kind() {
+        assert_eq!(scan_threads(DriveKind::Ssd, 24), 16);
+        assert_eq!(scan_threads(DriveKind::Ssd, 4), 8);
+        assert_eq!(scan_threads(DriveKind::Ssd, 1), 2);
+        assert_eq!(scan_threads(DriveKind::Hdd, 24), 1);
+        assert_eq!(scan_threads(DriveKind::Unknown, 24), 2);
+    }
+
+    #[test]
     fn a_cached_scan_reads_back_identical() {
         let dir = temp("cache");
         let root = dir.join("data");
@@ -844,6 +1271,9 @@ mod tests {
         let start = src.find("pub fn start(").unwrap();
         let body = &src[start..src[start..].find("\n}\n").unwrap() + start];
         assert!(body.contains("background_priority();"));
+        let pool = &src[src.find("pub fn walk_drive(").unwrap()..];
+        assert!(pool[..pool.find("\n}\n").unwrap()]
+            .contains("start_handler(|_| background_priority())"));
         assert!(src.contains("THREAD_MODE_BACKGROUND_BEGIN"));
     }
 }

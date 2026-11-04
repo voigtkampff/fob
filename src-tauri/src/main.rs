@@ -96,6 +96,7 @@ fn main() {
             space::space_status,
             space::space_result,
             space::space_reveal,
+            space::space_folded,
             hotkey::get_mini_hotkey,
             hotkey::set_mini_hotkey,
             hotkey::suspend_mini_hotkey,

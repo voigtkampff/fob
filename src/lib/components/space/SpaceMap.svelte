@@ -22,6 +22,7 @@
     sep,
     onOpen,
     onMenu,
+    onOther,
   }: {
     folder: SpaceNode;
     root: string;
@@ -31,6 +32,8 @@
     onOpen: (names: string[]) => void;
     /** Right-click: the item's full path at the pointer. */
     onMenu: (target: string, x: number, y: number) => void;
+    /** The "other" block of the folder at these names was clicked. */
+    onOther: (names: string[], parent: SpaceNode, block: Block) => void;
   } = $props();
 
   type Tile = {
@@ -50,12 +53,11 @@
   let height = $state(0);
   const tiles = $derived.by(() => {
     const out: Tile[] = [];
-    const outer = squarify(blocks(folder, { maxItems: 250 }), (b) => b.size, {
-      x: 0,
-      y: 0,
-      w: width,
-      h: height,
-    });
+    const outer = squarify(
+      blocks(folder, { area: width * height, maxItems: 250 }),
+      (b) => b.size,
+      { x: 0, y: 0, w: width, h: height },
+    );
     for (const r of outer) {
       const names = r.item.node ? [...path, r.item.node.n] : path;
       out.push({
@@ -69,7 +71,10 @@
       const inner = r.item.node;
       if (inner?.d && r.w >= 70 && r.h >= 44)
         for (const c of squarify(
-          blocks(inner, { minShare: 0.01, maxItems: 60 }),
+          blocks(inner, {
+            area: (r.w - 2 * PAD) * (r.h - HEADER - PAD),
+            maxItems: 60,
+          }),
           (b) => b.size,
           {
             x: r.x + PAD,
@@ -121,8 +126,10 @@
   function click(event: MouseEvent) {
     const tile = pick(event);
     if (!tile) return;
-    // A folder opens; a file or the "other" block opens the folder it is in.
+    // A folder opens; "other" lists its items; a file inside a folder
+    // block opens that folder.
     const node = tile.block.node;
+    if (!node) return onOther(tile.names, tile.parent, tile.block);
     const names = node?.d
       ? tile.names
       : tile.depth === 2
@@ -172,6 +179,7 @@
       class="tile"
       class:inner={tile.depth === 2}
       class:folder={tile.block.node?.d}
+      class:rest={!tile.block.node}
       class:hot={hover?.tile === tile}
       data-tile={i}
       role="treeitem"
@@ -235,7 +243,8 @@
     line-height: 14px;
     cursor: default;
   }
-  .tile.folder {
+  .tile.folder,
+  .tile.rest {
     cursor: pointer;
   }
   .tile.inner {

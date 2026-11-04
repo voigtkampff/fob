@@ -13,7 +13,14 @@
     X,
   } from "@lucide/svelte";
   import SpaceMap from "./SpaceMap.svelte";
-  import { folderAt, tileColor, type SpaceNode } from "$lib/utils/treemap.js";
+  import OtherList from "./OtherList.svelte";
+  import {
+    folderAt,
+    joinPath,
+    tileColor,
+    type SpaceNode,
+    type Block,
+  } from "$lib/utils/treemap.js";
   import { formatBytes } from "$lib/utils";
   import { t, locale } from "$lib/i18n";
 
@@ -54,6 +61,17 @@
   let scan = $state.raw<Scan | null>(null);
   let status = $state<Status | null>(null);
   let path = $state<string[]>([]);
+  // The "other" block whose items are listed (names of its folder).
+  let other = $state<{
+    names: string[];
+    parent: SpaceNode;
+    block: Block;
+  } | null>(null);
+  $effect(() => {
+    void path;
+    void scan;
+    other = null;
+  });
   let error = $state("");
   let menu = $state<{ target: string; x: number; y: number } | null>(null);
   let timer: ReturnType<typeof setInterval> | null = null;
@@ -251,14 +269,38 @@
       >
     </nav>
     {#if folder.s > 0}
-      <SpaceMap
-        {folder}
-        root={scan.root}
-        {path}
-        sep={scan.sep}
-        onOpen={(names) => (path = names)}
-        onMenu={(target, x, y) => (menu = { target, x, y })}
-      />
+      <div class="map-wrap">
+        <SpaceMap
+          {folder}
+          root={scan.root}
+          {path}
+          sep={scan.sep}
+          onOpen={(names) => (path = names)}
+          onMenu={(target, x, y) => (menu = { target, x, y })}
+          onOther={(names, parent, block) => (other = { names, parent, block })}
+        />
+        {#if other}
+          {@const o = other}
+          {@const s = scan}
+          <OtherList
+            title={$t("space.otherTitle", {
+              name: o.names.at(-1) ?? s.root,
+              n: o.block.count.toLocaleString(),
+            })}
+            fullPath={joinPath(s.root, o.names, s.sep)}
+            parent={o.parent}
+            block={o.block}
+            onDrill={(name) => (path = [...o.names, name])}
+            onMenu={(name, x, y) =>
+              (menu = {
+                target: joinPath(s.root, [...o.names, name], s.sep),
+                x,
+                y,
+              })}
+            onClose={() => (other = null)}
+          />
+        {/if}
+      </div>
     {:else}
       <p class="empty">
         {folder.x ? $t("space.deniedFolder") : $t("space.emptyFolder")}
@@ -289,6 +331,12 @@
 </section>
 
 <style>
+  .map-wrap {
+    position: relative;
+    flex: 1;
+    min-height: 0;
+    display: flex;
+  }
   .space {
     display: flex;
     flex-direction: column;

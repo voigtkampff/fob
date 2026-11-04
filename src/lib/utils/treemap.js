@@ -82,33 +82,52 @@ export function squarify(items, value, rect) {
  * @typedef {{ n: string, s: number, f: number, d?: boolean, c?: SpaceNode[],
  *   o?: number, oc?: number, x?: boolean }} SpaceNode
  *  A folder or file of a scan (see src-tauri/src/space.rs).
- * @typedef {{ node: SpaceNode | null, size: number, count: number }} Block
- *  `node` null: the folded "other small files" block of `count` items.
+ * @typedef {{ node: SpaceNode | null, size: number, count: number,
+ *   merged?: SpaceNode[] }} Block
+ *  `node` null: the "other" block of `count` items: `merged` are the scan's
+ *  items too small to draw, plus the folder's `oc` items the scan folded.
  */
 
+/** A block smaller than this many square pixels is merged into "other". */
+export const MIN_TILE_AREA = 600;
+
 /**
- * The blocks of one folder: its largest items, then one block for the rest
- * (items under `minShare` of the folder, past `maxItems`, and what the scan
- * already folded).
+ * The blocks of one folder drawn in `area` square pixels: its largest items,
+ * then one block for the rest (items that would be under `minArea` px²,
+ * past `maxItems`, and what the scan already folded).
  * @param {SpaceNode} folder
- * @param {{ minShare?: number, maxItems?: number }} [options]
+ * @param {{ area: number, minArea?: number, maxItems?: number }} options
  * @returns {Block[]}
  */
-export function blocks(folder, { minShare = 0.004, maxItems = 60 } = {}) {
+export function blocks(
+  folder,
+  { area, minArea = MIN_TILE_AREA, maxItems = 60 },
+) {
   const kids = [...(folder.c ?? [])].sort((a, b) => b.s - a.s);
   /** @type {Block[]} */
   const out = [];
+  /** @type {SpaceNode[]} */
+  const merged = [];
   let rest = folder.o ?? 0;
-  let count = folder.oc ?? 0;
   for (const kid of kids) {
-    if (out.length < maxItems && folder.s > 0 && kid.s / folder.s >= minShare)
+    if (
+      out.length < maxItems &&
+      folder.s > 0 &&
+      (kid.s / folder.s) * area >= minArea
+    )
       out.push({ node: kid, size: kid.s, count: 1 });
     else {
       rest += kid.s;
-      count += 1;
+      merged.push(kid);
     }
   }
-  if (rest > 0) out.push({ node: null, size: rest, count });
+  if (rest > 0)
+    out.push({
+      node: null,
+      size: rest,
+      count: (folder.oc ?? 0) + merged.length,
+      merged,
+    });
   return out;
 }
 
