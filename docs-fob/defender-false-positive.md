@@ -62,7 +62,7 @@ Text:
 > read-only sensor helper (LibreHardwareMonitorLib) to Program Files and
 > registers a logon scheduled task so that the helper can read temperatures
 > without further prompts. Nothing is downloaded and no data is sent anywhere.
-> Version 0.6.2 (attached) uses the Task Scheduler API instead of schtasks.exe
+> Version 0.6.3 (attached) uses the Task Scheduler API instead of schtasks.exe
 > and runs the driver installer visibly. SHA-256 of the files: see the list
 > below. Please review the detection and clear it for these files.
 
