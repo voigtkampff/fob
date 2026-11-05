@@ -574,13 +574,21 @@ pub fn drives() -> Vec<Drive> {
             .ok()
             .or_else(|| std::env::var("HOME").ok())
             .unwrap_or_else(|| "/".into());
+        // Size of the file system each root sits on (longest mount prefix).
+        let disks = sysinfo::Disks::new_with_refreshed_list();
         roots
             .split(':')
             .filter(|r| !r.is_empty())
-            .map(|root| Drive {
-                root: root.to_string(),
-                total: 0,
-                free: 0,
+            .map(|root| {
+                let disk = disks
+                    .iter()
+                    .filter(|d| Path::new(root).starts_with(d.mount_point()))
+                    .max_by_key(|d| d.mount_point().as_os_str().len());
+                Drive {
+                    root: root.to_string(),
+                    total: disk.map_or(0, |d| d.total_space()),
+                    free: disk.map_or(0, |d| d.available_space()),
+                }
             })
             .collect()
     }

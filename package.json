@@ -1,6 +1,6 @@
 {
   "name": "neohtop",
-  "version": "0.6.11",
+  "version": "0.6.12",
   "description": "",
   "type": "module",
   "scripts": {
@@ -24,7 +24,8 @@
     "prepare": "husky install",
     "build:site": "node scripts/build-site.mjs",
     "refresh:site-release": "node scripts/refresh-site-release.mjs",
-    "refresh:site-stats": "node scripts/refresh-site-stats.mjs"
+    "refresh:site-stats": "node scripts/refresh-site-stats.mjs",
+    "test:nav": "node tests/nav-history.mjs"
   },
   "license": "MIT",
   "dependencies": {

@@ -713,12 +713,26 @@
     padding: 8px 12px;
     border-radius: 10px;
     border: 1px solid var(--border);
-    background: var(--card);
+    /* Not a .card/.panel, so app.css's mini-window rule misses it: fade with
+       the mini opacity here (--mini-alpha is 1 outside the mini window). */
+    background: color-mix(
+      in oklab,
+      var(--card) calc(var(--mini-alpha, 1) * 100%),
+      transparent
+    );
     font-size: 12.5px;
     font-weight: 600;
   }
   .space-link:hover {
-    background: color-mix(in oklab, var(--primary) 10%, var(--card));
+    background: color-mix(
+      in oklab,
+      var(--primary) 10%,
+      color-mix(
+        in oklab,
+        var(--card) calc(var(--mini-alpha, 1) * 100%),
+        transparent
+      )
+    );
   }
   .list-head {
     display: flex;

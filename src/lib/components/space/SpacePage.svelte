@@ -6,6 +6,8 @@
   import { invoke } from "@tauri-apps/api/core";
   import { Button } from "$lib/components/ui/button/index.js";
   import {
+    ArrowLeft,
+    ArrowRight,
     ChevronRight,
     FolderSearch,
     RefreshCw,
@@ -22,6 +24,7 @@
     type Block,
   } from "$lib/utils/treemap.js";
   import { formatBytes } from "$lib/utils";
+  import { emptyHistory, visit, step } from "$lib/utils/nav-history.js";
   import { t, locale } from "$lib/i18n";
 
   type Drive = { root: string; total: number; free: number };
@@ -61,6 +64,23 @@
   let scan = $state.raw<Scan | null>(null);
   let status = $state<Status | null>(null);
   let path = $state<string[]>([]);
+  let history = $state.raw(emptyHistory());
+  /** Opens a folder as a new visit (Back returns here). */
+  function navigate(names: string[]) {
+    history = visit(history, path, names);
+    path = names;
+  }
+  function go(dir: -1 | 1) {
+    const next = step(history, path, dir);
+    if (!next) return;
+    history = next.history;
+    path = next.path;
+  }
+  /** Drives with a size: share used, and nearly full (under 10 % free). */
+  const usage = (d: Drive) => {
+    const used = d.total ? 1 - d.free / d.total : 0;
+    return { used, full: d.total > 0 && d.free / d.total < 0.1 };
+  };
   // The "other" block whose items are listed (names of its folder).
   let other = $state<{
     names: string[];
@@ -88,7 +108,10 @@
     scan = bytes.byteLength
       ? (JSON.parse(new TextDecoder().decode(bytes)) as Scan)
       : null;
-    if (scan && !folderAt(scan.tree, path)) path = [];
+    if (scan && !folderAt(scan.tree, path)) {
+      path = [];
+      history = emptyHistory();
+    }
   }
   async function poll() {
     const next = await invoke<Status>("space_status");
@@ -133,6 +156,7 @@
   async function choose(target: string, scanIfNew: boolean) {
     root = target;
     path = [];
+    history = emptyHistory();
     error = "";
     localStorage.setItem(LAST, target);
     await load(target);
@@ -175,6 +199,20 @@
 <svelte:window
   onkeydown={(e) => {
     if (e.key === "Escape") menu = null; // i18n-ignore
+    if (e.altKey && (e.key === "ArrowLeft" || e.key === "ArrowRight")) {
+      e.preventDefault();
+      go(e.key === "ArrowLeft" ? -1 : 1); // i18n-ignore
+    }
+  }}
+  onmousedown={(e) => {
+    // Mouse side buttons: keep WebView2 from navigating the page itself.
+    if (e.button === 3 || e.button === 4) e.preventDefault();
+  }}
+  onmouseup={(e) => {
+    if (e.button === 3 || e.button === 4) {
+      e.preventDefault();
+      go(e.button === 3 ? -1 : 1);
+    }
   }}
   onclick={() => (menu = null)}
 />
@@ -195,11 +233,22 @@
                 total: formatBytes(d.total),
               })
             : d.root}
-          >{d.root}{#if d.total}<small
-              >{$t("space.driveFree", {
-                free: formatBytes(d.free),
-                total: formatBytes(d.total),
-              })}</small
+          ><span class="drive-line"
+            >{d.root}{#if d.total}<small
+                >{$t("space.driveFree", {
+                  free: formatBytes(d.free),
+                  total: formatBytes(d.total),
+                })}</small
+              >{/if}</span
+          >{#if d.total}{@const u = usage(d)}<span
+              class="usage"
+              class:full={u.full}
+              role="meter"
+              aria-valuemin={0}
+              aria-valuemax={100}
+              aria-valuenow={Math.round(u.used * 100)}
+              aria-label={$t("space.used", { n: Math.round(u.used * 100) })}
+              ><i style={`width:${(u.used * 100).toFixed(1)}%`}></i></span
             >{/if}</button
         >
       {:else}
@@ -253,12 +302,25 @@
 
   {#if scan && folder}
     <nav class="crumbs" aria-label={$t("space.crumbs")}>
-      <button onclick={() => (path = [])} disabled={!path.length}
+      <button
+        class="nav"
+        onclick={() => go(-1)}
+        disabled={!history.back.length}
+        aria-label={$t("space.back")}
+        title={$t("space.back")}><ArrowLeft class="size-3.5" /></button
+      ><button
+        class="nav"
+        onclick={() => go(1)}
+        disabled={!history.forward.length}
+        aria-label={$t("space.forward")}
+        title={$t("space.forward")}><ArrowRight class="size-3.5" /></button
+      >
+      <button onclick={() => navigate([])} disabled={!path.length}
         >{scan.root}</button
       >
       {#each path as name, i}
         <ChevronRight class="size-3.5 shrink-0 text-muted-foreground" /><button
-          onclick={() => (path = path.slice(0, i + 1))}
+          onclick={() => navigate(path.slice(0, i + 1))}
           disabled={i === path.length - 1}>{name}</button
         >
       {/each}
@@ -275,7 +337,7 @@
           root={scan.root}
           {path}
           sep={scan.sep}
-          onOpen={(names) => (path = names)}
+          onOpen={navigate}
           onMenu={(target, x, y) => (menu = { target, x, y })}
           onOther={(names, parent, block) => (other = { names, parent, block })}
         />
@@ -290,7 +352,7 @@
             fullPath={joinPath(s.root, o.names, s.sep)}
             parent={o.parent}
             block={o.block}
-            onDrill={(name) => (path = [...o.names, name])}
+            onDrill={(name) => navigate([...o.names, name])}
             onMenu={(name, x, y) =>
               (menu = {
                 target: joinPath(s.root, [...o.names, name], s.sep),
@@ -363,14 +425,44 @@
   }
   .drive {
     display: flex;
-    align-items: baseline;
-    gap: 6px;
+    flex-direction: column;
+    gap: 3px;
     padding: 3px 10px;
     border-radius: 6px;
     border: 1px solid var(--border);
     font-size: 12.5px;
     font-weight: 600;
     background: var(--card);
+  }
+  .drive-line {
+    display: flex;
+    align-items: baseline;
+    gap: 6px;
+  }
+  .usage {
+    display: block;
+    height: 4px;
+    border-radius: 2px;
+    background: color-mix(in oklab, var(--foreground) 12%, transparent);
+    overflow: hidden;
+  }
+  .usage i {
+    display: block;
+    height: 100%;
+    border-radius: 2px;
+    background: var(--primary);
+  }
+  .usage.full i {
+    background: var(--destructive);
+  }
+  .nav {
+    display: inline-flex;
+    align-items: center;
+    padding: 2px 4px;
+    border-radius: 4px;
+  }
+  .nav:disabled {
+    opacity: 0.35;
   }
   .drive small {
     font-weight: 400;
