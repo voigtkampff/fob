@@ -201,6 +201,9 @@ export const en = {
   "settings.miniPositionNote":
     "Pin the mini window and drag its title bar, it opens there next time; double-click the title bar to put it back by the tray",
   "settings.resetPosition": "Back to the tray",
+  "settings.startup": "Startup",
+  "settings.launchAtLogin": "Open at login",
+  "settings.launchAtLoginNote": "Opens Fob when you sign in to Windows",
   "settings.showTray": "Show tray icon",
   "settings.showTrayNote": "CPU, memory, graphics and network one click away",
   "settings.startInTray": "Start in tray only (mini window mode)",
@@ -818,6 +821,9 @@ export const zh = {
   "settings.miniPositionNote":
     "钉住迷你窗口后拖动标题栏，下次就在那里打开；双击标题栏回到托盘旁",
   "settings.resetPosition": "恢复到托盘旁",
+  "settings.startup": "启动",
+  "settings.launchAtLogin": "开机启动",
+  "settings.launchAtLoginNote": "登录 Windows 时自动打开 Fob",
   "settings.showTray": "显示托盘图标",
   "settings.showTrayNote": "一键查看 CPU、内存、显卡和网络",
   "settings.startInTray": "仅在托盘启动（迷你窗口模式）",

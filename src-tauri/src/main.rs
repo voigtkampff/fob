@@ -4,6 +4,7 @@
 //! This is the main entry point for the application. It sets up the Tauri
 //! application, initializes plugins, and configures window effects.
 
+mod autostart;
 mod boot;
 mod commands;
 mod companion;
@@ -53,6 +54,8 @@ fn main() {
             companion::native_frame(app.handle());
             window_icon::apply_all(app.handle());
             sampling::sample_in_background(app.handle().clone());
+            let login = preferences::startup(app.handle()).launch_at_login;
+            std::thread::spawn(move || autostart::sync(login));
             // winperf: tray-only start (default) or the main window.
             companion::launch(app.handle())?;
             Ok(())

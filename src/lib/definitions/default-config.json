@@ -23,6 +23,7 @@
     "itemsPerPage": 15,
     "refreshRate": 3000,
     "menuBarEnabled": true,
+    "launchAtLogin": false,
     "keepRunning": true,
     "startInTray": true,
     "miniPinned": false,

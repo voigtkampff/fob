@@ -58,7 +58,7 @@ fn merge(config: &mut Value, patch: &Value) {
                     .is_some_and(|n| [15, 25, 50, 100, 250, 500].contains(&n)),
                 "refreshRate" => value.as_u64().is_some_and(|n| (1000..=30000).contains(&n)),
                 "menuBarEnabled" | "keepRunning" | "startInTray" | "miniPinned"
-                | "overlayEnabled" | "overlayLocked" => value.is_boolean(),
+                | "overlayEnabled" | "overlayLocked" | "launchAtLogin" => value.is_boolean(),
                 // Fob status bar (overlay.rs, src/lib/utils/overlay.js).
                 "overlayOpacity" => value.as_u64().is_some_and(|n| n <= 100),
                 "overlayCharts" => value.is_boolean(),
@@ -164,7 +164,13 @@ pub async fn read_preferences(
                 app.emit("preferences-change", state.clone())
                     .map_err(|e| e.to_string())?;
                 let (app, config) = (app.clone(), state.config.clone());
-                std::thread::spawn(move || crate::overlay::sync(&app, &config));
+                let login = config["behavior"]["launchAtLogin"]
+                    .as_bool()
+                    .unwrap_or(false);
+                std::thread::spawn(move || {
+                    crate::autostart::sync(login);
+                    crate::overlay::sync(&app, &config);
+                });
             }
         }
         Ok(state.clone())
@@ -225,6 +231,8 @@ pub struct Startup {
     pub mini_hotkey: String,
     /// Fob: the status bar hotkey, canonical ("" = off).
     pub overlay_hotkey: String,
+    /// Fob 0.7.9: start with the Windows session (autostart.rs).
+    pub launch_at_login: bool,
 }
 pub fn startup_from(saved: Option<&Value>) -> Startup {
     let mut config = defaults();
@@ -246,6 +254,9 @@ pub fn startup_from(saved: Option<&Value>) -> Startup {
             .as_str()
             .unwrap_or_default()
             .to_owned(),
+        launch_at_login: config["behavior"]["launchAtLogin"]
+            .as_bool()
+            .unwrap_or(false),
     }
 }
 pub fn startup(app: &AppHandle) -> Startup {
@@ -387,8 +398,14 @@ mod tests {
                 language: Some("auto".into()),
                 mini_hotkey: String::new(),
                 overlay_hotkey: String::new(),
+                launch_at_login: false,
             }
         );
+        // Fob 0.7.9: login start is off until turned on, and only a boolean.
+        let on = startup_from(Some(&json!({"behavior":{"launchAtLogin":true}})));
+        assert!(on.launch_at_login);
+        let bad = startup_from(Some(&json!({"behavior":{"launchAtLogin":"yes"}})));
+        assert!(!bad.launch_at_login);
         // v0.3 settings files have no startInTray key: still on.
         let old = startup_from(Some(&json!({"behavior":{"refreshRate":5000}})));
         assert!(!old.first_launch && old.start_in_tray && old.tray);

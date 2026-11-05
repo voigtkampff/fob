@@ -74,6 +74,7 @@
       | "menuBarEnabled"
       | "keepRunning"
       | "startInTray"
+      | "launchAtLogin"
       | "language",
     value: number | boolean | string,
   ) {
@@ -239,6 +240,28 @@
                     >{$t(`lang.${option}`)}</option
                   >{/each}
               </NativeSelect.Root>
+            </div>
+          </Card.Content></Card.Root
+        >
+        <Card.Root size="sm"
+          ><Card.Header
+            ><Card.Title>{$t("settings.startup")}</Card.Title></Card.Header
+          ><Card.Content>
+            <div class="flex items-start gap-3">
+              <Checkbox
+                id="launch-at-login"
+                class="mt-0.5"
+                checked={$settingsStore.behavior.launchAtLogin ?? false}
+                onCheckedChange={(value) => save("launchAtLogin", value)}
+              />
+              <div>
+                <Label for="launch-at-login"
+                  >{$t("settings.launchAtLogin")}</Label
+                >
+                <p class="mt-1 text-xs leading-relaxed text-muted-foreground">
+                  {$t("settings.launchAtLoginNote")}
+                </p>
+              </div>
             </div>
           </Card.Content></Card.Root
         >
