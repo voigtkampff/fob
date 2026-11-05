@@ -41,7 +41,7 @@ pub struct Extra {
     /// Windows commit charge (used, limit) in bytes.
     pub commit: Option<(u64, u64)>,
     /// winperf: Unix seconds and kind ("cold" | "fast" | "hibernate") of the
-    /// last power-on; `None` = only the kernel uptime is known (see fob.log).
+    /// last power-on; `None` = only the kernel uptime is known.
     pub started: Option<(u64, &'static str)>,
     /// winperf: per-process network rates from the sensor helper (ETW);
     /// `None` when the helper isn't running.

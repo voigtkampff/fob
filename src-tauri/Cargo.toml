@@ -1,6 +1,6 @@
 [package]
 name = "winperf"
-version = "0.7.13"
+version = "0.7.14"
 description = "Fob, a Windows performance monitor"
 authors = ["you"]
 edition = "2021"
@@ -10,8 +10,8 @@ rust-version = "1.88"
 # FileVersion/ProductVersion from tauri.conf.json). CompanyName is the single
 # place to change the publisher: sensors-helper/src/*.csproj reads it from here.
 [package.metadata.tauri-winres]
-CompanyName = "the owner"
-LegalCopyright = "Copyright (c) 2026 the owner. Based on NeoHtop, Copyright (c) 2024 Abdenasser, MIT."
+CompanyName = "HCB"
+LegalCopyright = "Copyright (c) 2026 HCB. Based on NeoHtop, Copyright (c) 2024 Abdenasser, MIT."
 OriginalFilename = "fob.exe"
 InternalName = "fob"
 

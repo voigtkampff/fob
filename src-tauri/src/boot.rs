@@ -12,9 +12,8 @@
 //!   so only the cold-boot event below matched and the chip kept showing the
 //!   kernel uptime.)
 //! - Microsoft-Windows-Kernel-General 12: the OS started (cold boot).
-//! We take the newest of those that isn't before the kernel boot, and log
-//! what was found (or why nothing was) to fob.log. When nothing is found the
-//! chip shows the kernel uptime, labelled as such.
+//! We take the newest of those that isn't before the kernel boot. When
+//! nothing is found the chip shows the kernel uptime, labelled as such.
 
 #![cfg_attr(not(target_os = "windows"), allow(dead_code))]
 
@@ -170,14 +169,6 @@ fn latest_start_event() -> Result<(u64, StartKind), String> {
                     Some(Some(found)) if result.is_err() => {
                         result = Ok(found);
                     }
-                    Some(None) => crate::boot::log(&format!(
-                        "skipped an event: {}",
-                        xml.unwrap_or_default()
-                            .chars()
-                            .take(300)
-                            .collect::<String>()
-                    )),
-                    None => crate::boot::log(&format!("EvtRender: {:?}", rendered.err())),
                     _ => {}
                 }
             }
@@ -196,40 +187,9 @@ fn latest_start_event() -> Result<(u64, StartKind), String> {
     Err("not Windows".into())
 }
 
-/// Append one line to fob.log next to Fob's settings
-/// (%LOCALAPPDATA%\com.hcb.fob\fob.log), kept under 256 KB.
-pub fn log(line: &str) {
-    use std::io::Write;
-    let Some(dir) = std::env::var_os(if cfg!(windows) {
-        "LOCALAPPDATA"
-    } else {
-        "XDG_STATE_HOME"
-    })
-    .map(std::path::PathBuf::from)
-    .map(|d| d.join("com.hcb.fob")) else {
-        return;
-    };
-    let _ = std::fs::create_dir_all(&dir);
-    let path = dir.join("fob.log");
-    if std::fs::metadata(&path).is_ok_and(|m| m.len() > 256 * 1024) {
-        let _ = std::fs::remove_file(&path);
-    }
-    let stamp = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map_or(0, |d| d.as_secs());
-    if let Ok(mut file) = std::fs::OpenOptions::new()
-        .create(true)
-        .append(true)
-        .open(path)
-    {
-        let _ = writeln!(file, "{stamp} boot: {line}");
-    }
-}
-
 /// The last power-on (Unix seconds and kind), or `None` where we can't
 /// tell better than the kernel uptime (non-Windows, event log unavailable).
-/// Re-read every 5 minutes so a resume while Fob keeps running is seen; each
-/// new result or failure is written to fob.log.
+/// Re-read every 5 minutes so a resume while Fob keeps running is seen.
 pub fn last_start(now: u64, kernel_uptime: u64) -> Option<(u64, StartKind)> {
     use std::sync::Mutex;
     use std::time::{Duration, Instant};
@@ -239,17 +199,6 @@ pub fn last_start(now: u64, kernel_uptime: u64) -> Option<(u64, StartKind)> {
     let fresh = matches!(&*cache, Some((at, _)) if at.elapsed() < Duration::from_secs(300));
     if !fresh {
         let value = latest_start_event();
-        let changed = cache.as_ref().is_none_or(|(_, old)| *old != value);
-        let kernel_boot = now.saturating_sub(kernel_uptime);
-        if changed {
-            match &value {
-                Ok((t, kind)) => log(&format!(
-                    "last {} start at {t} (unix s); kernel boot at {kernel_boot}",
-                    kind.as_str()
-                )),
-                Err(e) => log(&format!("using kernel uptime, {e}")),
-            }
-        }
         *cache = Some((Instant::now(), value));
     }
     let (event, kind) = cache.as_ref()?.1.clone().ok()?;
