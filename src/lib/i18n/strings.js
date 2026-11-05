@@ -20,12 +20,13 @@ export const en = {
   "steps.pawnio":
     "Install the PawnIO driver (v2.2.0, signed by namazso) so Fob can read CPU and motherboard sensors; its own installer opens",
   "steps.replace":
-    "Update the sensor helper in C:\\Program Files\\Fob\\sensors to this version",
+    "Replace the sensor helper in C:\\Program Files\\Fob\\sensors with this version",
   "steps.copy":
     "Copy the read-only sensor helper to C:\\Program Files\\Fob\\sensors",
   "steps.task":
-    "Start the helper now and each time you sign in, without asking again",
-  "steps.retask": "Start the helper now and each time you sign in",
+    "Create the scheduled task “fob-sensors” so the helper starts as administrator now and each time you sign in, without asking again",
+  "steps.retask":
+    "Re-create the scheduled task “fob-sensors” so the helper starts now and each time you sign in",
   "dash.system": "System",
   "dash.cards": "System cards",
   "dash.threads": "{n} threads",
@@ -642,10 +643,12 @@ export const zh = {
   "steps.pawnio":
     "安装 PawnIO 驱动（2.2.0 版，namazso 签名），让 Fob 能读取 CPU 和主板传感器；会打开它自己的安装程序",
   "steps.replace":
-    "把 C:\\Program Files\\Fob\\sensors 里的传感器助手更新到此版本",
+    "用此版本替换 C:\\Program Files\\Fob\\sensors 里的传感器助手",
   "steps.copy": "把只读的传感器助手复制到 C:\\Program Files\\Fob\\sensors",
-  "steps.task": "立即启动助手，以后每次登录自动启动，不再询问",
-  "steps.retask": "立即启动助手，以后每次登录自动启动",
+  "steps.task":
+    "创建计划任务“fob-sensors”，立即以管理员权限启动助手，以后每次登录自动启动，不再询问",
+  "steps.retask":
+    "重新创建计划任务“fob-sensors”，立即启动助手，以后每次登录自动启动",
   "dash.system": "系统",
   "dash.cards": "系统卡片",
   "dash.threads": "{n} 线程",
