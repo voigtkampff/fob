@@ -1,4 +1,8 @@
-//! Fob: disk space map, v1 — a plain, read-only directory walk.
+//! Fob: disk space map.
+//!
+//! Fob 0.8.0: on Windows NTFS, tries an MFT scan first when the volume can
+//! be opened (needs elevation). Otherwise falls back to a plain, read-only
+//! directory walk. Non-NTFS volumes always walk.
 //!
 //! A scan runs only when asked (`space_scan`), on its own thread at
 //! background CPU and I/O priority, so the UI and the sampler never wait on
@@ -69,7 +73,7 @@ pub struct Progress {
     pub cancel: AtomicBool,
     pub current: Mutex<String>,
     /// Folders listed, and time spent listing them and folding them, summed
-    /// over all threads (for space.log).
+    /// over all threads.
     pub dirs: AtomicU64,
     pub list_ns: AtomicU64,
     pub fold_ns: AtomicU64,
@@ -78,7 +82,7 @@ pub struct Progress {
 /// Keeps the largest items of a folder and folds the rest into `other`:
 /// items under KEEP_MIN_BYTES, and past the first KEEP_MAX those under
 /// 1/KEEP_SHARE of the folder (so many big files are never hidden).
-fn fold(node: &mut Node, mut kids: Vec<Node>) {
+pub(crate) fn fold(node: &mut Node, mut kids: Vec<Node>) {
     kids.sort_by(|a, b| b.size.cmp(&a.size).then_with(|| a.name.cmp(&b.name)));
     let total: u64 = kids.iter().map(|k| k.size).sum();
     for (i, kid) in kids.into_iter().enumerate() {
@@ -374,7 +378,7 @@ pub fn scan_threads(kind: DriveKind, logical: usize) -> usize {
 /// IOCTL_STORAGE_QUERY_PROPERTY / StorageDeviceSeekPenaltyProperty on
 /// `\\.\X:`, opened with no access rights (no admin needed). No seek
 /// penalty means solid state.
-/// The reason comes with `Unknown`, for space.log.
+/// The reason comes with `Unknown`.
 pub fn drive_kind(_root: &str) -> (DriveKind, Option<String>) {
     #[cfg(windows)]
     unsafe {
@@ -443,6 +447,22 @@ pub fn drive_kind(_root: &str) -> (DriveKind, Option<String>) {
     (DriveKind::Unknown, Some("not Windows".into()))
 }
 
+/// Fob 0.8.0: try the NTFS MFT first; on any miss (non-NTFS, no admin,
+/// reader error) fall back to the directory walk silently. The elevated
+/// sensors helper is not used: its pipe only pushes sensor JSON, and an MFT
+/// dump would need a new protocol tied to sensor setup.
+pub fn scan_root(
+    root: &Path,
+    progress: &Progress,
+    kind: DriveKind,
+) -> (Option<Node>, usize, &'static str) {
+    if let Some(tree) = crate::space_mft::try_scan(root, progress) {
+        return (Some(tree), 1, "mft");
+    }
+    let (tree, threads) = walk_drive(root, progress, kind);
+    (tree, threads, "walk")
+}
+
 /// Walks `root` on a pool sized for its drive; every worker runs at
 /// background priority. Returns the tree and the thread count used.
 pub fn walk_drive(root: &Path, progress: &Progress, kind: DriveKind) -> (Option<Node>, usize) {
@@ -480,7 +500,7 @@ fn compressed_size(path: &Path) -> Option<u64> {
     let low = unsafe { GetCompressedFileSizeW(&wide(path), Some(&mut high)) };
     (low != u32::MAX || high != 0).then(|| (u64::from(high) << 32) | u64::from(low))
 }
-fn cluster_size(_root: &Path) -> u64 {
+pub(crate) fn cluster_size(_root: &Path) -> u64 {
     #[cfg(windows)]
     {
         use windows::Win32::Storage::FileSystem::GetDiskFreeSpaceW;
@@ -647,18 +667,6 @@ fn release_memory() {
         unsafe { malloc_trim(0) };
     }
 }
-/// Fob's own memory (resident / working set), MB.
-fn own_memory_mb() -> u64 {
-    let Ok(pid) = sysinfo::get_current_pid() else {
-        return 0;
-    };
-    let mut sys = sysinfo::System::new();
-    sys.refresh_processes(sysinfo::ProcessesToUpdate::Some(&[pid]), true);
-    sys.process(pid).map_or(0, |p| p.memory() >> 20)
-}
-fn count_nodes(node: &Node) -> u64 {
-    1 + node.children.iter().map(count_nodes).sum::<u64>()
-}
 
 struct Running {
     root: String,
@@ -717,13 +725,9 @@ pub fn start(app: AppHandle, root: String) -> Result<(), String> {
         .stack_size(16 << 20) // deep folder trees recurse
         .spawn(move || {
             background_priority();
-            let before_mb = own_memory_mb();
             let started = Instant::now();
-            let (kind, why) = drive_kind(&root);
-            let kind_ms = started.elapsed().as_millis();
-            let walking = Instant::now();
-            let (tree, threads) = walk_drive(Path::new(&root), &progress, kind);
-            let walk_s = walking.elapsed().as_secs_f64();
+            let (kind, _why) = drive_kind(&root);
+            let (tree, _threads, _via) = scan_root(Path::new(&root), &progress, kind);
             let state = app.state::<SpaceState>();
             if let Ok(mut running) = state.running.lock() {
                 if running
@@ -747,11 +751,7 @@ pub fn start(app: AppHandle, root: String) -> Result<(), String> {
                     root: root.clone(),
                     tree,
                 };
-                let nodes = count_nodes(&scan.tree);
-                let peak_mb = own_memory_mb();
-                let writing = Instant::now();
                 let saved = write_cache(&dir, &scan);
-                let write_ms = writing.elapsed().as_millis();
                 if let Ok(mut unsaved) = state.unsaved.lock() {
                     unsaved.remove(&root);
                     if saved.is_err() {
@@ -760,30 +760,8 @@ pub fn start(app: AppHandle, root: String) -> Result<(), String> {
                         }
                     }
                 }
-                let files = scan.files;
                 drop(scan);
                 release_memory();
-                log_scan(
-                    &app,
-                    &format!(
-                        "{root}: {kind:?}, {threads} threads, {files} files, {nodes} nodes kept, {} s, cache {}; \
-                         fob memory {before_mb} MB before, {peak_mb} MB with the tree, \
-                         {} MB after; phases: kind query {kind_ms} ms{}, walk {walk_s:.1} s \
-                         ({dirs} folders, listing {list_s:.1} s and folding {fold_s:.1} s summed over threads), \
-                         cache write {write_ms} ms",
-                        (started.elapsed().as_secs_f64() * 10.0).round() / 10.0,
-                        if saved.is_ok() {
-                            "written"
-                        } else {
-                            "NOT written"
-                        },
-                        own_memory_mb(),
-                        why.as_deref().map(|w| format!(" ({w})")).unwrap_or_default(),
-                        dirs = progress.dirs.load(Ordering::Relaxed),
-                        list_s = progress.list_ns.load(Ordering::Relaxed) as f64 / 1e9,
-                        fold_s = progress.fold_ns.load(Ordering::Relaxed) as f64 / 1e9,
-                    ),
-                );
             }
             if let Ok(mut ended) = state.ended.lock() {
                 *ended = Some((root, stopped));
@@ -840,24 +818,6 @@ pub async fn space_status(app: AppHandle) -> Status {
         },
     };
     status
-}
-/// One line per finished scan in the app log folder's space.log.
-fn log_scan(app: &AppHandle, line: &str) {
-    use std::io::Write;
-    let Ok(dir) = app.path().app_log_dir() else {
-        return;
-    };
-    let _ = fs::create_dir_all(&dir);
-    let path = dir.join("space.log");
-    if fs::metadata(&path).is_ok_and(|m| m.len() > 256 * 1024) {
-        let _ = fs::remove_file(&path);
-    }
-    let stamp = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map_or(0, |d| d.as_secs());
-    if let Ok(mut file) = fs::OpenOptions::new().create(true).append(true).open(path) {
-        let _ = writeln!(file, "{stamp} {line}");
-    }
 }
 /// The last scan of `root` as `Scan` JSON bytes (empty: none yet), read
 /// from its cache file each time so no tree stays in Fob's memory.

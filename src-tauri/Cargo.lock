@@ -2004,6 +2004,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "ntfs-reader"
+version = "0.6.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "fb34a1cf0c0b3156733287e619769b4c82a03a53497594217ab66cc68d483404"
+dependencies = [
+ "thiserror 2.0.1",
+ "time",
+ "tracing",
+ "windows 0.62.2",
+]
+
+[[package]]
 name = "num-conv"
 version = "0.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5135,13 +5147,14 @@ checksum = "23b97319f7b8343df12cc98938e5c3eb436064524c8d2b4e30a1d3a36eecdf81"
 
 [[package]]
 name = "winperf"
-version = "0.7.17"
+version = "0.8.0"
 dependencies = [
  "base64 0.22.1",
  "core-foundation",
  "file_icon_provider",
  "freedesktop-icons",
  "listeners",
+ "ntfs-reader",
  "nvml-wrapper",
  "objc2 0.6.5",
  "png",

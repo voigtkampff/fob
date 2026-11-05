@@ -19,6 +19,7 @@ mod preferences;
 mod sampling;
 mod sensors;
 mod space;
+mod space_mft;
 mod state;
 mod ui;
 mod window_icon;

@@ -934,8 +934,7 @@ fn restore(saved: PxRect, work: &PxRect, panel: tauri::PhysicalSize<u32>) -> Pla
         fits: panel.width as i32 <= aw && panel.height as i32 <= ah,
     }
 }
-/// Fob: the last placement's numbers, overwritten on every show, in the app
-/// log folder (mini-placement.txt) so a misplaced window can be explained.
+/// Fob: records the last placement's numbers (debug files removed in 0.8.0).
 #[allow(clippy::too_many_arguments)]
 fn record_placement(
     app: &AppHandle,
@@ -967,32 +966,8 @@ fn record_placement(
     }
     write_placement(app, &text);
 }
-/// mini-placement.txt: the last placement or drag; mini-placement.log: one
-/// line per event.
-fn write_placement(app: &AppHandle, text: &str) {
-    let Ok(dir) = app.path().app_log_dir() else {
-        return;
-    };
-    let _ = std::fs::create_dir_all(&dir);
-    let _ = std::fs::write(dir.join("mini-placement.txt"), text);
-    // And one line per show in mini-placement.log (restarted past 256 KB).
-    let log = dir.join("mini-placement.log");
-    if std::fs::metadata(&log).is_ok_and(|m| m.len() > 256 * 1024) {
-        let _ = std::fs::remove_file(&log);
-    }
-    let stamp = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map_or(0, |d| d.as_secs());
-    let line = format!("{stamp} {}\n", text.trim_end().replace('\n', " | "));
-    use std::io::Write;
-    if let Ok(mut file) = std::fs::OpenOptions::new()
-        .create(true)
-        .append(true)
-        .open(log)
-    {
-        let _ = file.write_all(line.as_bytes());
-    }
-}
+/// Fob 0.8.0: placement debug files removed; kept as a no-op so call sites stay.
+fn write_placement(_app: &AppHandle, _text: &str) {}
 /// Fob: mini-position.json in the settings folder: the dragged visible rect.
 fn position_file(app: &AppHandle) -> Option<std::path::PathBuf> {
     Some(app.path().app_config_dir().ok()?.join("mini-position.json"))

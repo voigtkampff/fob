@@ -47,7 +47,7 @@ when anything looks off. `pgrep -af winperf-app` shows which binary runs.
 - Pointer: `xdotool mousemove X Y mousedown 1 ... mouseup 1`, `click --repeat 2`.
   A real drag needs a press, a small move, a pause (0.5 s) and then steps.
 - Saved files: `$V file <name> settings.json`, `$V file <name> mini-position.json`,
-  `$V file <name> logs:mini-placement.txt` / `logs:mini-placement.log`.
+  Placement debug logs were removed in 0.8.0; use `mini-position.json` and window geometry instead.
 - Screenshot: `$V shot <name> out.png` (whole display, 1600x1000).
 
 Feature journeys: `features/README.md`.
