@@ -509,3 +509,10 @@ console.log("PASS: per-app network rows group, stick for 30 s and sort");
   assert.ok(page.includes('= "processes";'), "Fob starts on the Processes tab");
   console.log("PASS: one chart style everywhere; Processes tab default; card spacing fixed");
 }
+
+{
+  const field = readFileSync(new URL("../src/lib/components/HotkeyField.svelte", import.meta.url), "utf8");
+  assert.ok(/class=\{`flex h-8 w-44 /.test(field), "every hotkey box has one fixed width");
+  assert.ok(field.includes('<span class="size-8 shrink-0" aria-hidden="true"></span>'), "an unset field keeps the clear button's slot");
+  console.log("PASS: hotkey fields line up set or unset");
+}

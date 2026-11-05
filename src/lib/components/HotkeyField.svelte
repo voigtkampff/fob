@@ -99,7 +99,7 @@
     bind:this={field}
     {id}
     type="button"
-    class={`flex h-8 min-w-44 items-center gap-2 rounded-md border px-3 text-sm tabular-nums transition-colors ${recording ? "border-ring ring-2 ring-ring/40" : "border-input"} ${combo || recording ? "" : "text-muted-foreground"}`}
+    class={`flex h-8 w-44 items-center gap-2 rounded-md border px-3 text-sm tabular-nums transition-colors ${recording ? "border-ring ring-2 ring-ring/40" : "border-input"} ${combo || recording ? "" : "text-muted-foreground"}`}
     aria-label={label || $t("hotkey.fieldAria")}
     aria-describedby={describedby}
     disabled={busy}
@@ -121,7 +121,9 @@
       title={$t("hotkey.clear")}
       disabled={busy}
       onclick={() => void apply("")}><X /></Button
-    >{/if}
+    >{:else}<!-- Same slot as the clear button, so every field has one width
+      and the boxes line up whether or not a combo is set -->
+    <span class="size-8 shrink-0" aria-hidden="true"></span>{/if}
 </div>
 {#if error}<p role="alert" class="mt-2 text-xs text-destructive">
     {error}
