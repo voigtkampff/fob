@@ -15,7 +15,7 @@ The tokens live in one block, `.bar` in `src/lib/components/OverlayBar.svelte`
 | `--ob-shift-value` / `-latin` / `-cjk` | measured | Set at run time by `inkShift` from the real font's canvas metrics, so each script's ink is centred whatever font the WebView picks |
 | `--ob-chart-w` × `--ob-chart-h` | 32 × 9px | Under the values' cap height (~9.3 px); the line is drawn inside, never past the text |
 | `--ob-gap-label` | 5px | Label to value |
-| `--ob-gap-pair` | 8px | Between the two values of a pair (R/W, ↓/↑); the fixed width (13ch net, 15ch disk) is on the pair plus its chart, so the chart sits --ob-gap-chart after the second value and the slack falls after the chart |
+| `--ob-gap-pair` | 8px | Between the two values of a pair (R/W, ↓/↑); every fixed width (4ch CPU and GPU, 5ch temperatures and power, 5.5ch memory, 13ch net, 15ch disk) is on the value plus its chart, so the chart sits --ob-gap-chart after the last value and the slack falls after the chart |
 | `--ob-gap-chart` | 6px | Value to chart |
 | `--ob-gap-metric` | 14px | Between metrics |
 | `--ob-pad-x` | 10px | Bar ends |

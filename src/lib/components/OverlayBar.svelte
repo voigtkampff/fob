@@ -331,23 +331,10 @@
     stroke-width: 1.25;
     vector-effect: non-scaling-stroke;
   }
-  /* Fixed widths, so the bar doesn't twitch as numbers change. */
-  .value.cpu,
-  .value.gpu {
-    min-width: 4ch;
-  }
-  .value.cpuTemp,
-  .value.gpuTemp,
-  .value.power {
-    min-width: 5ch;
-  }
-  .value.ram,
-  .value.vram {
-    min-width: 5.5ch;
-  }
-  /* Pairs: the fixed width is on the pair plus its chart, so the two
-     numbers stay --ob-gap-pair apart, the chart follows the second one at
-     --ob-gap-chart, and the slack falls after the chart. */
+  /* Fixed widths, so the bar doesn't twitch as numbers change. The width
+     is on the value plus its chart: values in a pair stay --ob-gap-pair
+     apart, the chart follows the last value at --ob-gap-chart, and the
+     slack falls after the chart. */
   .vc {
     display: inline-flex;
     align-items: center;
@@ -356,19 +343,30 @@
     font-size: var(--ob-value-size);
     font-weight: var(--ob-value-weight);
     font-family: var(--ob-font-latin), sans-serif;
+    min-width: var(--ob-value-w);
+  }
+  .vc.charted {
+    min-width: calc(
+      var(--ob-value-w) + var(--ob-gap-chart) + var(--ob-chart-w)
+    );
+  }
+  .vc.cpu,
+  .vc.gpu {
+    --ob-value-w: 4ch;
+  }
+  .vc.cpuTemp,
+  .vc.gpuTemp,
+  .vc.power {
+    --ob-value-w: 5ch;
+  }
+  .vc.ram,
+  .vc.vram {
+    --ob-value-w: 5.5ch;
   }
   .vc.net {
-    --ob-pair-w: 13ch;
+    --ob-value-w: 13ch;
   }
   .vc.disk {
-    --ob-pair-w: 15ch;
-  }
-  .vc.net,
-  .vc.disk {
-    min-width: var(--ob-pair-w);
-  }
-  .vc.net.charted,
-  .vc.disk.charted {
-    min-width: calc(var(--ob-pair-w) + var(--ob-gap-chart) + var(--ob-chart-w));
+    --ob-value-w: 15ch;
   }
 </style>
