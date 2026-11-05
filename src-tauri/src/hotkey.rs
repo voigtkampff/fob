@@ -268,9 +268,17 @@ fn owner(app: &AppHandle, shortcut: &Shortcut) -> Option<Target> {
 pub fn plugin() -> tauri::plugin::TauriPlugin<tauri::Wry> {
     tauri_plugin_global_shortcut::Builder::new()
         .with_handler(|app, shortcut, event| {
+            // This runs on the main thread inside the hotkey window's
+            // WM_HOTKEY handler, with the plugin's shortcut table locked.
+            // Showing and focusing a window from here re-enters the message
+            // loop while the combo's keys are still down, and
+            // run_on_main_thread would run it inline (tauri-runtime-wry
+            // send_user_message), so hand it to another thread and return.
+            // Tauri's window calls from there are queued to the main loop.
             if event.state == ShortcutState::Pressed {
                 if let Some(target) = owner(app, shortcut) {
-                    target.run(app);
+                    let app = app.clone();
+                    std::thread::spawn(move || target.run(&app));
                 }
             }
         })
@@ -448,6 +456,27 @@ mod tests {
         ] {
             assert_eq!(parse(text), Err(Refused::Invalid), "{text:?}");
         }
+    }
+    #[test]
+    fn a_press_returns_at_once_and_release_polling_sleeps() {
+        let me = include_str!("hotkey.rs");
+        let handler = &me[me.find(".with_handler(").unwrap()..me.find(".build()").unwrap()];
+        let code: String = handler
+            .lines()
+            .filter(|l| !l.trim_start().starts_with("//"))
+            .collect();
+        assert!(code.contains("std::thread::spawn(move || target.run(&app))"));
+        assert!(
+            !code.contains("target.run(app)"),
+            "no window work inside WM_HOTKEY"
+        );
+        let vendored = include_str!("../vendor/global-hotkey/src/platform_impl/windows/mod.rs");
+        let poll = &vendored[vendored.find("std::thread::spawn(move || loop {").unwrap()..];
+        assert!(
+            poll.find("thread::sleep").unwrap() < poll.find("GetAsyncKeyState").unwrap(),
+            "the release poll waits between reads"
+        );
+        assert!(!vendored.contains("SetWindowsHookEx"), "no keyboard hook");
     }
     #[test]
     fn shortcuts_match_the_combo() {

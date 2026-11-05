@@ -1285,8 +1285,6 @@ checksum = "d2fabcfbdc87f4758337ca535fb41a6d701b65693ce38287d856d1674551ec9b"
 [[package]]
 name = "global-hotkey"
 version = "0.6.4"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "41fbb3a4e56c901ee66c190fdb3fa08344e6d09593cc6c61f8eb9add7144b271"
 dependencies = [
  "crossbeam-channel",
  "keyboard-types",
@@ -5137,7 +5135,7 @@ checksum = "23b97319f7b8343df12cc98938e5c3eb436064524c8d2b4e30a1d3a36eecdf81"
 
 [[package]]
 name = "winperf"
-version = "0.7.9"
+version = "0.7.10"
 dependencies = [
  "base64 0.22.1",
  "core-foundation",
