@@ -35,7 +35,7 @@ assert.deepEqual(
     metrics: DEFAULT_METRICS,
     dock: "top",
     opacity: 60,
-    unlocked: false,
+    locked: false,
     charts: [],
     theme: "",
   },

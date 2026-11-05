@@ -67,7 +67,8 @@ export function overlaySettings(behavior) {
       ? /** @type {typeof DOCKS[number]} */ (b.overlayDock)
       : "top",
     opacity: overlayOpacity(b.overlayOpacity),
-    unlocked: b.overlayUnlocked === true,
+    // 0.7.5: overlayUnlocked is never read, so everyone starts unlocked.
+    locked: b.overlayLocked === true,
     charts: chartMetrics(b),
     theme: typeof b.overlayTheme === "string" ? b.overlayTheme : "",
   };

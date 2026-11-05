@@ -167,7 +167,8 @@ export interface AppConfig {
     overlayMetrics?: string[];
     overlayDock?: "top" | "bottom" | "free";
     overlayOpacity?: number;
-    overlayUnlocked?: boolean;
+    /** 0.7.5 锁定位置: Ctrl no longer drags (replaces overlayUnlocked). */
+    overlayLocked?: boolean;
     overlayCharts?: boolean;
     /** 0.7.3: metrics drawn with a chart (replaces overlayCharts). */
     overlayChartMetrics?: string[];

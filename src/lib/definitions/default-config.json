@@ -35,7 +35,7 @@
     "overlayMetrics": ["cpu", "cpuTemp", "gpu", "gpuTemp", "ram", "net"],
     "overlayDock": "top",
     "overlayOpacity": 60,
-    "overlayUnlocked": false,
+    "overlayLocked": false,
     "overlayCharts": false,
     "overlayHotkey": "",
     "overlayTheme": ""

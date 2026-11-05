@@ -58,7 +58,7 @@ fn merge(config: &mut Value, patch: &Value) {
                     .is_some_and(|n| [15, 25, 50, 100, 250, 500].contains(&n)),
                 "refreshRate" => value.as_u64().is_some_and(|n| (1000..=30000).contains(&n)),
                 "menuBarEnabled" | "keepRunning" | "startInTray" | "miniPinned"
-                | "overlayEnabled" | "overlayUnlocked" => value.is_boolean(),
+                | "overlayEnabled" | "overlayLocked" => value.is_boolean(),
                 // Fob status bar (overlay.rs, src/lib/utils/overlay.js).
                 "overlayOpacity" => value.as_u64().is_some_and(|n| n <= 100),
                 "overlayCharts" => value.is_boolean(),
@@ -283,13 +283,14 @@ mod tests {
         let b = |c: &Value, k: &str| c["behavior"][k].clone();
         assert_eq!(b(&config, "overlayEnabled"), false);
         assert_eq!(b(&config, "overlayDock"), "top");
-        assert_eq!(b(&config, "overlayUnlocked"), false);
+        assert_eq!(b(&config, "overlayLocked"), false);
         assert_eq!(b(&config, "overlayOpacity"), 60);
         merge(
             &mut config,
             &json!({"behavior":{"overlayEnabled":true,"overlayDock":"free","overlayOpacity":35,
-                "overlayUnlocked":true,"overlayMetrics":["net","cpu"]}}),
+                "overlayLocked":true,"overlayMetrics":["net","cpu"]}}),
         );
+        assert_eq!(b(&config, "overlayLocked"), true);
         assert_eq!(b(&config, "overlayEnabled"), true);
         assert_eq!(b(&config, "overlayDock"), "free");
         assert_eq!(b(&config, "overlayOpacity"), 35);

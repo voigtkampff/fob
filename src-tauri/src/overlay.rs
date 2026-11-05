@@ -3,7 +3,7 @@
 //! injected into other processes, so there is no FPS or frame time.
 //!
 //! Click-through by default. While Ctrl is held (polled with
-//! GetAsyncKeyState every 50 ms, no keyboard hook) or "unlock" is on, it
+//! GetAsyncKeyState every 50 ms, no keyboard hook) and the position isn't locked, it
 //! takes the mouse so it can be dragged. A drag that ends near the top or
 //! bottom of the work area snaps to that edge; the spot is saved per monitor
 //! in overlay-position.json.
@@ -149,7 +149,10 @@ pub fn screen_of(r: Rect, screens: &[Screen]) -> Option<usize> {
 pub struct Config {
     pub enabled: bool,
     pub dock: Dock,
-    pub unlocked: bool,
+    /// 锁定位置: Ctrl no longer lets the mouse in, so the bar can't be
+    /// dragged. 0.7.5 replaces overlayUnlocked (never read again, so every
+    /// bar starts unlocked: click-through, Ctrl to drag).
+    pub locked: bool,
 }
 impl Config {
     pub fn from_prefs(config: &Value) -> Self {
@@ -157,7 +160,7 @@ impl Config {
         Self {
             enabled: b["overlayEnabled"].as_bool().unwrap_or(false),
             dock: serde_json::from_value(b["overlayDock"].clone()).unwrap_or_default(),
-            unlocked: b["overlayUnlocked"].as_bool().unwrap_or(false),
+            locked: b["overlayLocked"].as_bool().unwrap_or(false),
         }
     }
 }
@@ -361,9 +364,9 @@ pub fn sync(app: &AppHandle, prefs: &Value) {
     let _ = w.show();
     // Showing can reset the extended style on some systems; force a resend.
     if let Ok(mut s) = app.state::<Shared>().lock() {
-        s.interactive = !config.unlocked;
+        s.interactive = true;
     }
-    set_interactive(app, &w, config.unlocked);
+    set_interactive(app, &w, false);
     poll(app.clone());
 }
 
@@ -388,7 +391,7 @@ fn poll(app: AppHandle) {
                 if !config.enabled || !w.is_visible().unwrap_or(false) {
                     break;
                 }
-                set_interactive(&app, &w, config.unlocked || ctrl_down());
+                set_interactive(&app, &w, !config.locked && ctrl_down());
                 tick += 1;
                 if tick % 40 == 0 {
                     // Every 2 s: off every monitor (one was unplugged)? Re-place.
@@ -696,15 +699,18 @@ mod tests {
         assert_eq!(c, Config::default());
         assert!(!c.enabled);
         let c = Config::from_prefs(&serde_json::json!({ "behavior": {
-            "overlayEnabled": true, "overlayDock": "bottom", "overlayUnlocked": true } }));
+            "overlayEnabled": true, "overlayDock": "bottom", "overlayLocked": true } }));
         assert_eq!(
             c,
             Config {
                 enabled: true,
                 dock: Dock::Bottom,
-                unlocked: true
+                locked: true
             }
         );
+        // 0.7.5 migration: the old unlock flag is ignored; everyone unlocked.
+        let c = Config::from_prefs(&serde_json::json!({ "behavior": { "overlayUnlocked": true } }));
+        assert!(!c.locked);
         let c = Config::from_prefs(&serde_json::json!({ "behavior": { "overlayDock": "left" } }));
         assert_eq!(c.dock, Dock::Top);
     }

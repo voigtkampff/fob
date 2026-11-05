@@ -211,7 +211,7 @@
     font-family: var(--ob-font-latin), var(--ob-font-cjk), sans-serif;
     line-height: 1;
   }
-  /* Ctrl held / unlocked: a slightly brighter bar with a faint solid edge. */
+  /* Ctrl held (not 锁定位置): a slightly brighter bar with a faint solid edge. */
   .bar.interactive {
     cursor: move;
     background: color-mix(in oklab, var(--ob-bg), var(--ob-fg) 8%);

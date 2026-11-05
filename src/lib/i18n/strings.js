@@ -553,7 +553,7 @@ export const en = {
     "A thin always-on-top row of readings, like a game performance overlay. It only reads Fob's own sampler and never injects into games, so it can't show FPS.",
   "settings.overlayEnable": "Show the status bar",
   "settings.overlayEnableNote":
-    "Also in the tray menu. Mouse clicks pass through it; hold Ctrl to drag it.",
+    "Also in the tray menu. Mouse clicks pass through it; hold Ctrl to drag it",
   "settings.overlayMetrics": "Readings",
   "settings.overlayMetricsNote":
     "Ticked readings show left to right in this order. Drag to reorder; the chart button adds a small two-minute chart (not for video memory or GPU power)",
@@ -575,9 +575,9 @@ export const en = {
   "settings.overlayOpacity": "Opacity",
   "settings.overlayOpacityNote":
     "Fades the whole bar together: background, text and charts. 10% at least",
-  "settings.overlayUnlock": "Unlock position",
-  "settings.overlayUnlockNote":
-    "While on, the bar takes mouse input and can be dragged without Ctrl.",
+  "settings.overlayLock": "Lock position",
+  "settings.overlayLockNote":
+    "While locked, holding Ctrl doesn’t drag it either",
   "overlay.empty": "No readings selected",
   "overlay.metric.cpu": "CPU",
   "overlay.short.cpu": "CPU",
@@ -1197,8 +1197,8 @@ export const zh = {
   "settings.overlayOpacity": "不透明度",
   "settings.overlayOpacityNote":
     "整条状态栏一起变透明：背景、文字和图表，最低 10%",
-  "settings.overlayUnlock": "解锁位置",
-  "settings.overlayUnlockNote": "打开后状态栏会接收鼠标，不按 Ctrl 也能拖动",
+  "settings.overlayLock": "锁定位置",
+  "settings.overlayLockNote": "锁定后按 Ctrl 也无法拖动",
   "overlay.empty": "未选择显示项目",
   "overlay.metric.cpu": "CPU",
   "overlay.short.cpu": "CPU",

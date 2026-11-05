@@ -489,18 +489,16 @@
             </div>
             <div class="flex items-start gap-3">
               <Checkbox
-                id="overlay-unlocked"
+                id="overlay-locked"
                 class="mt-0.5"
-                checked={overlay.unlocked}
+                checked={overlay.locked}
                 onCheckedChange={(value) =>
-                  saveOverlay({ overlayUnlocked: value })}
+                  saveOverlay({ overlayLocked: value })}
               />
               <div>
-                <Label for="overlay-unlocked"
-                  >{$t("settings.overlayUnlock")}</Label
-                >
+                <Label for="overlay-locked">{$t("settings.overlayLock")}</Label>
                 <p class="mt-1 text-xs leading-relaxed text-muted-foreground">
-                  {$t("settings.overlayUnlockNote")}
+                  {$t("settings.overlayLockNote")}
                 </p>
               </div>
             </div>
