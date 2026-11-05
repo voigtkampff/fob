@@ -23,9 +23,6 @@ pub struct CompanionState {
     /// The window manager's move loop takes focus from the window; that is
     /// not the user clicking elsewhere, so an unpinned window stays open.
     pub dragging_at: Option<Instant>,
-    /// Fob 0.7.12: when the tray icon was last double-clicked.
-    pub double_at: Option<Instant>,
-    pub clicks: ClickDebounce,
     /// winperf: tray menu "Start in tray only" item, kept in sync with settings.
     pub start_item: Option<CheckMenuItem<tauri::Wry>>,
     /// winperf: tray items whose text follows the UI language.
@@ -99,53 +96,6 @@ fn set_language(app: &AppHandle, pref: &'static str) {
 /// blocks in src/lib/utils/mini-layout.js (MINI_HEIGHT there; a test checks).
 /// A focus loss this soon after the drag started or last moved belongs to it.
 const DRAG_GRACE: Duration = Duration::from_millis(800);
-/// After a tray double-click, Windows sends one more button-up Click.
-/// Fob 0.7.16: a left click on the tray icon waits one double-click
-/// interval before it toggles the mini window. A double-click inside that
-/// window cancels the pending click, so the first half of a double-click no
-/// longer flashes the mini window. Each click gets a token; only the latest
-/// uncancelled token may fire.
-#[derive(Debug, Default)]
-pub struct ClickDebounce {
-    token: u64,
-    pending: bool,
-}
-
-impl ClickDebounce {
-    /// A single click: returns the token the timer must present when it fires.
-    pub fn click(&mut self) -> u64 {
-        self.token += 1;
-        self.pending = true;
-        self.token
-    }
-    /// A double-click: cancels whatever single click is waiting.
-    pub fn double(&mut self) {
-        self.token += 1;
-        self.pending = false;
-    }
-    /// The timer for `token` expired: true when the mini window should open.
-    pub fn fire(&mut self, token: u64) -> bool {
-        let go = self.pending && token == self.token;
-        if go {
-            self.pending = false;
-        }
-        go
-    }
-}
-
-/// The system double-click time (GetDoubleClickTime), 500 ms elsewhere.
-fn double_click_time() -> Duration {
-    #[cfg(windows)]
-    {
-        let ms = unsafe { windows::Win32::UI::Input::KeyboardAndMouse::GetDoubleClickTime() };
-        if (100..=5000).contains(&ms) {
-            return Duration::from_millis(ms as u64);
-        }
-    }
-    Duration::from_millis(500)
-}
-
-const TRAY_DOUBLE_GRACE: Duration = Duration::from_millis(400);
 const MINI_WIDTH: f64 = 360.0;
 const MINI_HEIGHT: f64 = 652.0;
 
@@ -318,33 +268,8 @@ fn configure(
                 };
             })
             .on_tray_icon_event(|tray, event| {
-                // Fob 0.7.12: a double-click opens the full window. Windows
-                // sends Click(up), DoubleClick, Click(up): the first click
-                // already toggled the mini window, and open_main hides it;
-                // the trailing click is ignored (TRAY_DOUBLE_GRACE).
-                if let TrayIconEvent::DoubleClick {
-                    button: MouseButton::Left,
-                    ..
-                } = event
-                {
-                    let app = tray.app_handle();
-                    if let Ok(mut state) = app.state::<Mutex<CompanionState>>().lock() {
-                        state.double_at = Some(Instant::now());
-                        state.clicks.double();
-                    }
-                    let _ = open_main(app);
-                    return;
-                }
-                let after_double = tray
-                    .app_handle()
-                    .state::<Mutex<CompanionState>>()
-                    .lock()
-                    .ok()
-                    .and_then(|s| s.double_at)
-                    .is_some_and(|t| t.elapsed() < TRAY_DOUBLE_GRACE);
-                if after_double {
-                    return;
-                }
+                // Fob 0.7.17: a left click toggles the mini window at once;
+                // the tray icon has no double-click action.
                 if let TrayIconEvent::Click {
                     rect,
                     button: MouseButton::Left,
@@ -352,47 +277,25 @@ fn configure(
                     ..
                 } = event
                 {
-                    let app = tray.app_handle().clone();
+                    let app = tray.app_handle();
                     let Some(window) = app.get_webview_window("overview") else {
                         return;
                     };
-                    // Decide now (the click may already have hidden the mini
-                    // window through focus loss), act after the debounce.
-                    let visible = window.is_visible().unwrap_or(false);
+                    if window.is_visible().unwrap_or(false) {
+                        hide(app);
+                        return;
+                    }
+                    // The click can take focus from an unpinned mini window,
+                    // which hides itself just before this; don't reopen it.
                     let recent = app
                         .state::<Mutex<CompanionState>>()
                         .lock()
                         .ok()
                         .and_then(|s| s.hidden_at)
                         .is_some_and(|t| t.elapsed() < Duration::from_millis(200));
-                    let Some(token) = app
-                        .state::<Mutex<CompanionState>>()
-                        .lock()
-                        .ok()
-                        .map(|mut s| s.clicks.click())
-                    else {
-                        return;
-                    };
-                    let wait = double_click_time();
-                    std::thread::spawn(move || {
-                        std::thread::sleep(wait);
-                        let go = app
-                            .state::<Mutex<CompanionState>>()
-                            .lock()
-                            .ok()
-                            .is_some_and(|mut s| s.clicks.fire(token));
-                        if !go {
-                            return;
-                        }
-                        let handle = app.clone();
-                        let _ = app.run_on_main_thread(move || {
-                            if visible {
-                                hide(&handle);
-                            } else if !recent {
-                                let _ = show(&handle, Some(rect));
-                            }
-                        });
-                    });
+                    if !recent {
+                        let _ = show(app, Some(rect));
+                    }
                 }
             })
             .build(app)
@@ -1459,34 +1362,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn a_double_click_cancels_the_pending_single_click() {
-        let mut d = ClickDebounce::default();
-        let first = d.click();
-        d.double();
-        assert!(
-            !d.fire(first),
-            "the first half of a double-click must not open the mini window"
-        );
-    }
-
-    #[test]
-    fn a_lone_click_opens_the_mini_window_when_its_timer_expires() {
-        let mut d = ClickDebounce::default();
-        let t = d.click();
-        assert!(d.fire(t));
-        assert!(!d.fire(t), "fires once");
-        let a = d.click();
-        let b = d.click();
-        assert!(!d.fire(a), "an older click is superseded");
-        assert!(d.fire(b));
-    }
-
-    #[test]
-    fn the_debounce_uses_the_system_double_click_time() {
-        let me = include_str!("companion.rs");
-        assert!(me.contains("GetDoubleClickTime()"));
-        assert!(me.contains("s.clicks.fire(token)"));
-        assert!(me.contains("state.clicks.double()"));
+    fn title_bar_mini_button_toggles() {
         let bar = include_str!("../../src/lib/components/TitleBar.svelte");
         assert!(
             bar.contains("command(\"toggle_companion\")"),
@@ -1813,10 +1689,11 @@ mod tests {
         assert!(shows_main_at_launch(false, true));
     }
     #[test]
-    fn tray_menu_starts_with_status_bar_mini_full_and_double_click_opens_full() {
+    fn tray_menu_starts_with_status_bar_mini_full_and_the_icon_has_no_double_click() {
         let me = include_str!("companion.rs");
         assert!(me.contains("&overlay, &overview, &open, &settings,"));
-        assert!(me.contains("TrayIconEvent::DoubleClick"));
+        assert!(!me.contains(concat!("TrayIconEvent::", "DoubleClick")));
+        assert!(!me.contains(concat!("GetDoubleClick", "Time")));
         let open = &me[me.find("pub fn open_main").unwrap()..];
         assert!(open[..400].contains(r#"emit_to("main", "open-page", "processes")"#));
         let zh = crate::i18n::tray(crate::i18n::Locale::Zh);
