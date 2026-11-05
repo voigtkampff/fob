@@ -15,6 +15,7 @@
     chartFor,
     overlayTheme,
     overlayColors,
+    inkShift,
     type Reading,
   } from "$lib/utils/overlay.js";
   import { sparklinePath } from "$lib/utils/dashboard.js";
@@ -80,6 +81,31 @@
       }
     });
   });
+  let bar: HTMLDivElement | undefined = $state();
+  // Each script's ink centred on the bar's centre line, from the metrics of
+  // the font the WebView really picked (YaHei UI on Windows has far taller
+  // ascent/descent than Segoe UI, so a centred line box isn't centred ink).
+  function centreInk() {
+    const ctx = document.createElement("canvas").getContext("2d");
+    if (!ctx || !bar) return;
+    const samples: [string, string, string][] = [
+      ["--ob-shift-value", ".part", "0123456789"],
+      ["--ob-shift-latin", ".label:not(.cjk)", "CPUGRAMVDISKNETPWR"],
+      ["--ob-shift-cjk", ".label.cjk", "功耗内存显存网络磁盘"],
+    ];
+    for (const [name, selector, text] of samples) {
+      const el = bar.querySelector<HTMLElement>(selector);
+      if (!el) continue;
+      const style = getComputedStyle(el);
+      ctx.font = `${style.fontWeight} ${style.fontSize} ${style.fontFamily}`;
+      const shift = inkShift(parseFloat(style.fontSize), ctx.measureText(text));
+      bar.style.setProperty(name, `${shift.toFixed(2)}px`);
+    }
+  }
+  $effect(() => {
+    void shown;
+    void tick().then(() => document.fonts.ready.then(centreInk));
+  });
   onMount(() => {
     document.documentElement.dataset.overlay = "true";
     void settingsStore.init();
@@ -106,6 +132,7 @@
 
 <!-- svelte-ignore a11y_no_static_element_interactions -->
 <div
+  bind:this={bar}
   class="bar"
   class:interactive
   style={colors}
@@ -177,7 +204,7 @@
     --ob-height: 26px;
     --ob-box: 14px;
     --ob-label-size: 11px;
-    --ob-label-size-cjk: 10px;
+    --ob-label-size-cjk: 11px;
     --ob-value-size: 13px;
     --ob-label-weight: 400;
     --ob-value-weight: 700;
@@ -188,10 +215,11 @@
     --ob-gap-chart: 6px;
     --ob-gap-metric: 14px;
     --ob-pad-x: 10px;
-    /* Optical centring, measured with the guide screenshots: bold 13 px
-       figures (cap height only, no descenders) ink 0.5 px low in a centred
-       line box; 11 px labels, CJK or Latin, ink within ±0.25 px of centre. */
-    --ob-value-shift: -0.5px;
+    /* Ink centring per script, measured at run time from the fonts the
+       bar actually gets (inkShift in utils/overlay.js); 0 until then. */
+    --ob-shift-value: 0px;
+    --ob-shift-latin: 0px;
+    --ob-shift-cjk: 0px;
 
     height: var(--ob-height);
     max-height: 100vh;
@@ -261,7 +289,13 @@
     stroke-linejoin: round;
   }
   .part {
-    transform: translateY(var(--ob-value-shift));
+    transform: translateY(var(--ob-shift-value));
+  }
+  .label {
+    transform: translateY(var(--ob-shift-latin));
+  }
+  .label.cjk {
+    transform: translateY(var(--ob-shift-cjk));
   }
   .value {
     display: inline-flex;
@@ -309,10 +343,12 @@
   .value.vram {
     min-width: 5.5ch;
   }
-  .value.net .part {
-    min-width: 6ch;
+  /* Pairs: the fixed width is on the whole pair, so the two numbers stay
+     --ob-gap-pair apart and the slack falls after the second one. */
+  .value.net {
+    min-width: 13ch;
   }
-  .value.disk .part {
-    min-width: 7ch;
+  .value.disk {
+    min-width: 15ch;
   }
 </style>

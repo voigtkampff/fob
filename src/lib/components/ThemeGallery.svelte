@@ -1,4 +1,5 @@
 <script lang="ts">
+  import ThemeDots from "./ThemeDots.svelte";
   import { t } from "$lib/i18n";
   import { onMount } from "svelte";
   import { platform } from "@tauri-apps/plugin-os";
@@ -76,12 +77,9 @@
             class="h-auto min-h-9 justify-start gap-2 py-2 text-xs"
             aria-pressed={$themeStore.name === name}
             onclick={() => select(name)}
-            ><span class="flex shrink-0 gap-0.5" aria-hidden="true"
-              >{#each [theme.colors.blue, theme.colors.red, theme.colors.green] as color}<span
-                  class="size-2 rounded-full"
-                  style:background={color}
-                ></span>{/each}</span
-            >{theme.label}{#if $themeStore.name === name}<Check
+            ><ThemeDots
+              {theme}
+            />{theme.label}{#if $themeStore.name === name}<Check
                 class="ml-auto size-3"
               />{/if}</Button
           >{/each}

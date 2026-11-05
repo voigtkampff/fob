@@ -87,9 +87,11 @@ export function overlayThemeOptions(themes) {
 /** The theme the bar uses: its own when that's a known theme it offers,
  * otherwise (unset, unknown, removed) the main window's.
  * @template {{ name: string }} T
+ * @template {T | null} M
  * @param {unknown} saved behavior.overlayTheme
- * @param {T} main the main window's theme
- * @param {Record<string, T>} themes */
+ * @param {M} main the main window's theme (null: "following")
+ * @param {Record<string, T>} themes
+ * @returns {T | M} */
 export function overlayTheme(saved, main, themes) {
   if (typeof saved !== "string" || !saved || saved === "glassy") return main;
   return Object.hasOwn(themes, saved) ? themes[saved] : main;
@@ -106,6 +108,22 @@ export function overlayColors(tokens) {
     "--ob-border": tokens.border,
     "--ob-chart": tokens["chart-1"] ?? tokens.primary,
   };
+}
+
+/** How far (px, + is down) to move text in a `line-height: 1` box so its
+ * ink is centred: the browser centres the font's ascent + descent, not the
+ * glyphs, so fonts with tall metrics (Microsoft YaHei UI) sit off centre.
+ * @param {number} size font size in px
+ * @param {{ fontBoundingBoxAscent: number, fontBoundingBoxDescent: number,
+ *   actualBoundingBoxAscent: number, actualBoundingBoxDescent: number }} m
+ *   canvas TextMetrics for sample text in that font */
+export function inkShift(size, m) {
+  const baseline =
+    (size - (m.fontBoundingBoxAscent + m.fontBoundingBoxDescent)) / 2 +
+    m.fontBoundingBoxAscent;
+  const ink =
+    baseline - (m.actualBoundingBoxAscent - m.actualBoundingBoxDescent) / 2;
+  return size / 2 - ink;
 }
 
 /** The metrics drawn with a chart. 0.7.3 saves the list in

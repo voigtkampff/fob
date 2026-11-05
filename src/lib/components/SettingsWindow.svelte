@@ -32,12 +32,16 @@
     chartsPatch,
     toggleChart,
     overlayThemeOptions,
+    overlayTheme,
     DOCKS,
     OPACITY_FLOOR,
     DEFAULT_OPACITY,
     type MetricId,
   } from "$lib/utils/overlay.js";
   import { themes } from "$lib/definitions/themes";
+  import { themeStore } from "$lib/stores/theme";
+  import ThemeDots from "./ThemeDots.svelte";
+  import * as DropdownMenu from "$lib/components/ui/dropdown-menu/index.js";
   import { t } from "$lib/i18n";
   let pane = "general";
   let runtimeError = "";
@@ -78,6 +82,9 @@
     });
   }
   $: overlay = overlaySettings($settingsStore.behavior);
+  // The theme the bar shows: its own, or the main window's when following.
+  $: overlayOwn = overlayTheme(overlay.theme, null, themes);
+  $: overlayShown = overlayOwn ?? $themeStore;
   // Drag to reorder with pointer events, not HTML5 drag and drop: Tauri's
   // file drop handler (dragDropEnabled, on by default) takes over OLE drag
   // and drop in WebView2, so dragover/drop never reach the page on Windows.
@@ -451,19 +458,48 @@
                   {$t("settings.overlayThemeNote")}
                 </p>
               </div>
-              <NativeSelect.Root
-                id="overlay-theme"
-                class="w-44"
-                aria-describedby="overlay-theme-note"
-                value={overlay.theme}
-                onchange={(event) =>
-                  saveOverlay({ overlayTheme: event.currentTarget.value })}
-              >
-                <option value="">{$t("settings.overlayTheme.follow")}</option>
-                {#each overlayThemeOptions(themes) as option (option.value)}<option
-                    value={option.value}>{option.label}</option
-                  >{/each}
-              </NativeSelect.Root>
+              <DropdownMenu.Root>
+                <DropdownMenu.Trigger>
+                  {#snippet child({ props })}<button
+                      {...props}
+                      id="overlay-theme"
+                      type="button"
+                      aria-describedby="overlay-theme-note"
+                      class="flex h-8 w-48 items-center gap-2 rounded-md border border-input bg-transparent px-2.5 text-sm"
+                      ><ThemeDots theme={overlayShown} /><span
+                        class="flex-1 truncate text-left"
+                        >{overlayOwn?.label ??
+                          $t("settings.overlayTheme.follow")}</span
+                      ><ChevronDown
+                        class="size-4 text-muted-foreground"
+                      /></button
+                    >{/snippet}
+                </DropdownMenu.Trigger>
+                <DropdownMenu.Content
+                  align="end"
+                  class="max-h-80 w-56 overflow-y-auto"
+                >
+                  <DropdownMenu.RadioGroup
+                    value={overlayOwn?.name ?? ""}
+                    onValueChange={(value) =>
+                      saveOverlay({ overlayTheme: value })}
+                  >
+                    <DropdownMenu.RadioItem value="" closeOnSelect
+                      ><ThemeDots theme={$themeStore} />{$t(
+                        "settings.overlayTheme.follow",
+                      )}</DropdownMenu.RadioItem
+                    >
+                    <DropdownMenu.Separator />
+                    {#each overlayThemeOptions(themes) as option (option.value)}<DropdownMenu.RadioItem
+                        value={option.value}
+                        closeOnSelect
+                        ><ThemeDots
+                          theme={themes[option.value]}
+                        />{option.label}</DropdownMenu.RadioItem
+                      >{/each}
+                  </DropdownMenu.RadioGroup>
+                </DropdownMenu.Content>
+              </DropdownMenu.Root>
             </div>
             <div class="flex items-start justify-between gap-6">
               <div>

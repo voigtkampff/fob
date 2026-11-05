@@ -11,6 +11,7 @@ import {
   cells,
   reorderMetric,
   dropSlot,
+  inkShift,
   overlayOpacity,
   chartFor,
   OPACITY_FLOOR,
@@ -230,5 +231,44 @@ assert.equal(dropSlot(99, rowsY), 4);
 assert.equal(dropSlot(500, rowsY), 4);
 assert.equal(dropSlot(5, []), 0);
 // Dragging CPU (row 0) below the last row puts it last.
-assert.deepEqual(reorderMetric(four, 0, dropSlot(120, rowsY)), ["gpu", "ram", "net", "cpu"]);
+assert.deepEqual(reorderMetric(four, 0, dropSlot(120, rowsY)), [
+  "gpu",
+  "ram",
+  "net",
+  "cpu",
+]);
+// Ink centring from font metrics (11px; YaHei UI-like tall metrics vs a
+// font whose ascent+descent equals the size).
+const close = (a, b) => assert.ok(Math.abs(a - b) < 1e-9, `${a} ≈ ${b}`);
+close(
+  inkShift(10, {
+    fontBoundingBoxAscent: 8,
+    fontBoundingBoxDescent: 2,
+    actualBoundingBoxAscent: 6,
+    actualBoundingBoxDescent: 0,
+  }),
+  0,
+);
+// Ideographs (ink 9.5 above / 1.2 below baseline) in a font with 11.6 / 3.0
+// metrics: baseline at 9.8, ink centre 5.65, so 0.15 px up.
+close(
+  inkShift(11, {
+    fontBoundingBoxAscent: 11.6,
+    fontBoundingBoxDescent: 3,
+    actualBoundingBoxAscent: 9.5,
+    actualBoundingBoxDescent: 1.2,
+  }),
+  -0.15,
+);
+// Digits sit on the baseline with no descent; in a 13px box whose metrics
+// are 13 / 3, the baseline is at 11.5 and the ink centre at 6.85: 0.35 px up.
+close(
+  inkShift(13, {
+    fontBoundingBoxAscent: 13,
+    fontBoundingBoxDescent: 3,
+    actualBoundingBoxAscent: 9.3,
+    actualBoundingBoxDescent: 0,
+  }),
+  -0.35,
+);
 console.log("PASS: status bar settings, metric order and cell text");
