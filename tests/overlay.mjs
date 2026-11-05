@@ -15,7 +15,6 @@ import {
   OPACITY_FLOOR,
   CHART_METRICS,
   chartMetrics,
-  chartsState,
   chartsPatch,
   toggleChart,
 } from "../src/lib/utils/overlay.js";
@@ -69,28 +68,45 @@ assert.equal(overlayOpacity(250), 100);
 assert.equal(overlayOpacity(undefined), 60);
 assert.equal(overlayOpacity("x"), 60);
 // 0.7.3 per-metric charts; the 0.7.1 flag migrates to all or none.
-assert.deepEqual(CHART_METRICS, ["cpu", "cpuTemp", "gpu", "gpuTemp", "ram", "disk", "net"]);
-assert.deepEqual(overlaySettings({ overlayCharts: true }).charts, CHART_METRICS);
+assert.deepEqual(CHART_METRICS, [
+  "cpu",
+  "cpuTemp",
+  "gpu",
+  "gpuTemp",
+  "ram",
+  "disk",
+  "net",
+]);
+assert.deepEqual(
+  overlaySettings({ overlayCharts: true }).charts,
+  CHART_METRICS,
+);
 assert.deepEqual(overlaySettings({ overlayCharts: false }).charts, []);
 assert.deepEqual(overlaySettings({ overlayCharts: "yes" }).charts, []);
 assert.deepEqual(overlaySettings({}).charts, []);
 assert.deepEqual(
-  chartMetrics({ overlayCharts: true, overlayChartMetrics: ["net", "vram", "cpu"] }),
+  chartMetrics({
+    overlayCharts: true,
+    overlayChartMetrics: ["net", "vram", "cpu"],
+  }),
   ["cpu", "net"],
   "the list wins over the old flag; no chart for video memory; fixed order",
 );
-assert.deepEqual(chartMetrics({ overlayCharts: true, overlayChartMetrics: [] }), []);
-assert.equal(chartsState([]), "off");
-assert.equal(chartsState(["cpu"]), "mixed");
-assert.equal(chartsState([...CHART_METRICS]), "on");
-assert.equal(chartsState(["vram", "power"]), "off");
-assert.deepEqual(toggleChart(["cpu"], "all", true), CHART_METRICS, "mixed → all on");
-assert.deepEqual(toggleChart(["cpu"], "all", false), []);
+assert.deepEqual(
+  chartMetrics({ overlayCharts: true, overlayChartMetrics: [] }),
+  [],
+);
 assert.deepEqual(toggleChart(["net"], "cpu", true), ["cpu", "net"]);
 assert.deepEqual(toggleChart(["cpu", "net"], "cpu", false), ["net"]);
-assert.deepEqual(toggleChart(["cpu"], "vram", true), ["cpu"], "no history: ignored");
-assert.deepEqual(chartsPatch(["net"]), { overlayChartMetrics: ["net"], overlayCharts: true });
-assert.deepEqual(chartsPatch([]), { overlayChartMetrics: [], overlayCharts: false });
+assert.deepEqual(
+  toggleChart(["cpu"], "vram", true),
+  ["cpu"],
+  "no history: ignored",
+);
+assert.deepEqual(chartsPatch(["net", "cpu"]), {
+  overlayChartMetrics: ["cpu", "net"],
+});
+assert.deepEqual(chartsPatch([]), { overlayChartMetrics: [] });
 assert.deepEqual(
   overlaySettings({ overlayMetrics: [] }).metrics,
   [],

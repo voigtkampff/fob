@@ -556,11 +556,8 @@ export const en = {
     "Also in the tray menu. Mouse clicks pass through it; hold Ctrl to drag it.",
   "settings.overlayMetrics": "Readings",
   "settings.overlayMetricsNote":
-    "Ticked readings show left to right in this order. Drag to reorder",
+    "Ticked readings show left to right in this order. Drag to reorder; the chart button adds a small two-minute chart (not for video memory or GPU power)",
   "settings.overlayDrag": "Drag to reorder",
-  "settings.overlayCharts": "Show small charts",
-  "settings.overlayChartsNote":
-    "Turns every chart on or off; the chart button on each reading switches just that one. Video memory and GPU power have no history",
   "settings.overlayChartFor": "Chart for {name}",
   "settings.overlayNoChart": "{name} has no history to chart",
   "settings.overlayUp": "Move {name} left",
@@ -1178,11 +1175,8 @@ export const zh = {
     "托盘菜单里也能开关。鼠标点击会穿透它；按住 Ctrl 可以拖动",
   "settings.overlayMetrics": "显示项目",
   "settings.overlayMetricsNote":
-    "勾选的项目按这个顺序从左到右显示，拖动可调整顺序",
+    "勾选的项目按这个顺序从左到右显示，拖动可调整顺序；图表按钮可为该项显示最近两分钟的小图表（显存和功耗没有）",
   "settings.overlayDrag": "拖动可调整顺序",
-  "settings.overlayCharts": "显示小图表",
-  "settings.overlayChartsNote":
-    "一键全开或全关；每个项目旁的图表按钮可单独开关。显存和功耗没有历史数据",
   "settings.overlayChartFor": "{name}的小图表",
   "settings.overlayNoChart": "{name}没有历史数据，无法显示图表",
   "settings.overlayUp": "把{name}往前移",

@@ -84,24 +84,18 @@ export function chartMetrics(b) {
   return b?.overlayCharts === true ? [...CHART_METRICS] : [];
 }
 
-/** The all-charts switch: "on", "off" or "mixed" over the chart-capable
- * metrics. @param {MetricId[]} charts */
-export function chartsState(charts) {
-  const n = CHART_METRICS.filter((id) => charts.includes(id)).length;
-  return n === 0 ? "off" : n === CHART_METRICS.length ? "on" : "mixed";
-}
-
-/** The settings patch for a new chart list (keeps the 0.7.1 flag in step).
+/** The settings patch for a new chart list, in METRICS order. The 0.7.1
+ * flag (overlayCharts) is only read, for the migration above.
  * @param {MetricId[]} charts */
 export function chartsPatch(charts) {
-  const list = CHART_METRICS.filter((id) => charts.includes(id));
-  return { overlayChartMetrics: list, overlayCharts: list.length > 0 };
+  return {
+    overlayChartMetrics: CHART_METRICS.filter((id) => charts.includes(id)),
+  };
 }
 
-/** Charts after `id` is switched; `id` "all" sets every one (mixed → on).
- * @param {MetricId[]} charts @param {MetricId | "all"} id @param {boolean} on */
+/** Charts after `id` is switched on or off.
+ * @param {MetricId[]} charts @param {MetricId} id @param {boolean} on */
 export function toggleChart(charts, id, on) {
-  if (id === "all") return on ? [...CHART_METRICS] : [];
   if (!CHART_METRICS.includes(id)) return charts;
   const rest = charts.filter((m) => m !== id);
   return CHART_METRICS.filter((m) => (m === id ? on : rest.includes(m)));

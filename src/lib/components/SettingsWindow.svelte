@@ -28,7 +28,6 @@
     moveMetric,
     reorderMetric,
     CHART_METRICS,
-    chartsState,
     chartsPatch,
     toggleChart,
     DOCKS,
@@ -452,26 +451,6 @@
                   min={OPACITY_FLOOR}
                   describedby="overlay-opacity-note"
                 />
-              </div>
-            </div>
-            <div class="flex items-start gap-3">
-              <Checkbox
-                id="overlay-charts"
-                class="mt-0.5"
-                checked={chartsState(overlay.charts) === "on"}
-                indeterminate={chartsState(overlay.charts) === "mixed"}
-                onCheckedChange={(value) =>
-                  saveOverlay(
-                    chartsPatch(toggleChart(overlay.charts, "all", value)),
-                  )}
-              />
-              <div>
-                <Label for="overlay-charts"
-                  >{$t("settings.overlayCharts")}</Label
-                >
-                <p class="mt-1 text-xs leading-relaxed text-muted-foreground">
-                  {$t("settings.overlayChartsNote")}
-                </p>
               </div>
             </div>
             <div class="flex items-start gap-3">
