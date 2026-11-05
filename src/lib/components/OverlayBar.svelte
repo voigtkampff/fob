@@ -28,8 +28,9 @@
   const config = $derived(overlaySettings($settingsStore.behavior));
   const shown = $derived(cells(reading, config.metrics));
   const history = $derived((reading as Reading | null)?.history ?? []);
-  const CW = 36;
-  const CH = 14;
+  // Chart size: matches --ob-chart-w / --ob-chart-h below.
+  const CW = 32;
+  const CH = 9;
   const stops: UnlistenFn[] = [];
   let timer: ReturnType<typeof setInterval> | undefined;
   let destroyed = false;
@@ -105,7 +106,7 @@
               ><path
                 d={sparklinePath(history, chart.pick, {
                   width: CW,
-                  height: CH - 1,
+                  height: CH,
                   max: chart.max,
                 })}
               /></svg
@@ -124,8 +125,38 @@
     overflow: hidden;
     margin: 0;
   }
+  /* Status bar layout standard (0.7.2), the one place its sizes live.
+     docs-fob/status-bar-layout.md explains the rules.
+     - Bar 26 px; every label, value and chart is a box of --ob-box height
+       centred on the bar's one centre line (13 px).
+     - Labels: regular weight, --ob-label-size, CJK and Latin alike;
+       values: bold tabular figures, --ob-value-size, units in the same
+       text so they share its baseline.
+     - Charts: --ob-chart-h (under the value's cap height), --ob-chart-w
+       wide, inside the same box, never past the text.
+     - Gaps: label→value, between the two values of a pair, between
+       metrics; nothing else adds space. */
   .bar {
-    height: 100vh;
+    --ob-height: 26px;
+    --ob-box: 14px;
+    --ob-label-size: 11px;
+    --ob-value-size: 13px;
+    --ob-label-weight: 400;
+    --ob-value-weight: 700;
+    --ob-chart-w: 32px;
+    --ob-chart-h: 9px;
+    --ob-gap-label: 5px;
+    --ob-gap-pair: 8px;
+    --ob-gap-chart: 6px;
+    --ob-gap-metric: 14px;
+    --ob-pad-x: 10px;
+    /* Optical centring, measured with the guide screenshots: bold 13 px
+       figures (cap height only, no descenders) ink 0.5 px low in a centred
+       line box; 11 px labels, CJK or Latin, ink within ±0.25 px of centre. */
+    --ob-value-shift: -0.5px;
+
+    height: var(--ob-height);
+    max-height: 100vh;
     display: flex;
     align-items: center;
     box-sizing: border-box;
@@ -135,6 +166,7 @@
     user-select: none;
     cursor: default;
     font-family: "Segoe UI", "Microsoft YaHei UI", system-ui, sans-serif;
+    line-height: 1;
   }
   /* Ctrl held / unlocked: a slightly brighter bar with a faint solid edge. */
   .bar.interactive {
@@ -145,33 +177,53 @@
   .row {
     display: inline-flex;
     align-items: center;
-    gap: 14px;
-    padding: 0 10px;
+    gap: var(--ob-gap-metric);
+    padding: 0 var(--ob-pad-x);
     white-space: nowrap;
-    font-size: 13px;
-    line-height: 1;
   }
   .cell {
     display: inline-flex;
     align-items: center;
-    gap: 4px;
+    gap: var(--ob-gap-label);
+    height: var(--ob-box);
+  }
+  .label,
+  .part {
+    box-sizing: border-box;
+    display: inline-flex;
+    align-items: center;
+    height: var(--ob-box);
+    line-height: 1;
   }
   .label {
     color: var(--primary);
-    font-weight: 600;
-    font-size: 11px;
+    font-weight: var(--ob-label-weight);
+    font-size: var(--ob-label-size);
+  }
+  .part {
+    transform: translateY(var(--ob-value-shift));
   }
   .value {
     display: inline-flex;
+    align-items: center;
     justify-content: flex-end;
-    gap: 9px;
+    gap: var(--ob-gap-pair);
+    height: var(--ob-box);
     color: var(--foreground);
-    font-weight: 700;
+    font-size: var(--ob-value-size);
+    font-weight: var(--ob-value-weight);
     font-variant-numeric: tabular-nums;
+  }
+  .part {
+    justify-content: flex-end;
   }
   .chart {
     display: block;
-    margin-left: 2px;
+    flex: none;
+    width: var(--ob-chart-w);
+    height: var(--ob-chart-h);
+    margin-left: calc(var(--ob-gap-chart) - var(--ob-gap-label));
+    overflow: hidden;
   }
   .chart path {
     fill: none;
@@ -195,10 +247,8 @@
   }
   .value.net .part {
     min-width: 6ch;
-    text-align: right;
   }
   .value.disk .part {
     min-width: 7ch;
-    text-align: right;
   }
 </style>
