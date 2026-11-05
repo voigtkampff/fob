@@ -91,7 +91,7 @@
     const samples: [string, string, string][] = [
       ["--ob-shift-value", ".part", "0123456789"],
       ["--ob-shift-latin", ".label:not(.cjk)", "CPUGRAMVDISKNETPWR"],
-      ["--ob-shift-cjk", ".label.cjk", "功耗内存显存网络磁盘"],
+      ["--ob-shift-cjk", ".label.cjk", "功耗内存显存网络硬盘"],
     ];
     for (const [name, selector, text] of samples) {
       const el = bar.querySelector<HTMLElement>(selector);
@@ -331,42 +331,16 @@
     stroke-width: 1.25;
     vector-effect: non-scaling-stroke;
   }
-  /* Fixed widths, so the bar doesn't twitch as numbers change. The width
-     is on the value plus its chart: values in a pair stay --ob-gap-pair
-     apart, the chart follows the last value at --ob-gap-chart, and the
-     slack falls after the chart. */
+  /* Fob 0.7.12: no reserved widths. Every metric is exactly as wide as
+     its text and chart, so the space between metrics is --ob-gap-metric
+     everywhere and the right inset equals --ob-pad-x on the left. Figures
+     are tabular, so a reading only changes width when its digit count
+     does. Within a metric: pair values --ob-gap-pair apart, the chart
+     --ob-gap-chart after the last value. */
   .vc {
     display: inline-flex;
     align-items: center;
     gap: var(--ob-gap-label);
     height: var(--ob-box);
-    font-size: var(--ob-value-size);
-    font-weight: var(--ob-value-weight);
-    font-family: var(--ob-font-latin), sans-serif;
-    min-width: var(--ob-value-w);
-  }
-  .vc.charted {
-    min-width: calc(
-      var(--ob-value-w) + var(--ob-gap-chart) + var(--ob-chart-w)
-    );
-  }
-  .vc.cpu,
-  .vc.gpu {
-    --ob-value-w: 4ch;
-  }
-  .vc.cpuTemp,
-  .vc.gpuTemp,
-  .vc.power {
-    --ob-value-w: 5ch;
-  }
-  .vc.ram,
-  .vc.vram {
-    --ob-value-w: 5.5ch;
-  }
-  .vc.net {
-    --ob-value-w: 13ch;
-  }
-  .vc.disk {
-    --ob-value-w: 15ch;
   }
 </style>

@@ -1,7 +1,7 @@
 # Mini window position
 
 ## Sub-features
-Drag the pinned window by its title bar; saved to `mini-position.json`;
+Drag the window by its title bar, pinned or not (0.7.12); saved to `mini-position.json`;
 restored on the next show, pulled into the work area of the monitor holding
 most of it; tray position when no monitor overlaps; double-click the title
 bar (or Settings, Back to the tray) resets.
@@ -24,6 +24,8 @@ file, relaunch, expect the window inside 1600x1000. Reset: double-click the
 bar, expect `mini-position.json` gone and a `reset` line in the log.
 
 ## Gotchas
-Unpinned windows hide on focus loss, so they cannot be dragged here; that
-rule is covered by the `is_drag` unit test. The DWM frame and the Windows
+Unpinned: the same recipe works with `"miniPinned":false` (0.7.12; the
+move loop's focus loss is ignored via `mini_drag_begin`). Clicking the Xvfb
+desktop never takes focus from the window, so hide-on-focus-loss can't be
+shown here. The DWM frame and the Windows
 modal move loop are not on Linux.

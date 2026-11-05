@@ -108,7 +108,8 @@
       error = String(e);
     }
   }
-  // Fob: the pinned window moves by dragging its title bar (not its
+  // Fob: the window moves by dragging its title bar, pinned or not (0.7.12:
+  // pinning only keeps it open and on top). Not its
   // buttons); the backend saves where it settles. Double-click: back to
   // the tray position.
   // The OS move loop starts only once the pointer moves with the button
@@ -119,16 +120,15 @@
     event.button === 0 &&
     !(event.target as HTMLElement).closest("button, a, input");
   function pressBar(event: MouseEvent) {
-    press =
-      pinned && onBar(event) ? { x: event.screenX, y: event.screenY } : null;
+    press = onBar(event) ? { x: event.screenX, y: event.screenY } : null;
   }
   function moveBar(event: MouseEvent) {
     if (!press || (event.buttons & 1) === 0) return void (press = null);
     if (Math.hypot(event.screenX - press.x, event.screenY - press.y) < 4)
       return;
     press = null;
-    void getCurrentWindow()
-      .startDragging()
+    void invoke("mini_drag_begin")
+      .then(() => getCurrentWindow().startDragging())
       .catch((e) => (error = String(e)));
   }
   function backToTray(event: MouseEvent) {
@@ -218,8 +218,8 @@
     <!-- svelte-ignore a11y_no_static_element_interactions -->
     <div
       class="mini-bar"
-      class:movable={pinned}
-      title={pinned ? $t("mini.dragHint") : $t("mini.resetHint")}
+      class:movable={true}
+      title={$t("mini.dragHint")}
       onmousedown={pressBar}
       onmousemove={moveBar}
       onmouseup={() => (press = null)}

@@ -598,6 +598,25 @@
                 />
               </div>
             </div>
+            <div class="mt-4 flex items-start justify-between gap-6">
+              <div>
+                <Label for="main-hotkey">{$t("hotkey.mainLabel")}</Label>
+                <p
+                  id="main-hotkey-note"
+                  class="mt-1 text-xs leading-relaxed text-muted-foreground"
+                >
+                  {$t("hotkey.mainNote")}
+                </p>
+              </div>
+              <div class="shrink-0">
+                <HotkeyField
+                  target="main"
+                  id="main-hotkey"
+                  describedby="main-hotkey-note"
+                  label={$t("hotkey.mainAria")}
+                />
+              </div>
+            </div>
           </Card.Content></Card.Root
         >
       </fieldset>

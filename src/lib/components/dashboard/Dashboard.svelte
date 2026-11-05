@@ -1,4 +1,6 @@
 <script lang="ts">
+  import Spark from "$lib/components/charts/Spark.svelte";
+  import { SERIES_COLOR } from "$lib/utils/chart-style.js";
   // winperf: card dashboard (default view). Reads only what NeoHtop's sampler
   // already provides: stats, GPU devices, the bounded history and processes.
   import CardDetail from "./CardDetail.svelte";
@@ -20,7 +22,6 @@
     uptimeInfo,
     gpuSummary,
     series,
-    sparklinePath,
     systemVolume,
     topByMemory,
     topBy,
@@ -103,12 +104,12 @@
   const TEMP_LINES = [
     {
       pick: (s: ResourceSample) => s.cpu_temp,
-      color: "var(--chart-1)",
+      color: SERIES_COLOR.cpu_temp,
       label: "CPU",
     },
     {
       pick: (s: ResourceSample) => s.gpu_temp,
-      color: "var(--chart-2)",
+      color: SERIES_COLOR.gpu_temp,
       label: "GPU",
     },
   ];
@@ -260,22 +261,16 @@
           {history}
           max={100}
           format={pct1}
-          lines={[{ pick: pickGpu, color: "var(--peach)" }]}
+          lines={[{ pick: pickGpu, color: SERIES_COLOR.gpu }]}
         >
-          <svg
-            viewBox={`0 0 ${W} ${H}`}
-            preserveAspectRatio="none"
+          <Spark
             class="spark"
-          >
-            <path
-              d={sparklinePath(history, pickGpu, {
-                width: W,
-                height: H,
-                max: 100,
-              })}
-              class="line peach"
-            />
-          </svg>
+            {history}
+            width={W}
+            height={H}
+            max={100}
+            lines={[{ key: "gpu", pick: pickGpu }]}
+          />
         </ChartCursor>
         <div class="foot">
           {gpu.percent == null
@@ -309,22 +304,16 @@
           {history}
           max={100}
           format={pct1}
-          lines={[{ pick: (s) => s.memory, color: "var(--yellow)" }]}
+          lines={[{ pick: (s) => s.memory, color: SERIES_COLOR.memory }]}
         >
-          <svg
-            viewBox={`0 0 ${W} ${H}`}
-            preserveAspectRatio="none"
+          <Spark
             class="spark"
-          >
-            <path
-              d={sparklinePath(history, (s) => s.memory, {
-                width: W,
-                height: H,
-                max: 100,
-              })}
-              class="line yellow"
-            />
-          </svg>
+            {history}
+            width={W}
+            height={H}
+            max={100}
+            lines={[{ key: "memory", pick: (s) => s.memory }]}
+          />
         </ChartCursor>
         <div class="foot">
           {formatGB(systemStats.memory_used, 2)} / {formatGB(
@@ -394,32 +383,25 @@
           max={netMax}
           format={rateText}
           lines={[
-            { pick: (s) => s.received, color: "var(--blue)", label: "↓" },
-            { pick: (s) => s.sent, color: "var(--green)", label: "↑" },
+            {
+              pick: (s) => s.received,
+              color: SERIES_COLOR.received,
+              label: "↓",
+            },
+            { pick: (s) => s.sent, color: SERIES_COLOR.sent, label: "↑" },
           ]}
         >
-          <svg
-            viewBox={`0 0 ${W} ${H}`}
-            preserveAspectRatio="none"
+          <Spark
             class="spark"
-          >
-            <path
-              d={sparklinePath(history, (s) => s.sent, {
-                width: W,
-                height: H,
-                max: netMax,
-              })}
-              class="line green"
-            />
-            <path
-              d={sparklinePath(history, (s) => s.received, {
-                width: W,
-                height: H,
-                max: netMax,
-              })}
-              class="line blue"
-            />
-          </svg>
+            {history}
+            width={W}
+            height={H}
+            max={netMax}
+            lines={[
+              { key: "sent", pick: (s) => s.sent },
+              { key: "received", pick: (s) => s.received },
+            ]}
+          />
         </ChartCursor>
         <div class="foot">↑ {up.value} {up.unit}</div>
       </div>
@@ -452,28 +434,17 @@
             format={tempText}
             lines={TEMP_LINES}
           >
-            <svg
-              viewBox={`0 0 ${W} ${H}`}
-              preserveAspectRatio="none"
+            <Spark
               class="spark"
-            >
-              <path
-                d={sparklinePath(history, (s) => s.gpu_temp, {
-                  width: W,
-                  height: H,
-                  max: TEMP_MAX,
-                })}
-                class="line t2"
-              />
-              <path
-                d={sparklinePath(history, (s) => s.cpu_temp, {
-                  width: W,
-                  height: H,
-                  max: TEMP_MAX,
-                })}
-                class="line t1"
-              />
-            </svg>
+              {history}
+              width={W}
+              height={H}
+              max={TEMP_MAX}
+              lines={[
+                { key: "gpu_temp", pick: (s) => s.gpu_temp },
+                { key: "cpu_temp", pick: (s) => s.cpu_temp },
+              ]}
+            />
           </ChartCursor>
           <div class="foot">
             {[
@@ -671,38 +642,13 @@
     flex: 1;
     min-width: 2px;
     border-radius: 2px;
-    background: var(--green);
+    background: var(--chart-1);
     opacity: 0.85;
   }
-  .spark {
+  :global(svg.spark) {
     width: 100%;
     height: 36px;
     overflow: visible;
-  }
-  .line {
-    fill: none;
-    stroke-width: 2;
-    vector-effect: non-scaling-stroke;
-    stroke-linejoin: round;
-    stroke-linecap: round;
-  }
-  .line.blue {
-    stroke: var(--blue);
-  }
-  .line.green {
-    stroke: var(--green);
-  }
-  .line.yellow {
-    stroke: var(--yellow);
-  }
-  .line.peach {
-    stroke: var(--peach);
-  }
-  .line.t1 {
-    stroke: var(--chart-1);
-  }
-  .line.t2 {
-    stroke: var(--chart-2);
   }
   .track {
     height: 10px;
@@ -731,10 +677,10 @@
     border-radius: 50%;
   }
   .dot.blue {
-    background: var(--blue);
+    background: var(--chart-1);
   }
   .dot.green {
-    background: var(--green);
+    background: var(--chart-4);
     margin-left: 4px;
   }
   .ellipsis {
@@ -847,7 +793,7 @@
     margin-left: 3px;
   }
   .compact .bars,
-  .compact .spark {
+  .compact :global(svg.spark) {
     height: 26px;
   }
   .compact .track {

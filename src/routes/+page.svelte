@@ -77,8 +77,9 @@
   let cachedFilteredProcesses: Process[] = [];
   let cachedSortedProcesses: Process[] = [];
   let expandedProcesses = new Set<string>();
-  // winperf: card dashboard is the default tab; NeoHtop's table is "Processes".
-  let tab: "dashboard" | "processes" | "space" = "dashboard";
+  // Fob 0.7.12: Fob starts on the Processes tab, and open_main (tray,
+  // hotkey, double-click) brings it back there ("open-page").
+  let tab: "dashboard" | "processes" | "space" = "processes";
   let detail: DetailKind | null = null;
 
   function setProcessView(view: "flat" | "tree") {
@@ -259,7 +260,10 @@
         void processStore.refreshControl();
       });
       const stopPage = await listen<string>("open-page", ({ payload }) => {
-        if (payload === "space") tab = "space";
+        if (payload === "space" || payload === "processes") {
+          detail = null;
+          tab = payload;
+        }
       });
       const stopOpen = await listen<{ pid: number; start_time: number }>(
         "open-process",

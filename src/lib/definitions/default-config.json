@@ -39,6 +39,7 @@
     "overlayLocked": false,
     "overlayCharts": false,
     "overlayHotkey": "",
+    "mainHotkey": "",
     "overlayTheme": ""
   }
 }

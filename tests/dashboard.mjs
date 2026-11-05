@@ -481,3 +481,31 @@ console.log("PASS: per-app network rows group, stick for 30 s and sort");
   );
   console.log("PASS: CPU and GPU temperature picked per machine (Intel, AMD desktop, AMD APU laptop)");
 }
+
+{
+  const { SERIES_COLOR, DASHED, sparkAreaPath } = await import("../src/lib/utils/chart-style.js");
+  const src = (p) => readFileSync(new URL(`../src/${p}`, import.meta.url), "utf8");
+  assert.equal(
+    sparkAreaPath("M0,10L5,4M8,2L9,3", 36),
+    "M0,10L5,4L5,36L0,36ZM8,2L9,3L9,36L8,36Z",
+    "each run of the line closes to the baseline",
+  );
+  assert.equal(SERIES_COLOR.received, "var(--chart-1)");
+  assert.ok(DASHED.has("sent") && DASHED.has("disk_write") && !DASHED.has("received"));
+  for (const p of [
+    "lib/components/stats/ResourceTrend.svelte",
+    "lib/components/dashboard/Dashboard.svelte",
+    "lib/components/dashboard/CardDetail.svelte",
+  ]) {
+    const s = src(p);
+    assert.ok(s.includes("chart-style.js"), `${p} draws with the shared chart style`);
+    assert.ok(!/var\(--(peach|yellow|blue|green)\)"/.test(s), `${p}: no chart colour of its own`);
+  }
+  assert.ok(
+    !/@media[^{]*\{\s*\.resource-grid/.test(src("app.css")),
+    "the Processes cards keep one spacing at every window width",
+  );
+  const page = src("routes/+page.svelte");
+  assert.ok(page.includes('= "processes";'), "Fob starts on the Processes tab");
+  console.log("PASS: one chart style everywhere; Processes tab default; card spacing fixed");
+}

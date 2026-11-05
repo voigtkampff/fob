@@ -86,7 +86,7 @@ fn merge(config: &mut Value, patch: &Value) {
                 "miniOpacity" => value.as_u64().is_some_and(|n| (0..=100).contains(&n)),
                 "processView" => matches!(value.as_str(), Some("flat" | "tree")),
                 // Fob: "" (off) or a canonical combo; set via set_hotkey.
-                "miniHotkey" | "overlayHotkey" => value.as_str().is_some_and(|s| {
+                "miniHotkey" | "overlayHotkey" | "mainHotkey" => value.as_str().is_some_and(|s| {
                     s.is_empty() || crate::hotkey::parse(s).is_ok_and(|c| c.canonical() == s)
                 }),
                 "language" => matches!(value.as_str(), Some("auto" | "en" | "zh")),
@@ -210,6 +210,7 @@ pub async fn update_preferences(app: AppHandle, mut patch: Value) -> Result<Snap
     if let Some(behavior) = patch["behavior"].as_object_mut() {
         behavior.remove("miniHotkey");
         behavior.remove("overlayHotkey");
+        behavior.remove("mainHotkey");
     }
     tauri::async_runtime::spawn_blocking(move || apply_patch(&app, &patch))
         .await
@@ -231,6 +232,8 @@ pub struct Startup {
     pub mini_hotkey: String,
     /// Fob: the status bar hotkey, canonical ("" = off).
     pub overlay_hotkey: String,
+    /// Fob 0.7.12: the full window hotkey, canonical ("" = off).
+    pub main_hotkey: String,
     /// Fob 0.7.9: start with the Windows session (autostart.rs).
     pub launch_at_login: bool,
 }
@@ -247,6 +250,10 @@ pub fn startup_from(saved: Option<&Value>) -> Startup {
         mini_pinned: config["behavior"]["miniPinned"].as_bool().unwrap_or(false),
         language: config["behavior"]["language"].as_str().map(str::to_owned),
         mini_hotkey: config["behavior"]["miniHotkey"]
+            .as_str()
+            .unwrap_or_default()
+            .to_owned(),
+        main_hotkey: config["behavior"]["mainHotkey"]
             .as_str()
             .unwrap_or_default()
             .to_owned(),
@@ -398,6 +405,7 @@ mod tests {
                 language: Some("auto".into()),
                 mini_hotkey: String::new(),
                 overlay_hotkey: String::new(),
+                main_hotkey: String::new(),
                 launch_at_login: false,
             }
         );

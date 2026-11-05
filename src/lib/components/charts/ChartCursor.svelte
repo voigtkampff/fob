@@ -120,11 +120,12 @@
   }
   .cursor-dot {
     position: absolute;
-    width: 6px;
-    height: 6px;
-    margin: -3px 0 0 -3px;
+    /* Same point as the Processes page cards: r 2, 1px card-coloured ring. */
+    width: 4px;
+    height: 4px;
+    margin: -2px 0 0 -2px;
     border-radius: 50%;
-    box-shadow: 0 0 0 1.5px var(--card);
+    box-shadow: 0 0 0 1px var(--card);
     pointer-events: none;
   }
   .cursor-tip {

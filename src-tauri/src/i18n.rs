@@ -39,10 +39,10 @@ pub struct Tray {
 pub fn tray(locale: Locale) -> Tray {
     match locale {
         Locale::En => Tray {
-            show_mini: "Show mini window",
+            show_mini: "Mini window",
             overlay: "Status bar",
             settings: "Settings",
-            open_full: "Open full window",
+            open_full: "Full window",
             start_in_tray: "Start in tray only (mini window mode)",
             language: "Language",
             auto: "Automatic (Windows)",
@@ -50,10 +50,10 @@ pub fn tray(locale: Locale) -> Tray {
             tooltip: "Fob — system overview",
         },
         Locale::Zh => Tray {
-            show_mini: "显示迷你窗口",
+            show_mini: "迷你窗口",
             overlay: "状态栏",
             settings: "设置",
-            open_full: "打开完整窗口",
+            open_full: "完整窗口",
             start_in_tray: "仅在托盘启动（迷你窗口模式）",
             language: "语言",
             auto: "自动（跟随 Windows）",

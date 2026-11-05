@@ -177,6 +177,7 @@ export interface AppConfig {
     overlayTheme?: string;
     /** Global hotkey that toggles the status bar ("" = off). */
     overlayHotkey?: string;
+    mainHotkey?: string;
   };
 }
 

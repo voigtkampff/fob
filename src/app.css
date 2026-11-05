@@ -242,16 +242,6 @@
 [data-theme="glassy"] .actions-cell {
   background: color-mix(in srgb, var(--card) 95%, transparent);
 }
-@media (max-width: 1200px) {
-  .resource-grid {
-    gap: 8px;
-    padding: 12px;
-  }
-  .resource-grid [data-slot="card-header"],
-  .resource-grid [data-slot="card-content"] {
-    padding-inline: 10px;
-  }
-}
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,

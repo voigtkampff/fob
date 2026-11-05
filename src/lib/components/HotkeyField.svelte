@@ -15,7 +15,7 @@
     describedby = "mini-hotkey-note",
     label = "",
   }: {
-    target?: "mini" | "overlay";
+    target?: "mini" | "overlay" | "main";
     id?: string;
     describedby?: string;
     /** Accessible name; the mini window's by default. */

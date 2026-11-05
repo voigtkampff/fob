@@ -230,9 +230,11 @@ pub enum Target {
     Mini,
     /// The status bar (behavior.overlayHotkey).
     Overlay,
+    /// Fob 0.7.12: the full window (behavior.mainHotkey).
+    Main,
 }
 impl Target {
-    const ALL: [Target; 2] = [Target::Mini, Target::Overlay];
+    const ALL: [Target; 3] = [Target::Mini, Target::Overlay, Target::Main];
     fn index(self) -> usize {
         self as usize
     }
@@ -240,12 +242,14 @@ impl Target {
         match self {
             Target::Mini => "miniHotkey",
             Target::Overlay => "overlayHotkey",
+            Target::Main => "mainHotkey",
         }
     }
     fn run(self, app: &AppHandle) {
         match self {
             Target::Mini => crate::companion::toggle(app),
             Target::Overlay => crate::overlay::toggle(app),
+            Target::Main => crate::companion::toggle_main(app),
         }
     }
 }
@@ -253,7 +257,7 @@ impl Target {
 /// Per target: the registered combo ("" = none) and the saved combo that
 /// failed to register at launch, with why.
 #[derive(Default)]
-pub struct HotkeyState(Mutex<[(String, Option<(&'static str, String)>); 2]>);
+pub struct HotkeyState(Mutex<[(String, Option<(&'static str, String)>); 3]>);
 
 /// Which target owns `shortcut` right now.
 fn owner(app: &AppHandle, shortcut: &Shortcut) -> Option<Target> {
@@ -286,7 +290,7 @@ pub fn plugin() -> tauri::plugin::TauriPlugin<tauri::Wry> {
 }
 
 /// Whether `next` is already another target's combo ("" never clashes).
-fn clashes(combos: &[String; 2], target: Target, next: &str) -> bool {
+fn clashes(combos: &[String; 3], target: Target, next: &str) -> bool {
     !next.is_empty()
         && Target::ALL
             .into_iter()
@@ -406,7 +410,11 @@ mod tests {
     }
     #[test]
     fn the_two_targets_cant_share_a_combo() {
-        let combos = ["Ctrl+Alt+F".to_owned(), String::new()];
+        let combos = [
+            "Ctrl+Alt+F".to_owned(),
+            String::new(),
+            "Ctrl+Alt+M".to_owned(),
+        ];
         assert!(clashes(&combos, Target::Overlay, "Ctrl+Alt+F"));
         assert!(
             !clashes(&combos, Target::Mini, "Ctrl+Alt+F"),
@@ -415,6 +423,14 @@ mod tests {
         assert!(!clashes(&combos, Target::Overlay, "Ctrl+Alt+H"));
         assert!(!clashes(&combos, Target::Overlay, ""), "off never clashes");
         assert!(!clashes(&combos, Target::Mini, ""));
+        assert!(
+            clashes(&combos, Target::Overlay, "Ctrl+Alt+M"),
+            "the full window's"
+        );
+        assert!(clashes(&combos, Target::Main, "Ctrl+Alt+F"));
+        assert_eq!(Target::Main.setting(), "mainHotkey");
+        let t: Target = serde_json::from_str("\"main\"").unwrap();
+        assert_eq!(t, Target::Main);
         assert_eq!(Target::Mini.setting(), "miniHotkey");
         assert_eq!(Target::Overlay.setting(), "overlayHotkey");
         let t: Target = serde_json::from_str("\"overlay\"").unwrap();

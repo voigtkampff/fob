@@ -88,6 +88,7 @@ fn main() {
             companion::hide_companion,
             companion::get_companion_pinned,
             companion::reset_mini_position,
+            companion::mini_drag_begin,
             companion::get_mini_position_saved,
             companion::set_companion_pinned,
             companion::collapse_to_tray,

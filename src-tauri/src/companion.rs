@@ -19,6 +19,12 @@ pub struct CompanionState {
     pub pinned: bool,
     /// winperf: last tray icon rect (physical px), so resizes stay anchored.
     pub anchor: Option<(f64, f64, f64, f64)>,
+    /// Fob 0.7.12: the title bar drag in progress (started, or last moved).
+    /// The window manager's move loop takes focus from the window; that is
+    /// not the user clicking elsewhere, so an unpinned window stays open.
+    pub dragging_at: Option<Instant>,
+    /// Fob 0.7.12: when the tray icon was last double-clicked.
+    pub double_at: Option<Instant>,
     /// winperf: tray menu "Start in tray only" item, kept in sync with settings.
     pub start_item: Option<CheckMenuItem<tauri::Wry>>,
     /// winperf: tray items whose text follows the UI language.
@@ -90,6 +96,10 @@ fn set_language(app: &AppHandle, pref: &'static str) {
 /// window is shown from the tray. Nothing resizes or moves it afterwards (no
 /// view change, data refresh or click). The height is the sum of the fixed
 /// blocks in src/lib/utils/mini-layout.js (MINI_HEIGHT there; a test checks).
+/// A focus loss this soon after the drag started or last moved belongs to it.
+const DRAG_GRACE: Duration = Duration::from_millis(800);
+/// After a tray double-click, Windows sends one more button-up Click.
+const TRAY_DOUBLE_GRACE: Duration = Duration::from_millis(400);
 const MINI_WIDTH: f64 = 360.0;
 const MINI_HEIGHT: f64 = 652.0;
 
@@ -202,7 +212,7 @@ fn configure(
         let menu = Menu::with_items(
             app,
             &[
-                &overview, &overlay, &open, &settings, &first, &start, &language, &second, &quit,
+                &overlay, &overview, &open, &settings, &first, &start, &language, &second, &quit,
             ],
         )
         .map_err(|e| e.to_string())?;
@@ -226,7 +236,10 @@ fn configure(
             .menu_on_left_click(false)
             .on_menu_event(|app, event| {
                 let _ = match event.id.as_ref() {
-                    "overview" => show(app, None),
+                    "overview" => {
+                        toggle(app);
+                        Ok(())
+                    }
                     "open-main" => open_main(app),
                     "overlay" => {
                         crate::overlay::toggle(app);
@@ -259,6 +272,32 @@ fn configure(
                 };
             })
             .on_tray_icon_event(|tray, event| {
+                // Fob 0.7.12: a double-click opens the full window. Windows
+                // sends Click(up), DoubleClick, Click(up): the first click
+                // already toggled the mini window, and open_main hides it;
+                // the trailing click is ignored (TRAY_DOUBLE_GRACE).
+                if let TrayIconEvent::DoubleClick {
+                    button: MouseButton::Left,
+                    ..
+                } = event
+                {
+                    let app = tray.app_handle();
+                    if let Ok(mut state) = app.state::<Mutex<CompanionState>>().lock() {
+                        state.double_at = Some(Instant::now());
+                    }
+                    let _ = open_main(app);
+                    return;
+                }
+                let after_double = tray
+                    .app_handle()
+                    .state::<Mutex<CompanionState>>()
+                    .lock()
+                    .ok()
+                    .and_then(|s| s.double_at)
+                    .is_some_and(|t| t.elapsed() < TRAY_DOUBLE_GRACE);
+                if after_double {
+                    return;
+                }
                 if let TrayIconEvent::Click {
                     rect,
                     button: MouseButton::Left,
@@ -340,6 +379,7 @@ pub fn launch(app: &AppHandle) -> Result<(), String> {
     // Fob: the mini window hotkey works in tray-only mode too.
     crate::hotkey::register_saved(app, crate::hotkey::Target::Mini, &startup.mini_hotkey);
     crate::hotkey::register_saved(app, crate::hotkey::Target::Overlay, &startup.overlay_hotkey);
+    crate::hotkey::register_saved(app, crate::hotkey::Target::Main, &startup.main_hotkey);
     let saved = load_position(app);
     if let Ok(mut state) = app.state::<Mutex<CompanionState>>().lock() {
         state.pinned = startup.mini_pinned;
@@ -1026,14 +1066,14 @@ fn visible_rect(window: &tauri::WebviewWindow) -> Option<PxRect> {
 const OWN_MOVE: Duration = Duration::from_millis(400);
 /// Saved once the window has been still this long (a drag is many moves).
 const SETTLE: Duration = Duration::from_millis(500);
-/// Is this move the user's drag? Only a pinned, visible window can be
-/// dragged; `place`'s own rect (and its moves just after) are not drags.
-fn is_drag(pinned: bool, placed: Option<(PxRect, Instant)>, now: PxRect) -> bool {
-    pinned
-        && match placed {
-            Some((rect, at)) => rect != now && at.elapsed() >= OWN_MOVE,
-            None => true,
-        }
+/// Is this move the user's drag? Pinned or not (Fob 0.7.12: pinning only
+/// keeps the window open and on top); `place`'s own rect (and its moves just
+/// after) are not drags.
+fn is_drag(placed: Option<(PxRect, Instant)>, now: PxRect) -> bool {
+    match placed {
+        Some((rect, at)) => rect != now && at.elapsed() >= OWN_MOVE,
+        None => true,
+    }
 }
 /// Fob: the overview window moved. A drag of the pinned window is kept in
 /// memory and saved when the window settles, then wins over the tray spot.
@@ -1051,8 +1091,11 @@ fn moved(app: &AppHandle) {
     let Ok(mut state) = service.lock() else {
         return;
     };
-    if !is_drag(state.pinned, state.placed, now) {
+    if !is_drag(state.placed, now) {
         return;
+    }
+    if state.dragging_at.is_some() {
+        state.dragging_at = Some(Instant::now());
     }
     state.moved = Some((now, Instant::now()));
     if std::mem::replace(&mut state.saving, true) {
@@ -1084,6 +1127,13 @@ fn moved(app: &AppHandle) {
         );
         return;
     });
+}
+/// Fob 0.7.12: the mini page is about to start a title bar drag.
+#[tauri::command]
+pub fn mini_drag_begin(app: AppHandle) {
+    if let Ok(mut state) = app.state::<Mutex<CompanionState>>().lock() {
+        state.dragging_at = Some(Instant::now());
+    }
 }
 /// Fob: double-click on the mini title bar: forget the dragged position and
 /// go back to the tray.
@@ -1146,12 +1196,27 @@ pub async fn set_companion_pinned(app: AppHandle, pinned: bool) -> Result<bool, 
     }
     Ok(pinned)
 }
+/// Fob 0.7.12 full window hotkey: hide it when it is in front, else open it.
+pub fn toggle_main(app: &AppHandle) {
+    let Some(window) = app.get_webview_window("main") else {
+        return;
+    };
+    let front = window.is_visible().unwrap_or(false)
+        && !window.is_minimized().unwrap_or(false)
+        && window.is_focused().unwrap_or(false);
+    if front {
+        let _ = window.hide();
+    } else {
+        let _ = open_main(app);
+    }
+}
 pub fn open_main(app: &AppHandle) -> Result<(), String> {
     hide(app);
     let window = app
         .get_webview_window("main")
         .ok_or("Main window unavailable")?;
     window.unminimize().map_err(|e| e.to_string())?;
+    let _ = app.emit_to("main", "open-page", "processes");
     window.show().map_err(|e| e.to_string())?;
     window.set_focus().map_err(|e| e.to_string())
 }
@@ -1168,11 +1233,15 @@ pub fn window_event(window: &tauri::Window, event: &WindowEvent) {
             crate::overlay::toggle(app);
         }
         ("overview", WindowEvent::Focused(false)) => {
-            let pinned = app
+            let (pinned, dragging) = app
                 .state::<Mutex<CompanionState>>()
                 .lock()
-                .is_ok_and(|s| s.pinned);
-            if hides_on_focus_loss(pinned) {
+                .map(|s| {
+                    let dragging = s.dragging_at.is_some_and(|t| t.elapsed() < DRAG_GRACE);
+                    (s.pinned, dragging)
+                })
+                .unwrap_or((false, false));
+            if hides_on_focus_loss(pinned) && !dragging {
                 hide(app);
             }
         }
@@ -1622,18 +1691,39 @@ mod tests {
         assert!(shows_main_at_launch(false, true));
     }
     #[test]
-    fn only_a_pinned_window_moved_by_someone_else_is_a_drag() {
+    fn tray_menu_starts_with_status_bar_mini_full_and_double_click_opens_full() {
+        let me = include_str!("companion.rs");
+        assert!(me.contains("&overlay, &overview, &open, &settings,"));
+        assert!(me.contains("TrayIconEvent::DoubleClick"));
+        let open = &me[me.find("pub fn open_main").unwrap()..];
+        assert!(open[..400].contains(r#"emit_to("main", "open-page", "processes")"#));
+        let zh = crate::i18n::tray(crate::i18n::Locale::Zh);
+        assert_eq!(
+            (zh.overlay, zh.show_mini, zh.open_full),
+            ("状态栏", "迷你窗口", "完整窗口")
+        );
+    }
+    #[test]
+    fn a_move_someone_else_made_is_a_drag_pinned_or_not() {
         let placed = PxRect::new(100, 100, 360, 652);
         let moved = PxRect::new(300, 50, 360, 652);
         let long_ago = Instant::now() - Duration::from_secs(2);
-        assert!(is_drag(true, Some((placed, long_ago)), moved));
-        assert!(!is_drag(false, Some((placed, long_ago)), moved), "unpinned");
-        assert!(!is_drag(true, Some((placed, long_ago)), placed), "our rect");
+        assert!(is_drag(Some((placed, long_ago)), moved));
+        assert!(!is_drag(Some((placed, long_ago)), placed), "our rect");
         assert!(
-            !is_drag(true, Some((placed, Instant::now())), moved),
+            !is_drag(Some((placed, Instant::now())), moved),
             "just placed: our own intermediate move"
         );
-        assert!(is_drag(true, None, moved));
+        assert!(is_drag(None, moved));
+        let page = include_str!("../../src/lib/components/MenuBarOverview.svelte");
+        assert!(
+            !page.contains("pinned && onBar(event)"),
+            "the title bar drags an unpinned window too"
+        );
+        assert!(
+            page.contains(r#"invoke("mini_drag_begin")"#),
+            "the drag's own focus loss doesn't hide an unpinned window"
+        );
     }
     #[test]
     fn a_dragged_position_comes_back_inside_its_monitor() {

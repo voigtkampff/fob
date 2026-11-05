@@ -1,4 +1,11 @@
 <script lang="ts">
+  import {
+    SERIES_COLOR,
+    STROKE_WIDTH,
+    DASHED,
+    FILL_TOP,
+    FILL_BOTTOM,
+  } from "$lib/utils/chart-style.js";
   import * as Chart from "$lib/components/ui/chart/index.js";
   import { AreaChart, Area, LinearGradient, Points } from "layerchart";
   import type { ResourceSample } from "$lib/types";
@@ -55,12 +62,12 @@
           {
             key: "disk_read" as Key,
             label: $t("stats.read"),
-            color: "var(--chart-4)",
+            color: SERIES_COLOR.disk_read,
           },
           {
             key: "disk_write" as Key,
             label: $t("stats.write"),
-            color: "var(--chart-2)",
+            color: SERIES_COLOR.disk_write,
           },
         ]
       : metric === "network"
@@ -68,18 +75,26 @@
             {
               key: "received" as Key,
               label: $t("stats.received"),
-              color: "var(--chart-1)",
+              color: SERIES_COLOR.received,
             },
             {
               key: "sent" as Key,
               label: $t("stats.sent"),
-              color: "var(--chart-4)",
+              color: SERIES_COLOR.sent,
             },
           ]
         : metric === "temp"
           ? [
-              { key: "cpu_temp" as Key, label: "CPU", color: "var(--chart-1)" },
-              { key: "gpu_temp" as Key, label: "GPU", color: "var(--chart-2)" },
+              {
+                key: "cpu_temp" as Key,
+                label: "CPU",
+                color: SERIES_COLOR.cpu_temp,
+              },
+              {
+                key: "gpu_temp" as Key,
+                label: "GPU",
+                color: SERIES_COLOR.gpu_temp,
+              },
             ]
           : [
               {
@@ -90,12 +105,7 @@
                     : metric === "gpu"
                       ? "GPU"
                       : $t("stats.ramUsed"),
-                color:
-                  metric === "cpu"
-                    ? "var(--chart-1)"
-                    : metric === "gpu"
-                      ? "var(--chart-2)"
-                      : "var(--chart-3)",
+                color: SERIES_COLOR[metric],
               },
             ],
   );
@@ -260,11 +270,11 @@
                 {#snippet stopsContent()}<stop
                     offset="0%"
                     stop-color={s.color}
-                    stop-opacity=".32"
+                    stop-opacity={FILL_TOP}
                   /><stop
                     offset="100%"
                     stop-color={s.color}
-                    stop-opacity=".01"
+                    stop-opacity={FILL_BOTTOM}
                   />{/snippet}
                 {#snippet children({ gradient })}<Area
                     seriesKey={s.key}
@@ -273,11 +283,8 @@
                     defined={(d: ResourceSample) => d[s.key] != null}
                     line={{
                       stroke: s.color,
-                      "stroke-width": 1.5,
-                      "stroke-dasharray":
-                        s.key === "sent" || s.key === "disk_write"
-                          ? "3 2"
-                          : undefined,
+                      "stroke-width": STROKE_WIDTH,
+                      "stroke-dasharray": DASHED.has(s.key) ? "3 2" : undefined,
                       "stroke-linecap": "round",
                       "stroke-linejoin": "round",
                     }}
