@@ -30,11 +30,13 @@
     CHART_METRICS,
     chartsPatch,
     toggleChart,
+    overlayThemeOptions,
     DOCKS,
     OPACITY_FLOOR,
     DEFAULT_OPACITY,
     type MetricId,
   } from "$lib/utils/overlay.js";
+  import { themes } from "$lib/definitions/themes";
   import { t } from "$lib/i18n";
   let pane = "general";
   let runtimeError = "";
@@ -430,6 +432,30 @@
                     >{$t(`settings.overlayDock.${dock}`)}</ToggleGroup.Item
                   >{/each}
               </ToggleGroup.Root>
+            </div>
+            <div class="flex items-start justify-between gap-6">
+              <div>
+                <Label for="overlay-theme">{$t("settings.overlayTheme")}</Label>
+                <p
+                  id="overlay-theme-note"
+                  class="mt-1 text-xs leading-relaxed text-muted-foreground"
+                >
+                  {$t("settings.overlayThemeNote")}
+                </p>
+              </div>
+              <NativeSelect.Root
+                id="overlay-theme"
+                class="w-44"
+                aria-describedby="overlay-theme-note"
+                value={overlay.theme}
+                onchange={(event) =>
+                  saveOverlay({ overlayTheme: event.currentTarget.value })}
+              >
+                <option value="">{$t("settings.overlayTheme.follow")}</option>
+                {#each overlayThemeOptions(themes) as option (option.value)}<option
+                    value={option.value}>{option.label}</option
+                  >{/each}
+              </NativeSelect.Root>
             </div>
             <div class="flex items-start justify-between gap-6">
               <div>

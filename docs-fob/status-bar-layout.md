@@ -7,7 +7,10 @@ The tokens live in one block, `.bar` in `src/lib/components/OverlayBar.svelte`
 |---|---|---|
 | `--ob-height` | 26px | Bar height (`HEIGHT` in overlay.rs) |
 | `--ob-box` | 14px | Every label, value and chart sits in a box this tall, centred on the bar's one centre line (13 px) |
-| `--ob-label-size` / `--ob-label-weight` | 11px / 400 | Labels, CJK and Latin alike, `line-height: 1` |
+| `--ob-label-size` / `--ob-label-weight` | 11px / 400 | Latin labels, `line-height: 1` |
+| `--ob-label-size-cjk` | 10px | CJK labels (ideographs fill the em box; at 11px they look as big as the values) |
+| `--ob-font-latin` | "Segoe UI", Selawik | Latin labels and all values (tabular figures, `tnum`) |
+| `--ob-font-cjk` | "Microsoft YaHei UI", "Microsoft YaHei", "Noto Sans CJK SC" | CJK labels |
 | `--ob-value-size` / `--ob-value-weight` | 13px / 700 | Values, `tabular-nums`; the unit is part of the same text, so it shares the baseline |
 | `--ob-value-shift` | -0.5px | Optical fix: bold figures have no descenders and ink 0.5 px low in a centred box |
 | `--ob-chart-w` × `--ob-chart-h` | 32 × 9px | Under the values' cap height (~9.3 px); the line is drawn inside, never past the text |
@@ -21,3 +24,9 @@ Measured in headless Chrome at 2x (`v072-*-guides.png`): ink centres are
 13.0 (values), 12.75 (CJK labels), 13.25 (Latin labels). The chart box spans
 8.5–17.5 and the value ink spans 8–18. The ↓/↑ arrows are taller glyphs and
 centre on 12.5.
+
+0.7.5: the font stack names Windows fonts first and the Linux stand-ins
+(Selawik, Noto Sans CJK SC) after them; ↓/↑ are drawn as 7×9 px paths, not
+font glyphs. Values are left-aligned in their fixed-width boxes: the
+label-to-value gap is exactly `--ob-gap-label`, and the slack from short
+numbers (6% in a 4ch box) falls after the value, before the next metric.

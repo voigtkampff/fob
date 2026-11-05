@@ -171,6 +171,8 @@ export interface AppConfig {
     overlayCharts?: boolean;
     /** 0.7.3: metrics drawn with a chart (replaces overlayCharts). */
     overlayChartMetrics?: string[];
+    /** 0.7.5: the bar's own theme; "" follows the main window. */
+    overlayTheme?: string;
     /** Global hotkey that toggles the status bar ("" = off). */
     overlayHotkey?: string;
   };

@@ -13,9 +13,13 @@
     overlaySettings,
     cells,
     chartFor,
+    overlayTheme,
+    overlayColors,
     type Reading,
   } from "$lib/utils/overlay.js";
   import { sparklinePath } from "$lib/utils/dashboard.js";
+  import { themes } from "$lib/definitions/themes";
+  import { themeTokens } from "$lib/utils/theme-tokens.js";
   import { t } from "$lib/i18n";
 
   let reading: Reading | null = $state(null);
@@ -27,7 +31,28 @@
   let paint = $state(0);
   const config = $derived(overlaySettings($settingsStore.behavior));
   const shown = $derived(cells(reading, config.metrics));
+  // Its own appearance or the main window's theme (theme-change keeps
+  // $themeStore current); only the bar's few colours come from it.
+  const theme = $derived(
+    overlayTheme($settingsStore.behavior.overlayTheme, $themeStore, themes),
+  );
+  const colors = $derived(
+    Object.entries(
+      overlayColors(themeTokens(theme.colors, { name: theme.name })),
+    )
+      .map(([k, v]) => `${k}:${v}`)
+      .join(";"),
+  );
   const history = $derived((reading as Reading | null)?.history ?? []);
+  // CJK labels get their own size (ideographs fill the em box, so at the
+  // Latin size they look as big as the values).
+  const CJK = /[\u3000-\u9fff]/;
+  // ↓ / ↑ drawn as paths: the glyphs come from whichever font has them
+  // (Segoe UI Symbol on Windows), each with its own size and baseline.
+  const ARROW: Record<string, string> = {
+    "↓": "M4 0.5V8.5M1 5.5L4 8.5L7 5.5",
+    "↑": "M4 9.5V1.5M1 4.5L4 1.5L7 4.5",
+  };
   // Chart size: matches --ob-chart-w / --ob-chart-h below.
   const CW = 32;
   const CH = 9;
@@ -83,6 +108,8 @@
 <div
   class="bar"
   class:interactive
+  style={colors}
+  data-theme={theme.name}
   style:opacity={config.opacity / 100}
   onmousedown={(e) => {
     if (interactive && e.button === 0) void getCurrentWindow().startDragging();
@@ -94,9 +121,17 @@
           ? chartFor(cell.id, history)
           : null}
         <span class="cell"
-          ><span class="label">{$t(`overlay.short.${cell.id}`)}</span><span
-            class="value {cell.id}"
-            >{#each cell.parts as part, i (i)}<span class="part">{part}</span
+          ><span
+            class="label"
+            class:cjk={CJK.test($t(`overlay.short.${cell.id}`))}
+            >{$t(`overlay.short.${cell.id}`)}</span
+          ><span class="value {cell.id}"
+            >{#each cell.parts as part, i (i)}<span class="part"
+                >{#if ARROW[part[0]]}<svg
+                    class="arrow"
+                    viewBox="0 0 8 10"
+                    aria-label={part[0]}><path d={ARROW[part[0]]} /></svg
+                  >{part.slice(1)}{:else}{part}{/if}</span
               >{/each}</span
           >{#if chart}<svg
               class="chart"
@@ -142,6 +177,7 @@
     --ob-height: 26px;
     --ob-box: 14px;
     --ob-label-size: 11px;
+    --ob-label-size-cjk: 10px;
     --ob-value-size: 13px;
     --ob-label-weight: 400;
     --ob-value-weight: 700;
@@ -162,19 +198,24 @@
     display: flex;
     align-items: center;
     box-sizing: border-box;
-    background: var(--background);
+    background: var(--ob-bg);
     border: 1px solid transparent;
     border-radius: 4px;
     user-select: none;
     cursor: default;
-    font-family: "Segoe UI", "Microsoft YaHei UI", system-ui, sans-serif;
+    /* Windows first, named outright: WebView2 otherwise falls back per
+       glyph. Selawik (Segoe UI metrics) and Noto Sans CJK SC are the
+       closest Linux stand-ins, for the screenshots. */
+    --ob-font-latin: "Segoe UI", Selawik;
+    --ob-font-cjk: "Microsoft YaHei UI", "Microsoft YaHei", "Noto Sans CJK SC";
+    font-family: var(--ob-font-latin), var(--ob-font-cjk), sans-serif;
     line-height: 1;
   }
   /* Ctrl held / unlocked: a slightly brighter bar with a faint solid edge. */
   .bar.interactive {
     cursor: move;
-    background: color-mix(in oklab, var(--background), var(--foreground) 8%);
-    border-color: color-mix(in oklab, var(--border), var(--foreground) 15%);
+    background: color-mix(in oklab, var(--ob-bg), var(--ob-fg) 8%);
+    border-color: color-mix(in oklab, var(--ob-border), var(--ob-fg) 15%);
   }
   .row {
     display: inline-flex;
@@ -198,9 +239,26 @@
     line-height: 1;
   }
   .label {
-    color: var(--primary);
+    color: var(--ob-accent);
     font-weight: var(--ob-label-weight);
     font-size: var(--ob-label-size);
+  }
+  .label.cjk {
+    font-family: var(--ob-font-cjk), sans-serif;
+    font-size: var(--ob-label-size-cjk);
+  }
+  .arrow {
+    width: 7px;
+    height: 9px;
+    margin-right: 1px;
+    flex: none;
+  }
+  .arrow path {
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 1.6;
+    stroke-linecap: round;
+    stroke-linejoin: round;
   }
   .part {
     transform: translateY(var(--ob-value-shift));
@@ -208,16 +266,20 @@
   .value {
     display: inline-flex;
     align-items: center;
-    justify-content: flex-end;
+    justify-content: flex-start;
     gap: var(--ob-gap-pair);
     height: var(--ob-box);
-    color: var(--foreground);
+    /* Left-aligned: fixed widths keep the bar steady, and their slack goes
+       after the number, so label → value stays --ob-gap-label. */
+    color: var(--ob-fg);
     font-size: var(--ob-value-size);
     font-weight: var(--ob-value-weight);
+    font-family: var(--ob-font-latin), sans-serif;
     font-variant-numeric: tabular-nums;
+    font-feature-settings: "tnum" 1;
   }
   .part {
-    justify-content: flex-end;
+    justify-content: flex-start;
   }
   .chart {
     display: block;
@@ -229,7 +291,7 @@
   }
   .chart path {
     fill: none;
-    stroke: var(--primary);
+    stroke: var(--ob-chart);
     stroke-width: 1.25;
     vector-effect: non-scaling-stroke;
   }

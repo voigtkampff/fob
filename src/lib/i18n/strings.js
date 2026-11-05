@@ -568,6 +568,10 @@ export const en = {
   "settings.overlayDock.top": "Top",
   "settings.overlayDock.bottom": "Bottom",
   "settings.overlayDock.free": "Free",
+  "settings.overlayTheme": "Appearance",
+  "settings.overlayThemeNote":
+    "The status bar can use its own theme, or follow the main window's",
+  "settings.overlayTheme.follow": "Follow main window",
   "settings.overlayOpacity": "Opacity",
   "settings.overlayOpacityNote":
     "Fades the whole bar together: background, text and charts. 10% at least",
@@ -1187,6 +1191,9 @@ export const zh = {
   "settings.overlayDock.top": "顶部",
   "settings.overlayDock.bottom": "底部",
   "settings.overlayDock.free": "自由",
+  "settings.overlayTheme": "外观",
+  "settings.overlayThemeNote": "状态栏可以使用自己的主题，或跟随主界面",
+  "settings.overlayTheme.follow": "跟随主界面",
   "settings.overlayOpacity": "不透明度",
   "settings.overlayOpacityNote":
     "整条状态栏一起变透明：背景、文字和图表，最低 10%",

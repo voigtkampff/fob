@@ -62,6 +62,11 @@ fn merge(config: &mut Value, patch: &Value) {
                 // Fob status bar (overlay.rs, src/lib/utils/overlay.js).
                 "overlayOpacity" => value.as_u64().is_some_and(|n| n <= 100),
                 "overlayCharts" => value.is_boolean(),
+                // 0.7.5: "" follows the main theme, else a theme name; the
+                // frontend falls back to following for names it doesn't know.
+                "overlayTheme" => value.as_str().is_some_and(|name| {
+                    name.len() <= 64 && name.chars().all(|c| c.is_ascii_alphanumeric())
+                }),
                 "overlayDock" => matches!(value.as_str(), Some("top" | "bottom" | "free")),
                 // 0.7.3: the metrics drawn with a chart; until it's saved,
                 // overlayCharts (0.7.1 on/off for all) stands in for it.
@@ -302,6 +307,8 @@ mod tests {
             json!({"overlayChartMetrics":["power"]}),
             json!({"overlayChartMetrics":["cpu","cpu"]}),
             json!({"overlayChartMetrics":true}),
+            json!({"overlayTheme":1}),
+            json!({"overlayTheme":"../x"}),
         ] {
             let before = config.clone();
             merge(&mut config, &json!({ "behavior": bad }));
@@ -313,6 +320,15 @@ mod tests {
         );
         assert_eq!(b(&config, "overlayChartMetrics"), json!(["net", "cpu"]));
         merge(&mut config, &json!({"behavior":{"overlayChartMetrics":[]}}));
+        assert_eq!(
+            b(&config, "overlayTheme"),
+            "",
+            "follows the main window by default"
+        );
+        merge(&mut config, &json!({"behavior":{"overlayTheme":"dracula"}}));
+        assert_eq!(b(&config, "overlayTheme"), "dracula");
+        merge(&mut config, &json!({"behavior":{"overlayTheme":""}}));
+        assert_eq!(b(&config, "overlayTheme"), "");
         assert_eq!(b(&config, "overlayChartMetrics"), json!([]));
         merge(&mut config, &json!({"behavior":{"overlayOpacity":3}}));
         assert_eq!(

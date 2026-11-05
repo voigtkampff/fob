@@ -17,6 +17,9 @@ import {
   chartMetrics,
   chartsPatch,
   toggleChart,
+  overlayTheme,
+  overlayThemeOptions,
+  overlayColors,
 } from "../src/lib/utils/overlay.js";
 
 const defaults = JSON.parse(
@@ -33,6 +36,7 @@ assert.deepEqual(
     opacity: 60,
     unlocked: false,
     charts: [],
+    theme: "",
   },
   "off by default; the saved defaults match the code's",
 );
@@ -179,4 +183,40 @@ assert.equal(chartFor("net", hist).pick(hist[1]), null);
 assert.equal(chartFor("disk", []).max, 1024);
 assert.equal(chartFor("vram", hist), null);
 assert.equal(chartFor("power", hist), null);
+// 0.7.5 own appearance: unknown/removed/unset/glassy → follow the main theme.
+const TH = {
+  dracula: { name: "dracula", label: "Dracula" },
+  nord: { name: "nord", label: "Nord" },
+  glassy: { name: "glassy", label: "Glassy" },
+};
+const main = TH.nord;
+assert.equal(overlayTheme("", main, TH), main);
+assert.equal(overlayTheme(undefined, main, TH), main);
+assert.equal(overlayTheme(42, main, TH), main);
+assert.equal(overlayTheme("dracula", main, TH), TH.dracula);
+assert.equal(overlayTheme("removedTheme", main, TH), main);
+assert.equal(overlayTheme("toString", main, TH), main, "no prototype keys");
+assert.equal(overlayTheme("glassy", main, TH), main);
+assert.deepEqual(overlayThemeOptions(TH), [
+  { value: "dracula", label: "Dracula" },
+  { value: "nord", label: "Nord" },
+]);
+assert.equal(overlaySettings({ overlayTheme: "nord" }).theme, "nord");
+assert.equal(overlaySettings({ overlayTheme: 3 }).theme, "");
+assert.deepEqual(
+  overlayColors({
+    background: "#000",
+    foreground: "#fff",
+    primary: "#0af",
+    border: "#333",
+    "chart-1": "#f0a",
+  }),
+  {
+    "--ob-bg": "#000",
+    "--ob-fg": "#fff",
+    "--ob-accent": "#0af",
+    "--ob-border": "#333",
+    "--ob-chart": "#f0a",
+  },
+);
 console.log("PASS: status bar settings, metric order and cell text");

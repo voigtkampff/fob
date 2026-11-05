@@ -37,6 +37,7 @@
     "overlayOpacity": 60,
     "overlayUnlocked": false,
     "overlayCharts": false,
-    "overlayHotkey": ""
+    "overlayHotkey": "",
+    "overlayTheme": ""
   }
 }

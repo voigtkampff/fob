@@ -69,6 +69,41 @@ export function overlaySettings(behavior) {
     opacity: overlayOpacity(b.overlayOpacity),
     unlocked: b.overlayUnlocked === true,
     charts: chartMetrics(b),
+    theme: typeof b.overlayTheme === "string" ? b.overlayTheme : "",
+  };
+}
+
+/** Status bar appearance (0.7.5): "" follows the main window's theme, any
+ * other value names a theme from definitions/themes.ts. Glassy needs the
+ * main window's Acrylic backdrop, so the bar doesn't offer it.
+ * @param {Record<string, { name: string, label: string }>} themes */
+export function overlayThemeOptions(themes) {
+  return Object.values(themes)
+    .filter((t) => t.name !== "glassy")
+    .map((t) => ({ value: t.name, label: t.label }));
+}
+
+/** The theme the bar uses: its own when that's a known theme it offers,
+ * otherwise (unset, unknown, removed) the main window's.
+ * @template {{ name: string }} T
+ * @param {unknown} saved behavior.overlayTheme
+ * @param {T} main the main window's theme
+ * @param {Record<string, T>} themes */
+export function overlayTheme(saved, main, themes) {
+  if (typeof saved !== "string" || !saved || saved === "glassy") return main;
+  return Object.hasOwn(themes, saved) ? themes[saved] : main;
+}
+
+/** The few colours the bar draws with, from a theme's tokens
+ * (utils/theme-tokens.js): background, text, accent label, edge, chart.
+ * @param {Record<string, string>} tokens */
+export function overlayColors(tokens) {
+  return {
+    "--ob-bg": tokens.background,
+    "--ob-fg": tokens.foreground,
+    "--ob-accent": tokens.primary,
+    "--ob-border": tokens.border,
+    "--ob-chart": tokens["chart-1"] ?? tokens.primary,
   };
 }
 
