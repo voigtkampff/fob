@@ -85,6 +85,7 @@ fn main() {
             sampling::set_monitor_interval,
             companion::configure_companion,
             companion::show_companion,
+            companion::toggle_companion,
             companion::hide_companion,
             companion::get_companion_pinned,
             companion::reset_mini_position,

@@ -359,12 +359,16 @@ pub enum DriveKind {
     Unknown,
 }
 
-/// One thread on every kind of drive. Measured on Windows 11, example hybrid CPU,
-/// C: NVMe, 1.69M files: 16 threads 23.6 s, 1 thread 13 s. Parallel
-/// FindFirstFileEx on one NTFS volume did not pay; HDDs seek. Override with
-/// WINPERF_SPACE_THREADS to measure again.
-pub fn scan_threads(_kind: DriveKind) -> usize {
-    1
+/// Fob 0.7.16: parallel again on solid state. 0.6.11 measured one thread
+/// faster on a warm NVMe, but a cold rescan (empty cache, recreated config)
+/// took 40+ s on one thread; parallel listing hides per-folder latency.
+/// Confirmed SSD: logical cores x 2, at most 16. HDD or unknown: 1.
+/// WINPERF_SPACE_THREADS overrides.
+pub fn scan_threads(kind: DriveKind, logical: usize) -> usize {
+    match kind {
+        DriveKind::Ssd => (logical * 2).clamp(2, 16),
+        DriveKind::Hdd | DriveKind::Unknown => 1,
+    }
 }
 
 /// IOCTL_STORAGE_QUERY_PROPERTY / StorageDeviceSeekPenaltyProperty on
@@ -445,7 +449,10 @@ pub fn walk_drive(root: &Path, progress: &Progress, kind: DriveKind) -> (Option<
     let threads = std::env::var("WINPERF_SPACE_THREADS")
         .ok()
         .and_then(|v| v.parse().ok())
-        .unwrap_or_else(|| scan_threads(kind))
+        .unwrap_or_else(|| {
+            let logical = std::thread::available_parallelism().map_or(1, |n| n.get());
+            scan_threads(kind, logical)
+        })
         .max(1);
     if threads == 1 {
         return (walk(root, progress), 1);
@@ -1276,9 +1283,13 @@ mod tests {
     }
 
     #[test]
-    fn every_drive_kind_walks_on_one_thread() {
-        for kind in [DriveKind::Ssd, DriveKind::Hdd, DriveKind::Unknown] {
-            assert_eq!(scan_threads(kind), 1);
+    fn ssds_scan_in_parallel_hdds_on_one_thread() {
+        assert_eq!(scan_threads(DriveKind::Ssd, 4), 8);
+        assert_eq!(scan_threads(DriveKind::Ssd, 24), 16);
+        assert_eq!(scan_threads(DriveKind::Ssd, 1), 2);
+        for n in [1, 8, 32] {
+            assert_eq!(scan_threads(DriveKind::Hdd, n), 1);
+            assert_eq!(scan_threads(DriveKind::Unknown, n), 1);
         }
     }
 

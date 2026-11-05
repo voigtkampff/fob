@@ -84,7 +84,7 @@
       size="icon-sm"
       aria-label={$t("title.openMini")}
       title={$t("title.mini")}
-      onclick={() => command("show_companion")}><PanelsTopLeft /></Button
+      onclick={() => command("toggle_companion")}><PanelsTopLeft /></Button
     >
     <Button
       variant="ghost"
