@@ -4,6 +4,10 @@ use serde_json::Value;
 use std::{fs, path::Path, sync::Mutex};
 use tauri::{AppHandle, Emitter, Manager, WebviewWindow};
 
+/// Readings the status bar can show (METRICS in src/lib/utils/overlay.js).
+pub const OVERLAY_METRICS: [&str; 9] = [
+    "cpu", "cpuTemp", "gpu", "gpuTemp", "ram", "vram", "disk", "net", "power",
+];
 fn defaults() -> Value {
     serde_json::from_str(include_str!(
         "../../src/lib/definitions/default-config.json"
@@ -49,9 +53,17 @@ fn merge(config: &mut Value, patch: &Value) {
                     .as_u64()
                     .is_some_and(|n| [15, 25, 50, 100, 250, 500].contains(&n)),
                 "refreshRate" => value.as_u64().is_some_and(|n| (1000..=30000).contains(&n)),
-                "menuBarEnabled" | "keepRunning" | "startInTray" | "miniPinned" => {
-                    value.is_boolean()
-                }
+                "menuBarEnabled" | "keepRunning" | "startInTray" | "miniPinned"
+                | "overlayEnabled" | "overlayUnlocked" => value.is_boolean(),
+                // Fob status bar (overlay.rs, src/lib/utils/overlay.js).
+                "overlayOpacity" => value.as_u64().is_some_and(|n| n <= 100),
+                "overlayDock" => matches!(value.as_str(), Some("top" | "bottom" | "free")),
+                "overlayMetrics" => value.as_array().is_some_and(|list| {
+                    let ids: Vec<_> = list.iter().filter_map(Value::as_str).collect();
+                    ids.len() == list.len()
+                        && ids.iter().all(|id| OVERLAY_METRICS.contains(id))
+                        && ids.iter().enumerate().all(|(i, id)| !ids[..i].contains(id))
+                }),
                 // Fob: mini window opacity in percent (Settings and the mini window).
                 "miniOpacity" => value.as_u64().is_some_and(|n| (0..=100).contains(&n)),
                 "processView" => matches!(value.as_str(), Some("flat" | "tree")),
@@ -128,6 +140,8 @@ pub async fn read_preferences(
                 state.revision += 1;
                 app.emit("preferences-change", state.clone())
                     .map_err(|e| e.to_string())?;
+                let (app, config) = (app.clone(), state.config.clone());
+                std::thread::spawn(move || crate::overlay::sync(&app, &config));
             }
         }
         Ok(state.clone())
@@ -155,6 +169,8 @@ pub fn apply_patch(app: &AppHandle, patch: &Value) -> Result<Snapshot, String> {
         state.revision += 1;
         app.emit("preferences-change", state.clone())
             .map_err(|e| e.to_string())?;
+        let (app, config) = (app.clone(), state.config.clone());
+        std::thread::spawn(move || crate::overlay::sync(&app, &config));
     }
     Ok(state.clone())
 }
@@ -230,6 +246,39 @@ mod tests {
         assert!(config["appearance"]["columnVisibility"]
             .get("unknown")
             .is_none());
+    }
+    #[test]
+    fn status_bar_settings_default_off_and_reject_bad_values() {
+        let mut config = defaults();
+        let b = |c: &Value, k: &str| c["behavior"][k].clone();
+        assert_eq!(b(&config, "overlayEnabled"), false);
+        assert_eq!(b(&config, "overlayDock"), "top");
+        assert_eq!(b(&config, "overlayUnlocked"), false);
+        assert_eq!(b(&config, "overlayOpacity"), 60);
+        merge(
+            &mut config,
+            &json!({"behavior":{"overlayEnabled":true,"overlayDock":"free","overlayOpacity":35,
+                "overlayUnlocked":true,"overlayMetrics":["net","cpu"]}}),
+        );
+        assert_eq!(b(&config, "overlayEnabled"), true);
+        assert_eq!(b(&config, "overlayDock"), "free");
+        assert_eq!(b(&config, "overlayOpacity"), 35);
+        assert_eq!(b(&config, "overlayMetrics"), json!(["net", "cpu"]));
+        for bad in [
+            json!({"overlayDock":"left"}),
+            json!({"overlayOpacity":101}),
+            json!({"overlayOpacity":-1}),
+            json!({"overlayEnabled":"yes"}),
+            json!({"overlayMetrics":["cpu","cpu"]}),
+            json!({"overlayMetrics":["fps"]}),
+            json!({"overlayMetrics":"cpu"}),
+        ] {
+            let before = config.clone();
+            merge(&mut config, &json!({ "behavior": bad }));
+            assert_eq!(config, before, "{bad} must be ignored");
+        }
+        merge(&mut config, &json!({"behavior":{"overlayMetrics":[]}}));
+        assert_eq!(b(&config, "overlayMetrics"), json!([]));
     }
     #[test]
     fn the_mini_hotkey_is_off_by_default_and_only_saved_canonical() {

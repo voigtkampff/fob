@@ -1,6 +1,6 @@
 {
   "name": "neohtop",
-  "version": "0.6.13",
+  "version": "0.7.0",
   "description": "",
   "type": "module",
   "scripts": {
@@ -25,7 +25,8 @@
     "build:site": "node scripts/build-site.mjs",
     "refresh:site-release": "node scripts/refresh-site-release.mjs",
     "refresh:site-stats": "node scripts/refresh-site-stats.mjs",
-    "test:nav": "node tests/nav-history.mjs"
+    "test:nav": "node tests/nav-history.mjs",
+    "test:overlay": "node tests/overlay.mjs"
   },
   "license": "MIT",
   "dependencies": {

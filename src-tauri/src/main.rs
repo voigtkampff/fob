@@ -13,6 +13,7 @@ mod hotkey;
 mod i18n;
 mod monitoring;
 mod native_icons;
+mod overlay;
 mod preferences;
 mod sampling;
 mod sensors;
@@ -64,6 +65,7 @@ fn main() {
         .manage(space::SpaceState::default())
         .manage(preferences::Preferences::default())
         .manage(desktop::DesktopState::default())
+        .manage(overlay::Shared::default())
         .manage(std::sync::Mutex::new(companion::CompanionState::default()))
         .on_window_event(companion::window_event)
         .invoke_handler(tauri::generate_handler![
@@ -100,6 +102,9 @@ fn main() {
             hotkey::get_mini_hotkey,
             hotkey::set_mini_hotkey,
             hotkey::suspend_mini_hotkey,
+            overlay::overlay_fit,
+            overlay::overlay_interactive,
+            overlay::overlay_reading,
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application")

@@ -56,6 +56,9 @@ const dynamic = {
   detail: ["cpu", "gpu", "memory", "disk", "network", "temp"],
   lang: ["auto", "en", "zh"],
   "uptime.kind": ["cold", "fast", "hibernate"],
+  "overlay.short": ["cpu", "cpuTemp", "gpu", "gpuTemp", "ram", "vram", "disk", "net", "power"],
+  "overlay.metric": ["cpu", "cpuTemp", "gpu", "gpuTemp", "ram", "vram", "disk", "net", "power"],
+  "settings.overlayDock": ["top", "bottom", "free"],
 };
 assert.deepEqual(
   [...prefixes].sort(),

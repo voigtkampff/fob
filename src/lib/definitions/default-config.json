@@ -30,6 +30,11 @@
     "defaultStatusFilter": "all",
     "processView": "flat",
     "miniHotkey": "",
-    "miniOpacity": 100
+    "miniOpacity": 100,
+    "overlayEnabled": false,
+    "overlayMetrics": ["cpu", "cpuTemp", "gpu", "gpuTemp", "ram", "net"],
+    "overlayDock": "top",
+    "overlayOpacity": 60,
+    "overlayUnlocked": false
   }
 }

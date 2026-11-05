@@ -13,6 +13,7 @@
     retryMonitoringPreferences,
   } from "$lib/stores/monitoring-preferences";
   import MenuBarOverview from "$lib/components/MenuBarOverview.svelte";
+  import OverlayBar from "$lib/components/OverlayBar.svelte";
   import Dashboard from "$lib/components/dashboard/Dashboard.svelte";
   import SpacePage from "$lib/components/space/SpacePage.svelte";
   import type { DetailKind } from "$lib/components/dashboard/detail";
@@ -66,7 +67,9 @@
       ? new URLSearchParams(window.location.search).get("view")
       : null;
   const companion = view === "companion";
-  const auxiliary = companion || view === "settings" || view === "about";
+  const overlay = view === "overlay";
+  const auxiliary =
+    companion || overlay || view === "settings" || view === "about";
   let mounted = false;
   let disposed = false;
   const listeners: UnlistenFn[] = [];
@@ -221,7 +224,7 @@
       if (!companion) themeStore.init();
       // Language (and other settings) for the mini and About windows; the
       // settings window initialises its own store.
-      if (view !== "settings") void settingsStore.init();
+      if (view !== "settings" && !overlay) void settingsStore.init();
       return;
     }
     themeStore.init();
@@ -309,6 +312,8 @@
   <AppInfo />
 {:else if companion}
   <MenuBarOverview />
+{:else if overlay}
+  <OverlayBar />
 {:else if isLoading}
   <div class="loading-container">
     <div class="loading-content">

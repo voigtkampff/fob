@@ -13,12 +13,16 @@
 
   export let id = "mini-opacity";
   export let describedby: string | undefined = undefined;
-  $: value = miniOpacity($settingsStore.behavior.miniOpacity);
+  /** Which setting it writes (both are whole percents, 0–100). */
+  export let key: "miniOpacity" | "overlayOpacity" = "miniOpacity";
+  export let fallback = 100;
+  $: saved = $settingsStore.behavior[key];
+  $: value = saved == null ? fallback : miniOpacity(saved);
   function set(next: number) {
     const v = miniOpacity(next);
     if (v === value) return;
     settingsStore.updateConfig({
-      behavior: { ...$settingsStore.behavior, miniOpacity: v },
+      behavior: { ...$settingsStore.behavior, [key]: v },
     });
   }
 </script>

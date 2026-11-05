@@ -13,7 +13,16 @@
   import * as Card from "$lib/components/ui/card/index.js";
   import * as NativeSelect from "$lib/components/ui/native-select/index.js";
   import * as ToggleGroup from "$lib/components/ui/toggle-group/index.js";
-  import { Settings2, Palette } from "@lucide/svelte";
+  import { Settings2, Palette, ChevronUp, ChevronDown } from "@lucide/svelte";
+  import {
+    overlaySettings,
+    settingsRows,
+    toggleMetric,
+    moveMetric,
+    DOCKS,
+    DEFAULT_OPACITY,
+    type MetricId,
+  } from "$lib/utils/overlay.js";
   import { t } from "$lib/i18n";
   let pane = "general";
   let runtimeError = "";
@@ -53,6 +62,14 @@
       behavior: { ...$settingsStore.behavior, [key]: value },
     });
   }
+  $: overlay = overlaySettings($settingsStore.behavior);
+  function saveOverlay(patch: Record<string, unknown>) {
+    settingsStore.updateConfig({
+      behavior: { ...$settingsStore.behavior, ...patch },
+    });
+  }
+  const setMetrics = (metrics: MetricId[]) =>
+    saveOverlay({ overlayMetrics: metrics });
   onMount(() => {
     let disposed = false;
     const stops: (() => void)[] = [];
@@ -242,6 +259,143 @@
         >
         <Card.Root size="sm"
           ><Card.Header
+            ><Card.Title>{$t("settings.overlay")}</Card.Title></Card.Header
+          ><Card.Content class="gap-5">
+            <p class="text-xs leading-relaxed text-muted-foreground">
+              {$t("settings.overlayLead")}
+            </p>
+            <div class="flex items-start gap-3">
+              <Checkbox
+                id="overlay-enabled"
+                class="mt-0.5"
+                checked={overlay.enabled}
+                onCheckedChange={(value) =>
+                  saveOverlay({ overlayEnabled: value })}
+              />
+              <div>
+                <Label for="overlay-enabled"
+                  >{$t("settings.overlayEnable")}</Label
+                >
+                <p class="mt-1 text-xs leading-relaxed text-muted-foreground">
+                  {$t("settings.overlayEnableNote")}
+                </p>
+              </div>
+            </div>
+            <div>
+              <p class="text-sm leading-none font-medium">
+                {$t("settings.overlayMetrics")}
+              </p>
+              <p
+                class="mt-1 mb-2 text-xs leading-relaxed text-muted-foreground"
+              >
+                {$t("settings.overlayMetricsNote")}
+              </p>
+              <ul class="overlay-metrics">
+                {#each settingsRows(overlay.metrics) as row, i (row.id)}
+                  {@const name = $t(`overlay.metric.${row.id}`)}
+                  <li>
+                    <Checkbox
+                      id={`overlay-m-${row.id}`}
+                      checked={row.on}
+                      onCheckedChange={(value) =>
+                        setMetrics(
+                          toggleMetric(overlay.metrics, row.id, value),
+                        )}
+                    />
+                    <Label for={`overlay-m-${row.id}`} class="flex-1"
+                      >{name}</Label
+                    >
+                    {#if row.on}
+                      <Button
+                        variant="ghost"
+                        size="icon-sm"
+                        disabled={i === 0}
+                        aria-label={$t("settings.overlayUp", { name })}
+                        title={$t("settings.overlayUp", { name })}
+                        onclick={() =>
+                          setMetrics(moveMetric(overlay.metrics, row.id, -1))}
+                        ><ChevronUp /></Button
+                      ><Button
+                        variant="ghost"
+                        size="icon-sm"
+                        disabled={i === overlay.metrics.length - 1}
+                        aria-label={$t("settings.overlayDown", { name })}
+                        title={$t("settings.overlayDown", { name })}
+                        onclick={() =>
+                          setMetrics(moveMetric(overlay.metrics, row.id, 1))}
+                        ><ChevronDown /></Button
+                      >
+                    {/if}
+                  </li>
+                {/each}
+              </ul>
+            </div>
+            <div class="flex items-start justify-between gap-6">
+              <div>
+                <p class="text-sm leading-none font-medium">
+                  {$t("settings.overlayDock")}
+                </p>
+                <p class="mt-1 text-xs leading-relaxed text-muted-foreground">
+                  {$t("settings.overlayDockNote")}
+                </p>
+              </div>
+              <ToggleGroup.Root
+                type="single"
+                variant="outline"
+                size="sm"
+                class="shrink-0"
+                value={overlay.dock}
+                aria-label={$t("settings.overlayDock")}
+                onValueChange={(value) =>
+                  value && saveOverlay({ overlayDock: value })}
+              >
+                {#each DOCKS as dock}<ToggleGroup.Item value={dock} class="px-3"
+                    >{$t(`settings.overlayDock.${dock}`)}</ToggleGroup.Item
+                  >{/each}
+              </ToggleGroup.Root>
+            </div>
+            <div class="flex items-start justify-between gap-6">
+              <div>
+                <Label for="overlay-opacity"
+                  >{$t("settings.overlayOpacity")}</Label
+                >
+                <p
+                  id="overlay-opacity-note"
+                  class="mt-1 text-xs leading-relaxed text-muted-foreground"
+                >
+                  {$t("settings.overlayOpacityNote")}
+                </p>
+              </div>
+              <div class="shrink-0 pt-1">
+                <OpacitySlider
+                  id="overlay-opacity"
+                  key="overlayOpacity"
+                  fallback={DEFAULT_OPACITY}
+                  describedby="overlay-opacity-note"
+                />
+              </div>
+            </div>
+            <div class="flex items-start gap-3">
+              <Checkbox
+                id="overlay-unlocked"
+                class="mt-0.5"
+                checked={overlay.unlocked}
+                onCheckedChange={(value) =>
+                  saveOverlay({ overlayUnlocked: value })}
+              />
+              <div>
+                <Label for="overlay-unlocked"
+                  >{$t("settings.overlayUnlock")}</Label
+                >
+                <p class="mt-1 text-xs leading-relaxed text-muted-foreground">
+                  {$t("settings.overlayUnlockNote")}
+                </p>
+              </div>
+            </div>
+          </Card.Content></Card.Root
+        >
+        <Card.Root size="sm"
+          ><Card.Header
             ><Card.Title>{$t("hotkey.title")}</Card.Title></Card.Header
           ><Card.Content>
             <div class="flex items-start justify-between gap-6">
@@ -293,3 +447,17 @@
       </p>{/if}
   </footer>
 </div>
+
+<style>
+  .overlay-metrics {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+  .overlay-metrics li {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    min-height: 28px;
+  }
+</style>

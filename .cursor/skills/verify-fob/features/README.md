@@ -4,4 +4,5 @@
 | --- | --- |
 | Mini window drag, restore, reset | mini-position.md |
 | Mini window opacity | mini-opacity.md |
+| Status bar overlay | overlay.md |
 | First launch | first-launch.md |

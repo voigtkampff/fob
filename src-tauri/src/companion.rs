@@ -39,6 +39,8 @@ pub struct TrayItems {
     overview: MenuItem<tauri::Wry>,
     open: MenuItem<tauri::Wry>,
     start: CheckMenuItem<tauri::Wry>,
+    /// Fob status bar on/off (behavior.overlayEnabled).
+    overlay: CheckMenuItem<tauri::Wry>,
     language: Submenu<tauri::Wry>,
     /// Auto / English / 中文, in that order.
     languages: [CheckMenuItem<tauri::Wry>; 3],
@@ -59,6 +61,7 @@ fn relabel(app: &AppHandle, pref: &str) {
     let _ = items.overview.set_text(text.show_mini);
     let _ = items.open.set_text(text.open_full);
     let _ = items.start.set_text(text.start_in_tray);
+    let _ = items.overlay.set_text(text.overlay);
     let _ = items.language.set_text(text.language);
     let _ = items.languages[0].set_text(text.auto);
     let _ = items.quit.set_text(text.quit);
@@ -180,11 +183,22 @@ fn configure(
             None::<&str>,
         )
         .map_err(|e| e.to_string())?;
+        let overlay = CheckMenuItem::with_id(
+            app,
+            "overlay",
+            "Status bar",
+            true,
+            crate::overlay::enabled(app),
+            None::<&str>,
+        )
+        .map_err(|e| e.to_string())?;
         let line = || PredefinedMenuItem::separator(app).map_err(|e| e.to_string());
         let (first, second) = (line()?, line()?);
         let menu = Menu::with_items(
             app,
-            &[&overview, &open, &first, &start, &language, &second, &quit],
+            &[
+                &overview, &overlay, &open, &first, &start, &language, &second, &quit,
+            ],
         )
         .map_err(|e| e.to_string())?;
         if let Ok(mut state) = app.state::<Mutex<CompanionState>>().lock() {
@@ -193,6 +207,7 @@ fn configure(
                 overview,
                 open,
                 start,
+                overlay,
                 language,
                 languages,
                 quit,
@@ -207,6 +222,10 @@ fn configure(
                 let _ = match event.id.as_ref() {
                     "overview" => show(app, None),
                     "open-main" => open_main(app),
+                    "overlay" => {
+                        crate::overlay::toggle(app);
+                        Ok(())
+                    }
                     "start-in-tray" => {
                         set_start_in_tray(app);
                         Ok(())
@@ -1133,6 +1152,11 @@ pub fn window_event(window: &tauri::Window, event: &WindowEvent) {
     }
     match (window.label(), event) {
         ("overview", WindowEvent::Moved(_)) => moved(app),
+        (crate::overlay::LABEL, WindowEvent::Moved(_)) => crate::overlay::moved(app),
+        (crate::overlay::LABEL, WindowEvent::CloseRequested { api, .. }) => {
+            api.prevent_close();
+            crate::overlay::toggle(app);
+        }
         ("overview", WindowEvent::Focused(false)) => {
             let pinned = app
                 .state::<Mutex<CompanionState>>()
@@ -1646,6 +1670,15 @@ mod tests {
             serde_json::json!(null),
         ] {
             assert_eq!(rect_from_json(&bad), None, "{bad}");
+        }
+    }
+}
+
+/// Fob: keep the tray's status bar tick in step with the setting.
+pub fn set_overlay_checked(app: &AppHandle, on: bool) {
+    if let Ok(state) = app.state::<Mutex<CompanionState>>().lock() {
+        if let Some(items) = &state.items {
+            let _ = items.overlay.set_checked(on);
         }
     }
 }

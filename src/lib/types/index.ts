@@ -162,6 +162,12 @@ export interface AppConfig {
     miniHotkey?: string;
     /** Fob: mini window opacity, 0–100 (%). */
     miniOpacity?: number;
+    /** Fob status bar (utils/overlay.js, overlay.rs). */
+    overlayEnabled?: boolean;
+    overlayMetrics?: string[];
+    overlayDock?: "top" | "bottom" | "free";
+    overlayOpacity?: number;
+    overlayUnlocked?: boolean;
   };
 }
 
