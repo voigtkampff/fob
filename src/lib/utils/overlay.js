@@ -26,6 +26,18 @@ export const DEFAULT_METRICS = [
 ];
 export const DOCKS = /** @type {const} */ (["top", "bottom", "free"]);
 export const DEFAULT_OPACITY = 60;
+/** Whole-bar opacity floor (0.7.1): below 10 % the bar is as good as gone. */
+export const OPACITY_FLOOR = 10;
+
+/** A saved opacity as a whole percent in 10–100; 0.7.0 allowed 0–9, which
+ * moves up to 10 (preferences.rs merge does the same when saving).
+ * @param {unknown} value */
+export function overlayOpacity(value) {
+  const n = Number(value);
+  if (value == null || value === "" || !Number.isFinite(n))
+    return DEFAULT_OPACITY;
+  return Math.min(100, Math.max(OPACITY_FLOOR, Math.round(n)));
+}
 
 /**
  * The saved overlay settings, with anything missing or invalid replaced by
@@ -43,17 +55,15 @@ export function overlaySettings(behavior) {
           list.indexOf(id) === i,
       )
     : /** @type {MetricId[]} */ ([...DEFAULT_METRICS]);
-  const n = Number(b.overlayOpacity);
   return {
     enabled: b.overlayEnabled === true,
     metrics,
     dock: DOCKS.includes(/** @type {any} */ (b.overlayDock))
       ? /** @type {typeof DOCKS[number]} */ (b.overlayDock)
       : "top",
-    opacity: Number.isFinite(n)
-      ? Math.min(100, Math.max(0, Math.round(n)))
-      : DEFAULT_OPACITY,
+    opacity: overlayOpacity(b.overlayOpacity),
     unlocked: b.overlayUnlocked === true,
+    charts: b.overlayCharts === true,
   };
 }
 
@@ -72,6 +82,20 @@ export function moveMetric(shown, id, dir) {
   if (i < 0 || j < 0 || j >= shown.length) return shown;
   const next = [...shown];
   [next[i], next[j]] = [next[j], next[i]];
+  return next;
+}
+
+/** Shown metrics with the one at `from` dropped at index `to` (drag and
+ * drop in Settings; `to` is the slot it lands in, counted before removal).
+ * @param {MetricId[]} shown @param {number} from @param {number} to */
+export function reorderMetric(shown, from, to) {
+  if (from < 0 || from >= shown.length || to < 0 || to > shown.length)
+    return shown;
+  const at = to > from ? to - 1 : to;
+  if (at === from) return shown;
+  const next = [...shown];
+  const [id] = next.splice(from, 1);
+  next.splice(at, 0, id);
   return next;
 }
 
@@ -112,12 +136,13 @@ const gb = (/** @type {number | null | undefined} */ v) =>
  *   gpuTemp?: number|null, ramUsed?: number|null, ramTotal?: number|null,
  *   vramUsed?: number|null, vramTotal?: number|null, diskRead?: number|null,
  *   diskWrite?: number|null, netRx?: number|null, netTx?: number|null,
- *   gpuPower?: number|null }} Reading  (overlay_reading in overlay.rs)
+ *   gpuPower?: number|null, history?: any[] }} Reading  (overlay_reading in overlay.rs)
  */
 
-/** The text of each shown metric; `null` reading: all dashes.
+/** The text of each shown metric; `null` reading: all dashes. `parts` splits
+ * the two-number readings (disk R/W, network ↓/↑) so the bar can space them.
  * @param {Reading | null} r @param {MetricId[]} shown
- * @returns {{ id: MetricId, value: string }[]} */
+ * @returns {{ id: MetricId, value: string, parts: string[] }[]} */
 export function cells(r, shown) {
   const x = r ?? {};
   /** @type {Record<MetricId, () => string>} */
@@ -128,12 +153,61 @@ export function cells(r, shown) {
     gpuTemp: () => temp(x.gpuTemp),
     ram: () => gb(x.ramUsed),
     vram: () => gb(x.vramUsed),
-    disk: () => `R ${shortRate(x.diskRead)} W ${shortRate(x.diskWrite)}`,
-    net: () => `↓${shortRate(x.netRx)} ↑${shortRate(x.netTx)}`,
+    disk: () => `R ${shortRate(x.diskRead)}\tW ${shortRate(x.diskWrite)}`,
+    net: () => `↓${shortRate(x.netRx)}\t↑${shortRate(x.netTx)}`,
     power: () =>
       x.gpuPower == null || !Number.isFinite(x.gpuPower)
         ? "—"
         : `${Math.round(x.gpuPower)}W`,
   };
-  return shown.map((id) => ({ id, value: text[id]() }));
+  return shown.map((id) => {
+    const parts = text[id]().split("\t");
+    return { id, value: parts.join(" "), parts };
+  });
+}
+
+/** What each metric's chart draws from a sampler Sample (sampling.rs), and
+ * its scale; `null`: no history for it (video memory, GPU power).
+ * @type {Record<MetricId, { pick: (s: any) => number | null, max: number | null } | null>} */
+const SERIES = {
+  cpu: { pick: (s) => s.cpu ?? null, max: 100 },
+  cpuTemp: { pick: (s) => s.cpu_temp ?? null, max: 100 },
+  gpu: {
+    pick: (s) => {
+      const v = Object.values(s.gpus ?? {}).filter(
+        (n) => typeof n === "number",
+      );
+      return v.length ? Math.max(.../** @type {number[]} */ (v)) : null;
+    },
+    max: 100,
+  },
+  gpuTemp: { pick: (s) => s.gpu_temp ?? null, max: 100 },
+  ram: { pick: (s) => s.memory ?? null, max: 100 },
+  vram: null,
+  disk: {
+    pick: (s) =>
+      s.disk_read == null && s.disk_write == null
+        ? null
+        : (s.disk_read ?? 0) + (s.disk_write ?? 0),
+    max: null,
+  },
+  net: {
+    pick: (s) =>
+      s.received == null && s.sent == null
+        ? null
+        : (s.received ?? 0) + (s.sent ?? 0),
+    max: null,
+  },
+  power: null,
+};
+
+/** The chart for one metric: how to read a sample and the top of the scale
+ * (rates scale to their own peak, at least 1 KB/s); `null` if it has none.
+ * @param {MetricId} id @param {any[]} history */
+export function chartFor(id, history) {
+  const s = SERIES[id];
+  if (!s) return null;
+  const max =
+    s.max ?? Math.max(1024, ...(history ?? []).map((x) => s.pick(x) ?? 0));
+  return { pick: s.pick, max };
 }

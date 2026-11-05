@@ -14,6 +14,7 @@
     Ellipsis,
     Settings2,
     Info,
+    RectangleEllipsis,
   } from "@lucide/svelte";
   export let isFrozen: boolean;
   export let onPause: (value: boolean) => void;
@@ -32,6 +33,7 @@
       actionError = String(error);
     }
   }
+  $: overlayOn = $settingsStore.behavior.overlayEnabled === true;
 </script>
 
 <div
@@ -62,6 +64,20 @@
       aria-pressed={isFrozen}
       onclick={() => onPause(!isFrozen)}
       >{#if isFrozen}<Play />{:else}<Pause />{/if}</Button
+    >
+    <!-- Fob 0.7.1: status bar on/off. behavior.overlayEnabled is the one
+         switch Settings, the tray item and the hotkey also flip, so every
+         change comes back here through preferences-change. -->
+    <Button
+      variant={overlayOn ? "secondary" : "ghost"}
+      size="icon-sm"
+      aria-label={overlayOn ? $t("title.overlayOff") : $t("title.overlayOn")}
+      title={overlayOn ? $t("title.overlayOff") : $t("title.overlayOn")}
+      aria-pressed={overlayOn}
+      onclick={() =>
+        settingsStore.updateConfig({
+          behavior: { ...$settingsStore.behavior, overlayEnabled: !overlayOn },
+        })}><RectangleEllipsis /></Button
     >
     <Button
       variant="ghost"

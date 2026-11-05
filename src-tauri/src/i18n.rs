@@ -27,6 +27,7 @@ pub fn system_locale() -> Option<String> {
 pub struct Tray {
     pub show_mini: &'static str,
     pub overlay: &'static str,
+    pub settings: &'static str,
     pub open_full: &'static str,
     pub start_in_tray: &'static str,
     pub language: &'static str,
@@ -40,6 +41,7 @@ pub fn tray(locale: Locale) -> Tray {
         Locale::En => Tray {
             show_mini: "Show mini window",
             overlay: "Status bar",
+            settings: "Settings",
             open_full: "Open full window",
             start_in_tray: "Start in tray only (mini window mode)",
             language: "Language",
@@ -50,6 +52,7 @@ pub fn tray(locale: Locale) -> Tray {
         Locale::Zh => Tray {
             show_mini: "显示迷你窗口",
             overlay: "状态栏",
+            settings: "设置",
             open_full: "打开完整窗口",
             start_in_tray: "仅在托盘启动（迷你窗口模式）",
             language: "语言",
@@ -83,6 +86,7 @@ mod tests {
             for text in [
                 t.show_mini,
                 t.overlay,
+                t.settings,
                 t.open_full,
                 t.start_in_tray,
                 t.language,

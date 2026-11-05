@@ -57,6 +57,7 @@ fn merge(config: &mut Value, patch: &Value) {
                 | "overlayEnabled" | "overlayUnlocked" => value.is_boolean(),
                 // Fob status bar (overlay.rs, src/lib/utils/overlay.js).
                 "overlayOpacity" => value.as_u64().is_some_and(|n| n <= 100),
+                "overlayCharts" => value.is_boolean(),
                 "overlayDock" => matches!(value.as_str(), Some("top" | "bottom" | "free")),
                 "overlayMetrics" => value.as_array().is_some_and(|list| {
                     let ids: Vec<_> = list.iter().filter_map(Value::as_str).collect();
@@ -67,8 +68,8 @@ fn merge(config: &mut Value, patch: &Value) {
                 // Fob: mini window opacity in percent (Settings and the mini window).
                 "miniOpacity" => value.as_u64().is_some_and(|n| (0..=100).contains(&n)),
                 "processView" => matches!(value.as_str(), Some("flat" | "tree")),
-                // Fob: "" (off) or a canonical combo; set via set_mini_hotkey.
-                "miniHotkey" => value.as_str().is_some_and(|s| {
+                // Fob: "" (off) or a canonical combo; set via set_hotkey.
+                "miniHotkey" | "overlayHotkey" => value.as_str().is_some_and(|s| {
                     s.is_empty() || crate::hotkey::parse(s).is_ok_and(|c| c.canonical() == s)
                 }),
                 "language" => matches!(value.as_str(), Some("auto" | "en" | "zh")),
@@ -80,6 +81,11 @@ fn merge(config: &mut Value, patch: &Value) {
             };
             if group == "behavior" && valid {
                 config[group][key] = value.clone();
+            }
+            // Fob 0.7.1: the status bar opacity is the whole bar's now, 10 %
+            // at least (0.7.0 allowed 0, which hid everything).
+            if group == "behavior" && valid && key == "overlayOpacity" {
+                config[group][key] = Value::from(value.as_u64().unwrap_or(60).max(10));
             }
         }
     }
@@ -176,10 +182,11 @@ pub fn apply_patch(app: &AppHandle, patch: &Value) -> Result<Snapshot, String> {
 }
 #[tauri::command]
 pub async fn update_preferences(app: AppHandle, mut patch: Value) -> Result<Snapshot, String> {
-    // Fob: the hotkey is only saved by set_mini_hotkey, once it's registered
+    // Fob: the hotkey is only saved by set_hotkey, once it's registered
     // (pages send their whole behavior group, possibly with an old value).
     if let Some(behavior) = patch["behavior"].as_object_mut() {
         behavior.remove("miniHotkey");
+        behavior.remove("overlayHotkey");
     }
     tauri::async_runtime::spawn_blocking(move || apply_patch(&app, &patch))
         .await
@@ -199,6 +206,8 @@ pub struct Startup {
     pub language: Option<String>,
     /// Fob: the mini window hotkey, canonical ("" = off).
     pub mini_hotkey: String,
+    /// Fob: the status bar hotkey, canonical ("" = off).
+    pub overlay_hotkey: String,
 }
 pub fn startup_from(saved: Option<&Value>) -> Startup {
     let mut config = defaults();
@@ -213,6 +222,10 @@ pub fn startup_from(saved: Option<&Value>) -> Startup {
         mini_pinned: config["behavior"]["miniPinned"].as_bool().unwrap_or(false),
         language: config["behavior"]["language"].as_str().map(str::to_owned),
         mini_hotkey: config["behavior"]["miniHotkey"]
+            .as_str()
+            .unwrap_or_default()
+            .to_owned(),
+        overlay_hotkey: config["behavior"]["overlayHotkey"]
             .as_str()
             .unwrap_or_default()
             .to_owned(),
@@ -268,6 +281,7 @@ mod tests {
             json!({"overlayDock":"left"}),
             json!({"overlayOpacity":101}),
             json!({"overlayOpacity":-1}),
+            json!({"overlayCharts":1}),
             json!({"overlayEnabled":"yes"}),
             json!({"overlayMetrics":["cpu","cpu"]}),
             json!({"overlayMetrics":["fps"]}),
@@ -277,6 +291,28 @@ mod tests {
             merge(&mut config, &json!({ "behavior": bad }));
             assert_eq!(config, before, "{bad} must be ignored");
         }
+        merge(&mut config, &json!({"behavior":{"overlayOpacity":3}}));
+        assert_eq!(
+            b(&config, "overlayOpacity"),
+            10,
+            "0.7.0 values under 10 % move up to 10 %"
+        );
+        merge(&mut config, &json!({"behavior":{"overlayOpacity":35}}));
+        assert_eq!(b(&config, "overlayCharts"), false);
+        merge(&mut config, &json!({"behavior":{"overlayCharts":true}}));
+        assert_eq!(b(&config, "overlayCharts"), true);
+        assert_eq!(b(&config, "overlayHotkey"), "");
+        merge(
+            &mut config,
+            &json!({"behavior":{"overlayHotkey":"Ctrl+Alt+H"}}),
+        );
+        assert_eq!(b(&config, "overlayHotkey"), "Ctrl+Alt+H");
+        merge(&mut config, &json!({"behavior":{"overlayHotkey":"H"}}));
+        assert_eq!(
+            b(&config, "overlayHotkey"),
+            "Ctrl+Alt+H",
+            "no modifier: refused"
+        );
         merge(&mut config, &json!({"behavior":{"overlayMetrics":[]}}));
         assert_eq!(b(&config, "overlayMetrics"), json!([]));
     }
@@ -310,6 +346,7 @@ mod tests {
                 mini_pinned: false,
                 language: Some("auto".into()),
                 mini_hotkey: String::new(),
+                overlay_hotkey: String::new(),
             }
         );
         // v0.3 settings files have no startInTray key: still on.

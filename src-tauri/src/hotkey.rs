@@ -1,4 +1,4 @@
-//! Fob: the global hotkey that toggles the tray mini window.
+//! Fob: global hotkeys that toggle the tray mini window and the status bar.
 //!
 //! Registered through tauri-plugin-global-shortcut, which uses
 //! RegisterHotKey on Windows (no keyboard hook). The combo is saved in
@@ -222,29 +222,80 @@ impl Combo {
     }
 }
 
-/// The registered combo ("" = none) and the saved combo that failed to
-/// register at launch, with why.
-#[derive(Default)]
-pub struct HotkeyState(Mutex<(String, Option<(&'static str, String)>)>);
+/// What a hotkey toggles. Each has its own saved combo.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Target {
+    /// The tray mini window (behavior.miniHotkey).
+    Mini,
+    /// The status bar (behavior.overlayHotkey).
+    Overlay,
+}
+impl Target {
+    const ALL: [Target; 2] = [Target::Mini, Target::Overlay];
+    fn index(self) -> usize {
+        self as usize
+    }
+    pub fn setting(self) -> &'static str {
+        match self {
+            Target::Mini => "miniHotkey",
+            Target::Overlay => "overlayHotkey",
+        }
+    }
+    fn run(self, app: &AppHandle) {
+        match self {
+            Target::Mini => crate::companion::toggle(app),
+            Target::Overlay => crate::overlay::toggle(app),
+        }
+    }
+}
 
-/// The plugin, with the handler that toggles the mini window.
+/// Per target: the registered combo ("" = none) and the saved combo that
+/// failed to register at launch, with why.
+#[derive(Default)]
+pub struct HotkeyState(Mutex<[(String, Option<(&'static str, String)>); 2]>);
+
+/// Which target owns `shortcut` right now.
+fn owner(app: &AppHandle, shortcut: &Shortcut) -> Option<Target> {
+    let state = app.state::<HotkeyState>();
+    let slots = state.0.lock().ok()?;
+    Target::ALL
+        .into_iter()
+        .find(|t| parse(&slots[t.index()].0).is_ok_and(|c| c.shortcut().id() == shortcut.id()))
+}
+
+/// The plugin, with the handler that toggles the target of the combo.
 pub fn plugin() -> tauri::plugin::TauriPlugin<tauri::Wry> {
     tauri_plugin_global_shortcut::Builder::new()
-        .with_handler(|app, _shortcut, event| {
+        .with_handler(|app, shortcut, event| {
             if event.state == ShortcutState::Pressed {
-                crate::companion::toggle(app);
+                if let Some(target) = owner(app, shortcut) {
+                    target.run(app);
+                }
             }
         })
         .build()
 }
 
-/// Registers `next` (canonical, "" = off) in place of the current combo.
-/// The current one stays registered if `next` can't be.
-fn swap(app: &AppHandle, next: &str) -> Result<(), Refused> {
+/// Whether `next` is already another target's combo ("" never clashes).
+fn clashes(combos: &[String; 2], target: Target, next: &str) -> bool {
+    !next.is_empty()
+        && Target::ALL
+            .into_iter()
+            .any(|t| t != target && combos[t.index()] == next)
+}
+
+/// Registers `next` (canonical, "" = off) for `target` in place of its
+/// current combo, which stays registered if `next` can't be. A combo the
+/// other target already uses is refused as taken.
+fn swap(app: &AppHandle, target: Target, next: &str) -> Result<(), Refused> {
     let state = app.state::<HotkeyState>();
-    let mut current = state.0.lock().map_err(|_| Refused::Invalid)?;
-    if current.0 == next {
+    let mut slots = state.0.lock().map_err(|_| Refused::Invalid)?;
+    if slots[target.index()].0 == next {
         return Ok(());
+    }
+    if clashes(&slots.clone().map(|s| s.0), target, next) {
+        return Err(Refused::Taken);
     }
     let shortcuts = app.global_shortcut();
     if !next.is_empty() {
@@ -253,23 +304,23 @@ fn swap(app: &AppHandle, next: &str) -> Result<(), Refused> {
             .register(combo.shortcut())
             .map_err(|_| Refused::Taken)?;
     }
-    if let Ok(old) = parse(&current.0) {
+    if let Ok(old) = parse(&slots[target.index()].0) {
         if shortcuts.is_registered(old.shortcut()) {
             let _ = shortcuts.unregister(old.shortcut());
         }
     }
-    current.0 = next.to_owned();
+    slots[target.index()].0 = next.to_owned();
     Ok(())
 }
 
 /// At launch (also tray-only): register the saved combo.
-pub fn register_saved(app: &AppHandle, saved: &str) {
+pub fn register_saved(app: &AppHandle, target: Target, saved: &str) {
     if saved.is_empty() {
         return;
     }
-    let result = parse(saved).and_then(|c| swap(app, &c.canonical()));
-    if let (Err(refused), Ok(mut state)) = (result, app.state::<HotkeyState>().0.lock()) {
-        state.1 = Some((refused.code(), saved.to_owned()));
+    let result = parse(saved).and_then(|c| swap(app, target, &c.canonical()));
+    if let (Err(refused), Ok(mut slots)) = (result, app.state::<HotkeyState>().0.lock()) {
+        slots[target.index()].1 = Some((refused.code(), saved.to_owned()));
     }
 }
 
@@ -282,10 +333,13 @@ pub struct HotkeyStatus {
     failed: String,
 }
 #[tauri::command]
-pub fn get_mini_hotkey(app: AppHandle) -> HotkeyStatus {
+pub fn get_hotkey(app: AppHandle, target: Target) -> HotkeyStatus {
     let state = app.state::<HotkeyState>();
-    let state = state.0.lock();
-    let (combo, failure) = state.map(|s| s.clone()).unwrap_or_default();
+    let (combo, failure) = state
+        .0
+        .lock()
+        .map(|s| s[target.index()].clone())
+        .unwrap_or_default();
     let (error, failed) = match failure {
         Some((code, combo)) => (Some(code), combo),
         None => (None, String::new()),
@@ -297,14 +351,14 @@ pub fn get_mini_hotkey(app: AppHandle) -> HotkeyStatus {
     }
 }
 /// While Settings records a new combo the current one is let go, so pressing
-/// it again reaches the recorder instead of toggling the mini window.
+/// it again reaches the recorder instead of toggling its window.
 #[tauri::command]
-pub fn suspend_mini_hotkey(app: AppHandle, suspend: bool) {
+pub fn suspend_hotkey(app: AppHandle, target: Target, suspend: bool) {
     let current = app
         .state::<HotkeyState>()
         .0
         .lock()
-        .map(|s| s.0.clone())
+        .map(|s| s[target.index()].0.clone())
         .unwrap_or_default();
     if let Ok(combo) = parse(&current) {
         let shortcuts = app.global_shortcut();
@@ -319,17 +373,20 @@ pub fn suspend_mini_hotkey(app: AppHandle, suspend: bool) {
 /// Sets (or clears, with "") the hotkey and saves it. Err is a code:
 /// "invalid" | "needsModifier" | "taken"; the previous combo is kept.
 #[tauri::command]
-pub fn set_mini_hotkey(app: AppHandle, combo: String) -> Result<String, String> {
+pub fn set_hotkey(app: AppHandle, target: Target, combo: String) -> Result<String, String> {
     let next = if combo.trim().is_empty() {
         String::new()
     } else {
         parse(&combo).map_err(|r| r.code().to_owned())?.canonical()
     };
-    swap(&app, &next).map_err(|r| r.code().to_owned())?;
-    if let Ok(mut state) = app.state::<HotkeyState>().0.lock() {
-        state.1 = None;
+    swap(&app, target, &next).map_err(|r| r.code().to_owned())?;
+    if let Ok(mut slots) = app.state::<HotkeyState>().0.lock() {
+        slots[target.index()].1 = None;
     }
-    crate::preferences::apply_patch(&app, &serde_json::json!({"behavior": {"miniHotkey": next}}))?;
+    crate::preferences::apply_patch(
+        &app,
+        &serde_json::json!({"behavior": { target.setting(): next }}),
+    )?;
     Ok(next)
 }
 
@@ -338,6 +395,22 @@ mod tests {
     use super::*;
     fn ok(text: &str) -> String {
         parse(text).unwrap().canonical()
+    }
+    #[test]
+    fn the_two_targets_cant_share_a_combo() {
+        let combos = ["Ctrl+Alt+F".to_owned(), String::new()];
+        assert!(clashes(&combos, Target::Overlay, "Ctrl+Alt+F"));
+        assert!(
+            !clashes(&combos, Target::Mini, "Ctrl+Alt+F"),
+            "its own combo"
+        );
+        assert!(!clashes(&combos, Target::Overlay, "Ctrl+Alt+H"));
+        assert!(!clashes(&combos, Target::Overlay, ""), "off never clashes");
+        assert!(!clashes(&combos, Target::Mini, ""));
+        assert_eq!(Target::Mini.setting(), "miniHotkey");
+        assert_eq!(Target::Overlay.setting(), "overlayHotkey");
+        let t: Target = serde_json::from_str("\"overlay\"").unwrap();
+        assert_eq!(t, Target::Overlay);
     }
     #[test]
     fn combos_come_out_canonical() {

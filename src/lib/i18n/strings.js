@@ -352,6 +352,11 @@ export const en = {
   "hotkey.note":
     "Works from any app, also when Fob runs only in the tray. Click the field, then press a combo with Ctrl, Alt or Win (for example Ctrl+Alt+F). Esc cancels.",
   "hotkey.fieldAria": "Mini window hotkey: click, then press a key combination",
+  "hotkey.overlayLabel": "Show or hide the status bar",
+  "hotkey.overlayNote":
+    "Off until you set one. It needs Ctrl, Alt or Win, and can't be the mini window's combo",
+  "hotkey.overlayAria":
+    "Status bar hotkey: click, then press a key combination",
   "hotkey.press": "Press a combo…",
   "hotkey.none": "Not set",
   "hotkey.clear": "Clear the hotkey",
@@ -541,6 +546,8 @@ export const en = {
   "theme.glassy": "Glassy",
   "space.title": "Space map",
   "space.drives": "Drives",
+  "title.overlayOn": "Show the status bar",
+  "title.overlayOff": "Hide the status bar",
   "settings.overlay": "Status bar",
   "settings.overlayLead":
     "A thin always-on-top row of readings, like a game performance overlay. It only reads Fob's own sampler and never injects into games, so it can't show FPS.",
@@ -549,7 +556,11 @@ export const en = {
     "Also in the tray menu. Mouse clicks pass through it; hold Ctrl to drag it.",
   "settings.overlayMetrics": "Readings",
   "settings.overlayMetricsNote":
-    "Ticked readings show left to right in this order.",
+    "Ticked readings show left to right in this order. Drag to reorder",
+  "settings.overlayDrag": "Drag to reorder",
+  "settings.overlayCharts": "Show small charts",
+  "settings.overlayChartsNote":
+    "A two-minute line next to each reading that has a history (not video memory or GPU power)",
   "settings.overlayUp": "Move {name} left",
   "settings.overlayDown": "Move {name} right",
   "settings.overlayDock": "Position",
@@ -558,9 +569,9 @@ export const en = {
   "settings.overlayDock.top": "Top",
   "settings.overlayDock.bottom": "Bottom",
   "settings.overlayDock.free": "Free",
-  "settings.overlayOpacity": "Background opacity",
+  "settings.overlayOpacity": "Opacity",
   "settings.overlayOpacityNote":
-    "Plain see-through background; the text stays fully opaque.",
+    "Fades the whole bar together: background, text and charts. 10% at least",
   "settings.overlayUnlock": "Unlock position",
   "settings.overlayUnlockNote":
     "While on, the bar takes mouse input and can be dragged without Ctrl.",
@@ -964,8 +975,12 @@ export const zh = {
     "Fob 只收到了修饰键。如果你按下了完整的组合键，它可能已被其他程序占用，请换一个。",
   "hotkey.label": "显示或隐藏迷你窗口",
   "hotkey.note":
-    "在任何程序里都能用，Fob 只在托盘运行时也有效。点一下输入框，再按下带 Ctrl、Alt 或 Win 的组合键（例如 Ctrl+Alt+F）。按 Esc 取消。",
+    "在任何程序里都能用，Fob 只在托盘运行时也有效。点一下输入框，再按下带 Ctrl、Alt 或 Win 的组合键（例如 Ctrl+Alt+F）。按 Esc 取消",
   "hotkey.fieldAria": "迷你窗口快捷键：点击后按下组合键",
+  "hotkey.overlayLabel": "显示或隐藏状态栏",
+  "hotkey.overlayNote":
+    "默认关闭。需要包含 Ctrl、Alt 或 Win，且不能与迷你窗口的组合键相同",
+  "hotkey.overlayAria": "状态栏快捷键：点击后按下组合键",
   "hotkey.press": "请按下组合键…",
   "hotkey.none": "未设置",
   "hotkey.clear": "清除快捷键",
@@ -1151,26 +1166,34 @@ export const zh = {
   "theme.glassy": "玻璃",
   "space.title": "空间分布",
   "space.drives": "磁盘",
+  "title.overlayOn": "显示状态栏",
+  "title.overlayOff": "隐藏状态栏",
   "settings.overlay": "状态栏",
   "settings.overlayLead":
-    "细窄的置顶横条，像游戏里的性能覆盖层。只读取 Fob 自己的采样数据，不注入游戏，所以不显示帧率。",
+    "细窄的置顶横条，像游戏里的性能覆盖层。只读取 Fob 自己的采样数据，不注入游戏，所以不显示帧率",
   "settings.overlayEnable": "显示状态栏",
   "settings.overlayEnableNote":
-    "托盘菜单里也能开关。鼠标点击会穿透它；按住 Ctrl 可以拖动。",
+    "托盘菜单里也能开关。鼠标点击会穿透它；按住 Ctrl 可以拖动",
   "settings.overlayMetrics": "显示项目",
-  "settings.overlayMetricsNote": "勾选的项目按这个顺序从左到右显示。",
+  "settings.overlayMetricsNote":
+    "勾选的项目按这个顺序从左到右显示，拖动可调整顺序",
+  "settings.overlayDrag": "拖动可调整顺序",
+  "settings.overlayCharts": "显示小图表",
+  "settings.overlayChartsNote":
+    "在有历史数据的项目旁显示最近两分钟的折线（显存和功耗没有）",
   "settings.overlayUp": "把{name}往前移",
   "settings.overlayDown": "把{name}往后移",
   "settings.overlayDock": "位置",
   "settings.overlayDockNote":
-    "拖到屏幕上下边缘附近会吸附过去；拖到其他地方则变为自由。",
+    "拖到屏幕上下边缘附近会吸附过去；拖到其他地方则变为自由",
   "settings.overlayDock.top": "顶部",
   "settings.overlayDock.bottom": "底部",
   "settings.overlayDock.free": "自由",
-  "settings.overlayOpacity": "背景不透明度",
-  "settings.overlayOpacityNote": "普通半透明背景，文字保持不透明。",
+  "settings.overlayOpacity": "不透明度",
+  "settings.overlayOpacityNote":
+    "整条状态栏一起变透明：背景、文字和图表，最低 10%",
   "settings.overlayUnlock": "解锁位置",
-  "settings.overlayUnlockNote": "打开后状态栏会接收鼠标，不按 Ctrl 也能拖动。",
+  "settings.overlayUnlockNote": "打开后状态栏会接收鼠标，不按 Ctrl 也能拖动",
   "overlay.empty": "未选择显示项目",
   "overlay.metric.cpu": "CPU",
   "overlay.short.cpu": "CPU",

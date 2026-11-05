@@ -168,6 +168,9 @@ export interface AppConfig {
     overlayDock?: "top" | "bottom" | "free";
     overlayOpacity?: number;
     overlayUnlocked?: boolean;
+    overlayCharts?: boolean;
+    /** Global hotkey that toggles the status bar ("" = off). */
+    overlayHotkey?: string;
   };
 }
 

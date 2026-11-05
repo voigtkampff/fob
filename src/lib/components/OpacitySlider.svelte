@@ -16,10 +16,12 @@
   /** Which setting it writes (both are whole percents, 0–100). */
   export let key: "miniOpacity" | "overlayOpacity" = "miniOpacity";
   export let fallback = 100;
+  /** Lowest value it offers (the status bar stops at 10 %). */
+  export let min = OPACITY_MIN;
   $: saved = $settingsStore.behavior[key];
-  $: value = saved == null ? fallback : miniOpacity(saved);
+  $: value = saved == null ? fallback : Math.max(min, miniOpacity(saved));
   function set(next: number) {
-    const v = miniOpacity(next);
+    const v = Math.max(min, miniOpacity(next));
     if (v === value) return;
     settingsStore.updateConfig({
       behavior: { ...$settingsStore.behavior, [key]: v },
@@ -32,8 +34,8 @@
     {id}
     type="range"
     class="fob-range w-40 cursor-pointer"
-    style:--fill="{value}%"
-    min={OPACITY_MIN}
+    style:--fill="{((value - min) / (OPACITY_MAX - min)) * 100}%"
+    {min}
     max={OPACITY_MAX}
     step={OPACITY_STEP}
     {value}

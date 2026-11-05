@@ -260,9 +260,12 @@ fn window(app: &AppHandle) -> Result<WebviewWindow, String> {
         .decorations(false)
         .transparent(true)
         .shadow(false)
-        // Resizable for GTK, which won't shrink a fixed-size window below
-        // 200 px; min = max (place) stops any user or WM resize anyway.
-        .resizable(true)
+        // Not resizable on Windows: a resizable undecorated window gets a
+        // sizing border from the hit-test, so with the mouse let in (Ctrl)
+        // its top and bottom edges dragged the bar taller. GTK won't shrink
+        // a fixed-size window below 200 px, so Linux keeps it resizable;
+        // min = max (place) stops any resize there.
+        .resizable(cfg!(target_os = "linux"))
         .maximizable(false)
         .minimizable(false)
         .always_on_top(true)
@@ -553,6 +556,8 @@ pub struct Reading {
     pub net_tx: Option<u64>,
     pub gpu_power: Option<f64>,
     pub paused: bool,
+    /// The last two minutes of samples, for the optional charts.
+    pub history: Vec<crate::sampling::Sample>,
 }
 
 #[tauri::command]
@@ -578,6 +583,7 @@ pub async fn overlay_reading(app: AppHandle) -> Result<Reading, String> {
         net_tx: f.stats.network_tx_bytes,
         gpu_power: gpu.and_then(|g| g.power_watts),
         paused: snap.paused,
+        history: snap.history.clone(),
     })
 }
 

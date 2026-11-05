@@ -13,13 +13,21 @@
   import * as Card from "$lib/components/ui/card/index.js";
   import * as NativeSelect from "$lib/components/ui/native-select/index.js";
   import * as ToggleGroup from "$lib/components/ui/toggle-group/index.js";
-  import { Settings2, Palette, ChevronUp, ChevronDown } from "@lucide/svelte";
+  import {
+    Settings2,
+    Palette,
+    ChevronUp,
+    ChevronDown,
+    GripVertical,
+  } from "@lucide/svelte";
   import {
     overlaySettings,
     settingsRows,
     toggleMetric,
     moveMetric,
+    reorderMetric,
     DOCKS,
+    OPACITY_FLOOR,
     DEFAULT_OPACITY,
     type MetricId,
   } from "$lib/utils/overlay.js";
@@ -63,6 +71,27 @@
     });
   }
   $: overlay = overlaySettings($settingsStore.behavior);
+  // Drag and drop reorder: the shown row being dragged, and the slot (0 to
+  // shown.length) it would land in.
+  let dragFrom = -1;
+  let dropAt = -1;
+  function dragOver(event: DragEvent, i: number, on: boolean) {
+    if (dragFrom < 0) return;
+    event.preventDefault();
+    if (event.dataTransfer) event.dataTransfer.dropEffect = "move";
+    if (!on) {
+      dropAt = overlay.metrics.length;
+      return;
+    }
+    const box = (event.currentTarget as HTMLElement).getBoundingClientRect();
+    dropAt = event.clientY < box.top + box.height / 2 ? i : i + 1;
+  }
+  function drop(event: DragEvent) {
+    event.preventDefault();
+    if (dragFrom >= 0 && dropAt >= 0)
+      setMetrics(reorderMetric(overlay.metrics, dragFrom, dropAt));
+    dragFrom = dropAt = -1;
+  }
   function saveOverlay(patch: Record<string, unknown>) {
     settingsStore.updateConfig({
       behavior: { ...$settingsStore.behavior, ...patch },
@@ -293,7 +322,30 @@
               <ul class="overlay-metrics">
                 {#each settingsRows(overlay.metrics) as row, i (row.id)}
                   {@const name = $t(`overlay.metric.${row.id}`)}
-                  <li>
+                  <li
+                    class:dragging={row.on && dragFrom === i}
+                    class:drop-before={dragFrom >= 0 && dropAt === i}
+                    class:drop-after={dragFrom >= 0 &&
+                      row.on &&
+                      dropAt === overlay.metrics.length &&
+                      i === overlay.metrics.length - 1}
+                    draggable={row.on}
+                    ondragstart={(e) => {
+                      if (!row.on) return;
+                      dragFrom = i;
+                      e.dataTransfer?.setData("text/plain", row.id);
+                      if (e.dataTransfer) e.dataTransfer.effectAllowed = "move";
+                    }}
+                    ondragover={(e) => dragOver(e, i, row.on)}
+                    ondrop={drop}
+                    ondragend={() => (dragFrom = dropAt = -1)}
+                  >
+                    <span
+                      class="grip"
+                      class:off={!row.on}
+                      title={row.on ? $t("settings.overlayDrag") : undefined}
+                      aria-hidden="true"><GripVertical class="size-3.5" /></span
+                    >
                     <Checkbox
                       id={`overlay-m-${row.id}`}
                       checked={row.on}
@@ -371,8 +423,26 @@
                   id="overlay-opacity"
                   key="overlayOpacity"
                   fallback={DEFAULT_OPACITY}
+                  min={OPACITY_FLOOR}
                   describedby="overlay-opacity-note"
                 />
+              </div>
+            </div>
+            <div class="flex items-start gap-3">
+              <Checkbox
+                id="overlay-charts"
+                class="mt-0.5"
+                checked={overlay.charts}
+                onCheckedChange={(value) =>
+                  saveOverlay({ overlayCharts: value })}
+              />
+              <div>
+                <Label for="overlay-charts"
+                  >{$t("settings.overlayCharts")}</Label
+                >
+                <p class="mt-1 text-xs leading-relaxed text-muted-foreground">
+                  {$t("settings.overlayChartsNote")}
+                </p>
               </div>
             </div>
             <div class="flex items-start gap-3">
@@ -409,6 +479,25 @@
                 </p>
               </div>
               <div class="shrink-0"><HotkeyField /></div>
+            </div>
+            <div class="mt-4 flex items-start justify-between gap-6">
+              <div>
+                <Label for="overlay-hotkey">{$t("hotkey.overlayLabel")}</Label>
+                <p
+                  id="overlay-hotkey-note"
+                  class="mt-1 text-xs leading-relaxed text-muted-foreground"
+                >
+                  {$t("hotkey.overlayNote")}
+                </p>
+              </div>
+              <div class="shrink-0">
+                <HotkeyField
+                  target="overlay"
+                  id="overlay-hotkey"
+                  describedby="overlay-hotkey-note"
+                  label={$t("hotkey.overlayAria")}
+                />
+              </div>
             </div>
           </Card.Content></Card.Root
         >
@@ -459,5 +548,28 @@
     align-items: center;
     gap: 10px;
     min-height: 28px;
+    border-radius: 6px;
+    box-shadow: none;
+    border-top: 2px solid transparent;
+    border-bottom: 2px solid transparent;
+  }
+  .overlay-metrics li[draggable="true"] {
+    cursor: grab;
+  }
+  .overlay-metrics li.dragging {
+    opacity: 0.45;
+  }
+  .overlay-metrics li.drop-before {
+    border-top-color: var(--primary);
+  }
+  .overlay-metrics li.drop-after {
+    border-bottom-color: var(--primary);
+  }
+  .grip {
+    display: inline-flex;
+    color: var(--muted-foreground);
+  }
+  .grip.off {
+    visibility: hidden;
   }
 </style>

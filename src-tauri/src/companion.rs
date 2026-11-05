@@ -41,6 +41,8 @@ pub struct TrayItems {
     start: CheckMenuItem<tauri::Wry>,
     /// Fob status bar on/off (behavior.overlayEnabled).
     overlay: CheckMenuItem<tauri::Wry>,
+    /// Fob: opens the Settings window.
+    settings: MenuItem<tauri::Wry>,
     language: Submenu<tauri::Wry>,
     /// Auto / English / 中文, in that order.
     languages: [CheckMenuItem<tauri::Wry>; 3],
@@ -62,6 +64,7 @@ fn relabel(app: &AppHandle, pref: &str) {
     let _ = items.open.set_text(text.open_full);
     let _ = items.start.set_text(text.start_in_tray);
     let _ = items.overlay.set_text(text.overlay);
+    let _ = items.settings.set_text(text.settings);
     let _ = items.language.set_text(text.language);
     let _ = items.languages[0].set_text(text.auto);
     let _ = items.quit.set_text(text.quit);
@@ -192,12 +195,14 @@ fn configure(
             None::<&str>,
         )
         .map_err(|e| e.to_string())?;
+        let settings = MenuItem::with_id(app, "settings", "Settings", true, None::<&str>)
+            .map_err(|e| e.to_string())?;
         let line = || PredefinedMenuItem::separator(app).map_err(|e| e.to_string());
         let (first, second) = (line()?, line()?);
         let menu = Menu::with_items(
             app,
             &[
-                &overview, &overlay, &open, &first, &start, &language, &second, &quit,
+                &overview, &overlay, &open, &settings, &first, &start, &language, &second, &quit,
             ],
         )
         .map_err(|e| e.to_string())?;
@@ -208,6 +213,7 @@ fn configure(
                 open,
                 start,
                 overlay,
+                settings,
                 language,
                 languages,
                 quit,
@@ -225,6 +231,9 @@ fn configure(
                     "overlay" => {
                         crate::overlay::toggle(app);
                         Ok(())
+                    }
+                    "settings" => {
+                        crate::desktop::open_settings(app.clone(), Some("general".into()))
                     }
                     "start-in-tray" => {
                         set_start_in_tray(app);
@@ -329,7 +338,8 @@ fn set_start_in_tray(app: &AppHandle) {
 pub fn launch(app: &AppHandle) -> Result<(), String> {
     let startup = crate::preferences::startup(app);
     // Fob: the mini window hotkey works in tray-only mode too.
-    crate::hotkey::register_saved(app, &startup.mini_hotkey);
+    crate::hotkey::register_saved(app, crate::hotkey::Target::Mini, &startup.mini_hotkey);
+    crate::hotkey::register_saved(app, crate::hotkey::Target::Overlay, &startup.overlay_hotkey);
     let saved = load_position(app);
     if let Ok(mut state) = app.state::<Mutex<CompanionState>>().lock() {
         state.pinned = startup.mini_pinned;

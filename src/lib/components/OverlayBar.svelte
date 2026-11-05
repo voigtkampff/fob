@@ -1,13 +1,21 @@
 <script lang="ts">
   // Fob status bar (overlay.rs): one row of readings in a thin always-on-top
-  // window. Fixed light-on-dark colours whatever the theme, no shadows;
-  // only the background follows the opacity setting.
+  // window. Colours come from the current theme (background, accent label,
+  // foreground value), no shadows; the opacity setting fades the whole bar,
+  // text and charts included (0.7.1).
   import { onDestroy, onMount, tick } from "svelte";
   import { invoke } from "@tauri-apps/api/core";
   import { listen, type UnlistenFn } from "@tauri-apps/api/event";
   import { getCurrentWindow } from "@tauri-apps/api/window";
   import { settingsStore } from "$lib/stores/settings";
-  import { overlaySettings, cells, type Reading } from "$lib/utils/overlay.js";
+  import { themeStore } from "$lib/stores/theme";
+  import {
+    overlaySettings,
+    cells,
+    chartFor,
+    type Reading,
+  } from "$lib/utils/overlay.js";
+  import { sparklinePath } from "$lib/utils/dashboard.js";
   import { t } from "$lib/i18n";
 
   let reading: Reading | null = $state(null);
@@ -19,6 +27,9 @@
   let paint = $state(0);
   const config = $derived(overlaySettings($settingsStore.behavior));
   const shown = $derived(cells(reading, config.metrics));
+  const history = $derived((reading as Reading | null)?.history ?? []);
+  const CW = 36;
+  const CH = 14;
   const stops: UnlistenFn[] = [];
   let timer: ReturnType<typeof setInterval> | undefined;
   let destroyed = false;
@@ -46,6 +57,7 @@
   onMount(() => {
     document.documentElement.dataset.overlay = "true";
     void settingsStore.init();
+    themeStore.init();
     void read();
     timer = setInterval(read, 1000);
     void listen<boolean>("overlay-interactive", (e) => {
@@ -70,17 +82,34 @@
 <div
   class="bar"
   class:interactive
-  style:--alpha={config.opacity / 100}
+  style:opacity={config.opacity / 100}
   onmousedown={(e) => {
     if (interactive && e.button === 0) void getCurrentWindow().startDragging();
   }}
 >
   {#key paint}<div class="row" bind:this={row}>
       {#each shown as cell (cell.id)}
+        {@const chart = config.charts ? chartFor(cell.id, history) : null}
         <span class="cell"
           ><span class="label">{$t(`overlay.short.${cell.id}`)}</span><span
-            class="value {cell.id}">{cell.value}</span
-          ></span
+            class="value {cell.id}"
+            >{#each cell.parts as part, i (i)}<span class="part">{part}</span
+              >{/each}</span
+          >{#if chart}<svg
+              class="chart"
+              width={CW}
+              height={CH}
+              viewBox={`0 0 ${CW} ${CH}`}
+              preserveAspectRatio="none"
+              aria-hidden="true"
+              ><path
+                d={sparklinePath(history, chart.pick, {
+                  width: CW,
+                  height: CH - 1,
+                  max: chart.max,
+                })}
+              /></svg
+            >{/if}</span
         >
       {:else}
         <span class="label">{$t("overlay.empty")}</span>
@@ -99,21 +128,24 @@
     height: 100vh;
     display: flex;
     align-items: center;
-    background: rgb(12 14 18 / var(--alpha));
+    box-sizing: border-box;
+    background: var(--background);
+    border: 1px solid transparent;
     border-radius: 4px;
     user-select: none;
     cursor: default;
     font-family: "Segoe UI", "Microsoft YaHei UI", system-ui, sans-serif;
   }
+  /* Ctrl held / unlocked: a slightly brighter bar with a faint solid edge. */
   .bar.interactive {
     cursor: move;
-    outline: 1px dashed rgb(255 255 255 / 0.75);
-    outline-offset: -1px;
+    background: color-mix(in oklab, var(--background), var(--foreground) 8%);
+    border-color: color-mix(in oklab, var(--border), var(--foreground) 15%);
   }
   .row {
     display: inline-flex;
     align-items: center;
-    gap: 12px;
+    gap: 14px;
     padding: 0 10px;
     white-space: nowrap;
     font-size: 13px;
@@ -121,19 +153,31 @@
   }
   .cell {
     display: inline-flex;
-    align-items: baseline;
+    align-items: center;
     gap: 4px;
   }
   .label {
-    color: #9fd3ff;
+    color: var(--primary);
     font-weight: 600;
     font-size: 11px;
   }
   .value {
-    color: #ffffff;
+    display: inline-flex;
+    justify-content: flex-end;
+    gap: 9px;
+    color: var(--foreground);
     font-weight: 700;
     font-variant-numeric: tabular-nums;
-    text-align: right;
+  }
+  .chart {
+    display: block;
+    margin-left: 2px;
+  }
+  .chart path {
+    fill: none;
+    stroke: var(--primary);
+    stroke-width: 1.25;
+    vector-effect: non-scaling-stroke;
   }
   /* Fixed widths, so the bar doesn't twitch as numbers change. */
   .value.cpu,
@@ -149,10 +193,12 @@
   .value.vram {
     min-width: 5.5ch;
   }
-  .value.net {
-    min-width: 13ch;
+  .value.net .part {
+    min-width: 6ch;
+    text-align: right;
   }
-  .value.disk {
-    min-width: 15ch;
+  .value.disk .part {
+    min-width: 7ch;
+    text-align: right;
   }
 </style>

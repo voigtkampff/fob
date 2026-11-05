@@ -7,6 +7,20 @@
   import { Keyboard, X } from "@lucide/svelte";
   import { fromKeydown, validate } from "$lib/utils/hotkey.js";
   import { t } from "$lib/i18n";
+  /** Which hotkey it records (hotkey.rs Target): the mini window or the
+   * status bar. */
+  let {
+    target = "mini",
+    id = "mini-hotkey",
+    describedby = "mini-hotkey-note",
+    label = "",
+  }: {
+    target?: "mini" | "overlay";
+    id?: string;
+    describedby?: string;
+    /** Accessible name; the mini window's by default. */
+    label?: string;
+  } = $props();
   let combo = $state("");
   let recording = $state(false);
   let held = $state("");
@@ -22,7 +36,8 @@
     })[code] ?? code;
   onMount(() => {
     void invoke<{ combo: string; error: string | null; failed: string }>(
-      "get_mini_hotkey",
+      "get_hotkey",
+      { target },
     ).then((status) => {
       combo = status.combo;
       if (status.error)
@@ -30,18 +45,18 @@
     });
   });
   // `resume`: give the current combo back now (not when a new one is about
-  // to be set; that resumes after set_mini_hotkey has answered).
+  // to be set; that resumes after set_hotkey has answered).
   function record(on: boolean, resume = true) {
     if (recording === on) return;
     recording = on;
     held = "";
     if (on) error = "";
-    if (on || resume) void invoke("suspend_mini_hotkey", { suspend: on });
+    if (on || resume) void invoke("suspend_hotkey", { target, suspend: on });
   }
   async function apply(next: string) {
     busy = true;
     try {
-      combo = await invoke<string>("set_mini_hotkey", { combo: next });
+      combo = await invoke<string>("set_hotkey", { target, combo: next });
       error = "";
     } catch (e) {
       // The previous combo stays registered and saved.
@@ -65,7 +80,7 @@
     const refused = validate(next.combo);
     if (refused) error = message(refused);
     void (refused ? Promise.resolve() : apply(next.combo)).finally(
-      () => void invoke("suspend_mini_hotkey", { suspend: false }),
+      () => void invoke("suspend_hotkey", { target, suspend: false }),
     );
   }
   // A combo another app owns never reaches this page (Windows hands the key
@@ -82,11 +97,11 @@
 <div class="flex items-center gap-2">
   <button
     bind:this={field}
-    id="mini-hotkey"
+    {id}
     type="button"
     class={`flex h-8 min-w-44 items-center gap-2 rounded-md border px-3 text-sm tabular-nums transition-colors ${recording ? "border-ring ring-2 ring-ring/40" : "border-input"} ${combo || recording ? "" : "text-muted-foreground"}`}
-    aria-label={$t("hotkey.fieldAria")}
-    aria-describedby="mini-hotkey-note"
+    aria-label={label || $t("hotkey.fieldAria")}
+    aria-describedby={describedby}
     disabled={busy}
     onclick={() => record(!recording)}
     onkeydown={keydown}
