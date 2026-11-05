@@ -83,36 +83,101 @@ pub struct Sample {
     pub disk_read: Option<u64>,
     pub disk_write: Option<u64>,
 }
-/// Fob: same rules as sensorSummary() in src/lib/utils/dashboard.js.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum Device {
+    Cpu,
+    Gpu,
+    Other,
+}
+
+/// Which device a sensor belongs to. LibreHardwareMonitor ids start with the
+/// hardware type ("/amdcpu/0/…", "/gpu-nvidia/0/…"), so an APU named
+/// "… w/ Radeon 780M Graphics" is still a CPU; NVML ids start "nvml/".
+/// Without an id, the hardware name decides, CPU words first. Same rules as
+/// sensorDevice() in src/lib/utils/dashboard.js.
+fn device(s: &crate::sensors::Sensor) -> Device {
+    let id = s.id.to_lowercase();
+    if !id.is_empty() {
+        let kind = id
+            .trim_start_matches('/')
+            .split('/')
+            .next()
+            .unwrap_or_default();
+        return match kind {
+            "amdcpu" | "intelcpu" | "cpu" => Device::Cpu,
+            "nvidiagpu" | "atigpu" | "nvml" => Device::Gpu,
+            k if k.starts_with("gpu-") => Device::Gpu,
+            _ => Device::Other,
+        };
+    }
+    let hw = s.hardware.to_lowercase();
+    let word = |w: &str| hw.split(|c: char| !c.is_alphanumeric()).any(|x| x == w);
+    if hw.contains("ryzen")
+        || hw.contains("intel core")
+        || hw.contains("core i")
+        || hw.contains("core ultra")
+        || word("cpu")
+        || hw.contains("processor")
+    {
+        Device::Cpu
+    } else if ["gpu", "nvidia", "geforce", "radeon"]
+        .iter()
+        .any(|w| hw.contains(w))
+        || word("arc")
+    {
+        Device::Gpu
+    } else {
+        Device::Other
+    }
+}
+
+/// CPU temperature order (lower first): package, Tctl/Tdie, Tdie, a CCD
+/// average or max, a core max or average, anything else (cpuTempRank()).
+fn cpu_rank(name: &str) -> u8 {
+    let n = name.to_lowercase();
+    let avg_max = n.contains("average") || n.contains("max");
+    if n.contains("package") {
+        0
+    } else if n.contains("tctl") {
+        1
+    } else if n.contains("tdie") && !n.contains("ccd") {
+        2
+    } else if n.contains("ccd") && avg_max {
+        3
+    } else if n.contains("core") && avg_max {
+        4
+    } else {
+        5
+    }
+}
+
+/// GPU: the core reading before hot spot and memory (gpuTempRank()).
+fn gpu_rank(name: &str) -> u8 {
+    let n = name.to_lowercase();
+    u8::from(n.contains("hot") || n.contains("memory"))
+}
+
+/// The CPU and GPU temperature every view shows (status bar, charts); the
+/// pages use sensorSummary() with the same rules.
 fn headline_temps(sensors: &[crate::sensors::Sensor]) -> (Option<f64>, Option<f64>) {
     use crate::sensors::SensorKind;
-    let has = |text: &str, words: &[&str]| words.iter().any(|w| text.contains(w));
-    const GPU: &[&str] = &["gpu", "nvidia", "radeon", "geforce"];
-    let temps: Vec<(String, String, f64)> = sensors
-        .iter()
-        .filter(|s| s.kind == SensorKind::Temperature && s.value.is_finite())
-        .map(|s| {
-            let name = s.name.to_lowercase();
-            (
-                format!("{} {}", s.hardware.to_lowercase(), name),
-                name,
-                s.value,
-            )
-        })
-        .collect();
-    let is_cpu = |both: &str| {
-        has(both, &["cpu", "core", "ryzen", "intel", "package", "tctl"]) && !has(both, GPU)
+    let best = |want: Device, rank: fn(&str) -> u8| {
+        let mut pick: Option<&crate::sensors::Sensor> = None;
+        for s in sensors {
+            if s.kind == SensorKind::Temperature
+                && s.value.is_finite()
+                && device(s) == want
+                && pick.is_none_or(|p| rank(&s.name) < rank(&p.name))
+            {
+                pick = Some(s);
+            }
+        }
+        pick
     };
-    let cpu = temps
-        .iter()
-        .find(|(both, name, _)| has(name, &["package", "tctl", "tdie"]) && is_cpu(both))
-        .or_else(|| temps.iter().find(|(both, _, _)| is_cpu(both)))
-        .map(|t| t.2);
-    let gpu = temps
-        .iter()
-        .find(|(both, _, _)| has(both, GPU))
-        .map(|t| t.2);
-    (cpu, gpu)
+    (
+        best(Device::Cpu, cpu_rank).map(|s| s.value),
+        best(Device::Gpu, gpu_rank).map(|s| s.value),
+    )
 }
 impl Sample {
     fn gap(timestamp: u64, interval: u64) -> Self {
@@ -524,6 +589,42 @@ mod tests {
         assert_eq!(headline_temps(&list), (Some(53.0), Some(40.0)));
         assert_eq!(headline_temps(&list[..2]), (Some(48.0), None));
         assert_eq!(headline_temps(&[]), (None, None));
+    }
+    #[test]
+    fn headline_temps_match_each_machine() {
+        use crate::sensors::{Sensor, SensorKind};
+        let fixture: serde_json::Value =
+            serde_json::from_str(include_str!("../../tests/fixtures/headline-temps.json")).unwrap();
+        for case in fixture["cases"].as_array().unwrap() {
+            let sensors: Vec<Sensor> = case["sensors"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .map(|s| Sensor {
+                    hardware: s["hardware"].as_str().unwrap().into(),
+                    id: s["id"].as_str().unwrap().into(),
+                    name: s["name"].as_str().unwrap().into(),
+                    kind: SensorKind::Temperature,
+                    value: s["value"].as_f64().unwrap(),
+                    source: "fixture".into(),
+                })
+                .collect();
+            // Expected: a sensor id, or the value when the case has no ids.
+            let want = |key: &str| match &case[key] {
+                serde_json::Value::Null => None,
+                serde_json::Value::Number(n) => n.as_f64(),
+                v => sensors
+                    .iter()
+                    .find(|s| s.id == v.as_str().unwrap())
+                    .map(|s| s.value),
+            };
+            let machine = case["machine"].as_str().unwrap();
+            assert_eq!(
+                headline_temps(&sensors),
+                (want("cpu"), want("gpu")),
+                "{machine}"
+            );
+        }
     }
     #[test]
     fn history_is_sampled_from_app_start() {

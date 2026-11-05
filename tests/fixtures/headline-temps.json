@@ -1,0 +1,58 @@
+{
+  "about": "Shared by tests/dashboard.mjs (sensorSummary) and src-tauri/src/sampling.rs (headline_temps): the CPU and GPU temperature each machine should show",
+  "cases": [
+    {
+      "machine": "Example Hybrid CPU + Example GPU, example board",
+      "sensors": [
+        { "hardware": "Example Board", "id": "/lpc/example/0/temperature/0", "name": "CPU", "kind": "temperature", "value": 40 },
+        { "hardware": "Example Hybrid CPU", "id": "/intelcpu/0/temperature/0", "name": "P-Core #1", "kind": "temperature", "value": 51 },
+        { "hardware": "Example Hybrid CPU", "id": "/intelcpu/0/temperature/22", "name": "Core Max", "kind": "temperature", "value": 58 },
+        { "hardware": "Example Hybrid CPU", "id": "/intelcpu/0/temperature/23", "name": "Core Average", "kind": "temperature", "value": 50 },
+        { "hardware": "Example Hybrid CPU", "id": "/intelcpu/0/temperature/16", "name": "CPU Package", "kind": "temperature", "value": 60 },
+        { "hardware": "NVIDIA Example GPU", "id": "/gpu-nvidia/0/temperature/2", "name": "GPU Hot Spot", "kind": "temperature", "value": 47 },
+        { "hardware": "NVIDIA Example GPU", "id": "/gpu-nvidia/0/temperature/0", "name": "GPU Core", "kind": "temperature", "value": 41 }
+      ],
+      "cpu": "/intelcpu/0/temperature/16",
+      "gpu": "/gpu-nvidia/0/temperature/0"
+    },
+    {
+      "machine": "AMD Ryzen 9 7950X desktop + Radeon RX 7900 XTX",
+      "sensors": [
+        { "hardware": "AMD Ryzen 9 7950X 16-Core Processor", "id": "/amdcpu/0/temperature/3", "name": "CCD1 (Tdie)", "kind": "temperature", "value": 66 },
+        { "hardware": "AMD Ryzen 9 7950X 16-Core Processor", "id": "/amdcpu/0/temperature/5", "name": "CCDs Max (Tdie)", "kind": "temperature", "value": 68 },
+        { "hardware": "AMD Ryzen 9 7950X 16-Core Processor", "id": "/amdcpu/0/temperature/2", "name": "Core (Tctl/Tdie)", "kind": "temperature", "value": 70 },
+        { "hardware": "AMD Radeon RX 7900 XTX", "id": "/gpu-amd/0/temperature/0", "name": "GPU Core", "kind": "temperature", "value": 45 }
+      ],
+      "cpu": "/amdcpu/0/temperature/2",
+      "gpu": "/gpu-amd/0/temperature/0"
+    },
+    {
+      "machine": "AMD Ryzen 7 8845H laptop: Radeon 780M APU + RTX 4060 Laptop",
+      "sensors": [
+        { "hardware": "AMD Ryzen 7 8845H w/ Radeon 780M Graphics", "id": "/amdcpu/0/temperature/2", "name": "Core (Tctl/Tdie)", "kind": "temperature", "value": 74 },
+        { "hardware": "AMD Radeon 780M Graphics", "id": "/gpu-amd/0/temperature/0", "name": "GPU Core", "kind": "temperature", "value": 52 },
+        { "hardware": "NVIDIA GeForce RTX 4060 Laptop GPU", "id": "nvml/0/temperature", "name": "GPU", "kind": "temperature", "value": 48 }
+      ],
+      "cpu": "/amdcpu/0/temperature/2",
+      "gpu": "/gpu-amd/0/temperature/0"
+    },
+    {
+      "machine": "No source ids (older sources): the APU name still reads as a CPU",
+      "sensors": [
+        { "hardware": "AMD Ryzen 7 8845H w/ Radeon 780M Graphics", "id": "", "name": "Core (Tctl/Tdie)", "kind": "temperature", "value": 74 },
+        { "hardware": "AMD Radeon 780M Graphics", "id": "", "name": "GPU Core", "kind": "temperature", "value": 52 }
+      ],
+      "cpu": 74,
+      "gpu": 52
+    },
+    {
+      "machine": "Only a CCD reading, then only a per-core reading",
+      "sensors": [
+        { "hardware": "AMD Ryzen 5 5600X", "id": "/amdcpu/0/temperature/9", "name": "Core #1", "kind": "temperature", "value": 55 },
+        { "hardware": "AMD Ryzen 5 5600X", "id": "/amdcpu/0/temperature/4", "name": "CCDs Average (Tdie)", "kind": "temperature", "value": 57 }
+      ],
+      "cpu": "/amdcpu/0/temperature/4",
+      "gpu": null
+    }
+  ]
+}

@@ -152,29 +152,31 @@
             class="label"
             class:cjk={CJK.test($t(`overlay.short.${cell.id}`))}
             >{$t(`overlay.short.${cell.id}`)}</span
-          ><span class="value {cell.id}"
-            >{#each cell.parts as part, i (i)}<span class="part"
-                >{#if ARROW[part[0]]}<svg
-                    class="arrow"
-                    viewBox="0 0 8 10"
-                    aria-label={part[0]}><path d={ARROW[part[0]]} /></svg
-                  >{part.slice(1)}{:else}{part}{/if}</span
-              >{/each}</span
-          >{#if chart}<svg
-              class="chart"
-              width={CW}
-              height={CH}
-              viewBox={`0 0 ${CW} ${CH}`}
-              preserveAspectRatio="none"
-              aria-hidden="true"
-              ><path
-                d={sparklinePath(history, chart.pick, {
-                  width: CW,
-                  height: CH,
-                  max: chart.max,
-                })}
-              /></svg
-            >{/if}</span
+          ><span class="vc {cell.id}" class:charted={chart}
+            ><span class="value {cell.id}"
+              >{#each cell.parts as part, i (i)}<span class="part"
+                  >{#if ARROW[part[0]]}<svg
+                      class="arrow"
+                      viewBox="0 0 8 10"
+                      aria-label={part[0]}><path d={ARROW[part[0]]} /></svg
+                    >{part.slice(1)}{:else}{part}{/if}</span
+                >{/each}</span
+            >{#if chart}<svg
+                class="chart"
+                width={CW}
+                height={CH}
+                viewBox={`0 0 ${CW} ${CH}`}
+                preserveAspectRatio="none"
+                aria-hidden="true"
+                ><path
+                  d={sparklinePath(history, chart.pick, {
+                    width: CW,
+                    height: CH,
+                    max: chart.max,
+                  })}
+                /></svg
+              >{/if}</span
+          ></span
         >
       {:else}
         <span class="label">{$t("overlay.empty")}</span>
@@ -343,12 +345,30 @@
   .value.vram {
     min-width: 5.5ch;
   }
-  /* Pairs: the fixed width is on the whole pair, so the two numbers stay
-     --ob-gap-pair apart and the slack falls after the second one. */
-  .value.net {
-    min-width: 13ch;
+  /* Pairs: the fixed width is on the pair plus its chart, so the two
+     numbers stay --ob-gap-pair apart, the chart follows the second one at
+     --ob-gap-chart, and the slack falls after the chart. */
+  .vc {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--ob-gap-label);
+    height: var(--ob-box);
+    font-size: var(--ob-value-size);
+    font-weight: var(--ob-value-weight);
+    font-family: var(--ob-font-latin), sans-serif;
   }
-  .value.disk {
-    min-width: 15ch;
+  .vc.net {
+    --ob-pair-w: 13ch;
+  }
+  .vc.disk {
+    --ob-pair-w: 15ch;
+  }
+  .vc.net,
+  .vc.disk {
+    min-width: var(--ob-pair-w);
+  }
+  .vc.net.charted,
+  .vc.disk.charted {
+    min-width: calc(var(--ob-pair-w) + var(--ob-gap-chart) + var(--ob-chart-w));
   }
 </style>

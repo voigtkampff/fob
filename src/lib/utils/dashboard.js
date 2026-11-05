@@ -230,27 +230,69 @@ export function topBy(items, key, count = 10) {
 }
 
 /** Pick headline readings for the Temp & fan card.
- * @param {{ hardware: string, name: string, kind: "temperature" | "fan" | "control", value: number }[]} sensors
+ * @param {{ hardware: string, id?: string, name: string, kind: "temperature" | "fan" | "control", value: number }[]} sensors
  */
 export function sensorSummary(sensors) {
   const list = sensors ?? [];
-  const temps = list.filter((s) => s.kind === "temperature");
-  const isCpu = (/** @type {{ hardware: string, name: string }} */ s) =>
-    /cpu|core|ryzen|intel|package|tctl/i.test(`${s.hardware} ${s.name}`) &&
-    !/gpu|nvidia|radeon|geforce/i.test(`${s.hardware} ${s.name}`);
-  const cpuTemp =
-    temps.find((s) => /package|tctl|tdie/i.test(s.name) && isCpu(s)) ??
-    temps.find(isCpu) ??
-    null;
-  const gpuTemp =
-    temps.find((s) =>
-      /gpu|nvidia|radeon|geforce/i.test(`${s.hardware} ${s.name}`),
-    ) ?? null;
+  const temps = list.filter(
+    (s) => s.kind === "temperature" && Number.isFinite(s.value),
+  );
+  const best = (/** @type {"cpu" | "gpu"} */ kind) => {
+    const rank = kind === "cpu" ? cpuTempRank : gpuTempRank;
+    let pick = null;
+    for (const s of temps)
+      if (sensorDevice(s) === kind && (!pick || rank(s.name) < rank(pick.name)))
+        pick = s;
+    return pick;
+  };
+  const cpuTemp = best("cpu");
+  const gpuTemp = best("gpu");
   const fans = list.filter((s) => s.kind === "fan" && s.value > 0);
   const fan = fans.length
     ? fans.reduce((a, b) => (b.value > a.value ? b : a))
     : (list.find((s) => s.kind === "control") ?? null);
   return { cpuTemp, gpuTemp, fan, count: list.length };
+}
+
+/** Which device a sensor belongs to. LibreHardwareMonitor ids start with
+ * the hardware type ("/amdcpu/0/…", "/gpu-nvidia/0/…"), so an APU whose
+ * name says "Radeon … Graphics" is still a CPU; NVML ids start "nvml/".
+ * Without an id, fall back to the hardware name, CPU words first. Same rules
+ * as headline_temps in src-tauri/src/sampling.rs.
+ * @param {{ hardware: string, id?: string }} s
+ * @returns {"cpu" | "gpu" | "other"} */
+export function sensorDevice(s) {
+  const id = (s.id ?? "").toLowerCase();
+  if (id) {
+    if (/^\/(amdcpu|intelcpu|cpu)\//.test(id)) return "cpu";
+    if (/^(\/(gpu-[a-z]+|nvidiagpu|atigpu)\/|nvml\/)/.test(id)) return "gpu";
+    return "other";
+  }
+  const hw = s.hardware.toLowerCase();
+  if (/ryzen|intel core|core i\d|core ultra|\bcpu\b|processor/.test(hw))
+    return "cpu";
+  if (/gpu|nvidia|geforce|radeon|\barc\b/.test(hw)) return "gpu";
+  return "other";
+}
+
+/** Which CPU temperature to show first (lower is better): package, then
+ * Tctl/Tdie, Tdie, a CCD average or max, a core max or average, anything.
+ * @param {string} name */
+export function cpuTempRank(name) {
+  const n = name.toLowerCase();
+  if (n.includes("package")) return 0;
+  if (n.includes("tctl")) return 1;
+  if (n.includes("tdie") && !n.includes("ccd")) return 2;
+  if (n.includes("ccd") && /average|max/.test(n)) return 3;
+  if (n.includes("core") && /average|max/.test(n)) return 4;
+  return 5;
+}
+
+/** GPU: the core reading before hot spot, memory and the rest.
+ * @param {string} name */
+export function gpuTempRank(name) {
+  const n = name.toLowerCase();
+  return n.includes("hot") || n.includes("memory") ? 1 : 0;
 }
 
 /** Group sensors by hardware, keeping first-seen order.

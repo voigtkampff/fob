@@ -16,6 +16,8 @@ import {
   sparklinePath,
   topBy,
   sensorSummary,
+  sensorDevice,
+  cpuTempRank,
   groupByHardware,
   formatSensor,
   fanGroups,
@@ -454,4 +456,28 @@ console.log("PASS: per-app network rows group, stick for 30 s and sort");
   console.log(
     "PASS: mini window has one fixed size; cards fit; clicks never resize or move it",
   );
+}
+
+{
+  // Same machines as headline_temps in src-tauri/src/sampling.rs.
+  const { cases } = JSON.parse(
+    readFileSync(new URL("./fixtures/headline-temps.json", import.meta.url), "utf8"),
+  );
+  const key = (s) => (s == null ? null : s.id || s.value);
+  for (const c of cases) {
+    const sum = sensorSummary(c.sensors);
+    assert.equal(key(sum.cpuTemp), c.cpu, `${c.machine}: CPU`);
+    assert.equal(key(sum.gpuTemp), c.gpu, `${c.machine}: GPU`);
+  }
+  assert.equal(
+    sensorDevice({ hardware: "AMD Ryzen 7 8845H w/ Radeon 780M Graphics", id: "/amdcpu/0/temperature/2" }),
+    "cpu",
+    "an APU is a CPU whatever its name says",
+  );
+  assert.equal(sensorDevice({ hardware: "Nuvoton", id: "/lpc/example/0/temperature/0" }), "other");
+  assert.deepEqual(
+    ["Core #1", "Core Average", "CCDs Max (Tdie)", "Tdie", "Core (Tctl/Tdie)", "CPU Package"].map(cpuTempRank),
+    [5, 4, 3, 2, 1, 0],
+  );
+  console.log("PASS: CPU and GPU temperature picked per machine (Intel, AMD desktop, AMD APU laptop)");
 }
