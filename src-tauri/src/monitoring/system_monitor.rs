@@ -126,7 +126,7 @@ impl SystemMonitor {
                 },
                 interfaces,
             },
-            cpu_usage: sys.cpus().iter().map(|cpu| cpu.cpu_usage()).collect(),
+            cpu_usage: fake_threads(sys.cpus().iter().map(|cpu| cpu.cpu_usage()).collect()),
             memory_total: sys.total_memory(),
             memory_used: sys.used_memory(),
             memory_free: sys.total_memory() - sys.used_memory(),
@@ -349,4 +349,18 @@ mod tests {
         assert!(!stats.cpu_usage.is_empty());
         assert!(stats.memory_total > 0);
     }
+}
+
+/// Debug builds: WINPERF_FAKE_THREADS=N repeats the real readings to N
+/// logical processors, to check the per-core layouts on any machine.
+fn fake_threads(real: Vec<f32>) -> Vec<f32> {
+    #[cfg(debug_assertions)]
+    if let Some(n) = std::env::var("WINPERF_FAKE_THREADS")
+        .ok()
+        .and_then(|v| v.parse::<usize>().ok())
+        .filter(|&n| n > 0 && !real.is_empty())
+    {
+        return (0..n).map(|i| real[i % real.len()]).collect();
+    }
+    real
 }

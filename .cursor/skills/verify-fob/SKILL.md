@@ -32,7 +32,8 @@ $V relaunch drag WINPERF_SHOW_MINI=1     # restart with the same HOME (saved sta
   silently runs an old binary.
 - Debug-only env: `WINPERF_SHOW_MINI=1` (show the mini window at launch),
   `WINPERF_FAKE_SENSOR_SETUP=enable|ready`, `WINPERF_FAKE_SENSORS=<jsonl>`,
-  `WINPERF_FAKE_OS`, `WINPERF_FAKE_CPU`, `WINPERF_FAKE_GPU=1` (always set).
+  `WINPERF_FAKE_OS`, `WINPERF_FAKE_CPU`, `WINPERF_FAKE_GPU=1` (always set),
+  `WINPERF_FAKE_THREADS=N` (per-core layouts at N threads).
 
 ## Doctor
 

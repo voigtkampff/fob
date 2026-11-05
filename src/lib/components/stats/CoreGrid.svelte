@@ -108,11 +108,12 @@
     border-radius: 2px;
     height: 100%;
   }
+  /* Four 14 px lines (56 px) fit the card's 60 px middle row. */
   .summary {
     display: flex;
     flex-direction: column;
-    gap: 2px;
     font-size: 11px;
+    line-height: 14px;
   }
   .line {
     display: flex;

@@ -33,7 +33,7 @@
       {history}
     />{/snippet}
   {#snippet value()}
-    <div class="text-3xl leading-8 font-semibold tracking-tight tabular-nums">
+    <div class="text-2xl font-semibold tracking-tight tabular-nums">
       {average === null ? "—" : average.toFixed(1)}<span
         class="ml-0.5 text-lg font-normal text-muted-foreground"
         >{average === null ? "" : "%"}</span

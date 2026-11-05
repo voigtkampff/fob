@@ -44,7 +44,7 @@
       onGpu={(id) => (selectedId = id)}
     />{/snippet}
   {#snippet value()}
-    <div class="text-2xl leading-8 font-semibold tracking-tight tabular-nums">
+    <div class="text-2xl font-semibold tracking-tight tabular-nums">
       {percent(device?.utilization)}
     </div>
     <p

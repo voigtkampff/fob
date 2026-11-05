@@ -38,7 +38,7 @@
       {history}
     />{/snippet}
   {#snippet value()}
-    <div class="text-2xl leading-8 font-semibold tracking-tight tabular-nums">
+    <div class="text-2xl font-semibold tracking-tight tabular-nums">
       {ready ? formatMemorySize(memoryUsed) : "—"}
     </div>
     <p class="truncate text-xs leading-4 text-muted-foreground" title={sub}>

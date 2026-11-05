@@ -95,6 +95,23 @@
     min-height: 0;
     overflow: hidden;
   }
+  /* The value block has one set of metrics in every card: a 32 px value
+     line and a 16 px caption line. Units inside the value (%, °C, GB) take
+     line-height 1 so their own line box can never make the line taller and
+     push the caption out of the row (it is clipped by overflow there). */
+  .sc-value {
+    display: grid;
+    grid-template-rows: 32px 16px;
+  }
+  .sc-value > :global(:first-child) {
+    line-height: 32px;
+  }
+  .sc-value > :global(:first-child *) {
+    line-height: 1;
+  }
+  .sc-value > :global(:nth-child(2)) {
+    line-height: 16px;
+  }
   .sc-middle {
     display: flex;
     flex-direction: column;

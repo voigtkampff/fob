@@ -53,7 +53,7 @@
       {sources}
     />{/snippet}
   {#snippet value()}
-    <div class="text-2xl leading-8 font-semibold tracking-tight tabular-nums">
+    <div class="text-2xl font-semibold tracking-tight tabular-nums">
       {head ? head.value.toFixed(0) : "—"}<span
         class="ml-0.5 text-base font-normal text-muted-foreground"
         >{head ? "°C" : ""}</span
