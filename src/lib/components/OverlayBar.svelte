@@ -90,7 +90,9 @@
 >
   {#key paint}<div class="row" bind:this={row}>
       {#each shown as cell (cell.id)}
-        {@const chart = config.charts ? chartFor(cell.id, history) : null}
+        {@const chart = config.charts.includes(cell.id)
+          ? chartFor(cell.id, history)
+          : null}
         <span class="cell"
           ><span class="label">{$t(`overlay.short.${cell.id}`)}</span><span
             class="value {cell.id}"

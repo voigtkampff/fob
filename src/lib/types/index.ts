@@ -169,6 +169,8 @@ export interface AppConfig {
     overlayOpacity?: number;
     overlayUnlocked?: boolean;
     overlayCharts?: boolean;
+    /** 0.7.3: metrics drawn with a chart (replaces overlayCharts). */
+    overlayChartMetrics?: string[];
     /** Global hotkey that toggles the status bar ("" = off). */
     overlayHotkey?: string;
   };

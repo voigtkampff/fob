@@ -24,6 +24,11 @@ export const DEFAULT_METRICS = [
   "ram",
   "net",
 ];
+/** Metrics with a history to chart (OVERLAY_CHART_METRICS in preferences.rs). */
+/** @type {MetricId[]} */
+export const CHART_METRICS = METRICS.filter(
+  (id) => id !== "vram" && id !== "power",
+);
 export const DOCKS = /** @type {const} */ (["top", "bottom", "free"]);
 export const DEFAULT_OPACITY = 60;
 /** Whole-bar opacity floor (0.7.1): below 10 % the bar is as good as gone. */
@@ -63,8 +68,43 @@ export function overlaySettings(behavior) {
       : "top",
     opacity: overlayOpacity(b.overlayOpacity),
     unlocked: b.overlayUnlocked === true,
-    charts: b.overlayCharts === true,
+    charts: chartMetrics(b),
   };
+}
+
+/** The metrics drawn with a chart. 0.7.3 saves the list in
+ * overlayChartMetrics; before that overlayCharts switched every chart, so
+ * true means all chart-capable metrics and false (or unset) none.
+ * @param {Record<string, unknown>} b
+ * @returns {MetricId[]} */
+export function chartMetrics(b) {
+  const list = b?.overlayChartMetrics;
+  if (Array.isArray(list))
+    return CHART_METRICS.filter((id) => list.includes(id));
+  return b?.overlayCharts === true ? [...CHART_METRICS] : [];
+}
+
+/** The all-charts switch: "on", "off" or "mixed" over the chart-capable
+ * metrics. @param {MetricId[]} charts */
+export function chartsState(charts) {
+  const n = CHART_METRICS.filter((id) => charts.includes(id)).length;
+  return n === 0 ? "off" : n === CHART_METRICS.length ? "on" : "mixed";
+}
+
+/** The settings patch for a new chart list (keeps the 0.7.1 flag in step).
+ * @param {MetricId[]} charts */
+export function chartsPatch(charts) {
+  const list = CHART_METRICS.filter((id) => charts.includes(id));
+  return { overlayChartMetrics: list, overlayCharts: list.length > 0 };
+}
+
+/** Charts after `id` is switched; `id` "all" sets every one (mixed → on).
+ * @param {MetricId[]} charts @param {MetricId | "all"} id @param {boolean} on */
+export function toggleChart(charts, id, on) {
+  if (id === "all") return on ? [...CHART_METRICS] : [];
+  if (!CHART_METRICS.includes(id)) return charts;
+  const rest = charts.filter((m) => m !== id);
+  return CHART_METRICS.filter((m) => (m === id ? on : rest.includes(m)));
 }
 
 /** Shown metrics with `id` switched on (added at the end) or off.

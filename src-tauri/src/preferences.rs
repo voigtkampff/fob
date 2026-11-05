@@ -5,6 +5,10 @@ use std::{fs, path::Path, sync::Mutex};
 use tauri::{AppHandle, Emitter, Manager, WebviewWindow};
 
 /// Readings the status bar can show (METRICS in src/lib/utils/overlay.js).
+/// The metrics with a history to chart (no video memory or GPU power);
+/// CHART_METRICS in src/lib/utils/overlay.js.
+pub const OVERLAY_CHART_METRICS: [&str; 7] =
+    ["cpu", "cpuTemp", "gpu", "gpuTemp", "ram", "disk", "net"];
 pub const OVERLAY_METRICS: [&str; 9] = [
     "cpu", "cpuTemp", "gpu", "gpuTemp", "ram", "vram", "disk", "net", "power",
 ];
@@ -59,6 +63,14 @@ fn merge(config: &mut Value, patch: &Value) {
                 "overlayOpacity" => value.as_u64().is_some_and(|n| n <= 100),
                 "overlayCharts" => value.is_boolean(),
                 "overlayDock" => matches!(value.as_str(), Some("top" | "bottom" | "free")),
+                // 0.7.3: the metrics drawn with a chart; until it's saved,
+                // overlayCharts (0.7.1 on/off for all) stands in for it.
+                "overlayChartMetrics" => value.as_array().is_some_and(|list| {
+                    let ids: Vec<_> = list.iter().filter_map(Value::as_str).collect();
+                    ids.len() == list.len()
+                        && ids.iter().all(|id| OVERLAY_CHART_METRICS.contains(id))
+                        && ids.iter().enumerate().all(|(i, id)| !ids[..i].contains(id))
+                }),
                 "overlayMetrics" => value.as_array().is_some_and(|list| {
                     let ids: Vec<_> = list.iter().filter_map(Value::as_str).collect();
                     ids.len() == list.len()
@@ -286,11 +298,22 @@ mod tests {
             json!({"overlayMetrics":["cpu","cpu"]}),
             json!({"overlayMetrics":["fps"]}),
             json!({"overlayMetrics":"cpu"}),
+            json!({"overlayChartMetrics":["vram"]}),
+            json!({"overlayChartMetrics":["power"]}),
+            json!({"overlayChartMetrics":["cpu","cpu"]}),
+            json!({"overlayChartMetrics":true}),
         ] {
             let before = config.clone();
             merge(&mut config, &json!({ "behavior": bad }));
             assert_eq!(config, before, "{bad} must be ignored");
         }
+        merge(
+            &mut config,
+            &json!({"behavior":{"overlayChartMetrics":["net","cpu"]}}),
+        );
+        assert_eq!(b(&config, "overlayChartMetrics"), json!(["net", "cpu"]));
+        merge(&mut config, &json!({"behavior":{"overlayChartMetrics":[]}}));
+        assert_eq!(b(&config, "overlayChartMetrics"), json!([]));
         merge(&mut config, &json!({"behavior":{"overlayOpacity":3}}));
         assert_eq!(
             b(&config, "overlayOpacity"),

@@ -19,6 +19,7 @@
     ChevronUp,
     ChevronDown,
     GripVertical,
+    ChartSpline,
   } from "@lucide/svelte";
   import {
     overlaySettings,
@@ -26,6 +27,10 @@
     toggleMetric,
     moveMetric,
     reorderMetric,
+    CHART_METRICS,
+    chartsState,
+    chartsPatch,
+    toggleChart,
     DOCKS,
     OPACITY_FLOOR,
     DEFAULT_OPACITY,
@@ -322,6 +327,8 @@
               <ul class="overlay-metrics">
                 {#each settingsRows(overlay.metrics) as row, i (row.id)}
                   {@const name = $t(`overlay.metric.${row.id}`)}
+                  {@const charted = overlay.charts.includes(row.id)}
+                  {@const chartable = CHART_METRICS.includes(row.id)}
                   <li
                     class:dragging={row.on && dragFrom === i}
                     class:drop-before={dragFrom >= 0 && dropAt === i}
@@ -354,6 +361,25 @@
                           toggleMetric(overlay.metrics, row.id, value),
                         )}
                     />
+                    <button
+                      type="button"
+                      class="chart-toggle"
+                      class:on={charted}
+                      disabled={!chartable}
+                      aria-pressed={charted}
+                      aria-label={chartable
+                        ? $t("settings.overlayChartFor", { name })
+                        : $t("settings.overlayNoChart", { name })}
+                      title={chartable
+                        ? $t("settings.overlayChartFor", { name })
+                        : $t("settings.overlayNoChart", { name })}
+                      onclick={() =>
+                        saveOverlay(
+                          chartsPatch(
+                            toggleChart(overlay.charts, row.id, !charted),
+                          ),
+                        )}><ChartSpline class="size-3.5" /></button
+                    >
                     <Label for={`overlay-m-${row.id}`} class="flex-1"
                       >{name}</Label
                     >
@@ -432,9 +458,12 @@
               <Checkbox
                 id="overlay-charts"
                 class="mt-0.5"
-                checked={overlay.charts}
+                checked={chartsState(overlay.charts) === "on"}
+                indeterminate={chartsState(overlay.charts) === "mixed"}
                 onCheckedChange={(value) =>
-                  saveOverlay({ overlayCharts: value })}
+                  saveOverlay(
+                    chartsPatch(toggleChart(overlay.charts, "all", value)),
+                  )}
               />
               <div>
                 <Label for="overlay-charts"
@@ -564,6 +593,31 @@
   }
   .overlay-metrics li.drop-after {
     border-bottom-color: var(--primary);
+  }
+  .chart-toggle {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 24px;
+    height: 24px;
+    border-radius: 6px;
+    border: 1px solid transparent;
+    color: var(--muted-foreground);
+    opacity: 0.6;
+  }
+  .chart-toggle:hover:not(:disabled) {
+    background: var(--accent);
+    opacity: 1;
+  }
+  .chart-toggle.on {
+    color: var(--primary);
+    border-color: color-mix(in oklab, var(--primary), transparent 60%);
+    background: color-mix(in oklab, var(--primary), transparent 88%);
+    opacity: 1;
+  }
+  .chart-toggle:disabled {
+    opacity: 0.25;
+    cursor: not-allowed;
   }
   .grip {
     display: inline-flex;

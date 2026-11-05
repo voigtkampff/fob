@@ -560,7 +560,9 @@ export const en = {
   "settings.overlayDrag": "Drag to reorder",
   "settings.overlayCharts": "Show small charts",
   "settings.overlayChartsNote":
-    "A two-minute line next to each reading that has a history (not video memory or GPU power)",
+    "Turns every chart on or off; the chart button on each reading switches just that one. Video memory and GPU power have no history",
+  "settings.overlayChartFor": "Chart for {name}",
+  "settings.overlayNoChart": "{name} has no history to chart",
   "settings.overlayUp": "Move {name} left",
   "settings.overlayDown": "Move {name} right",
   "settings.overlayDock": "Position",
@@ -1180,7 +1182,9 @@ export const zh = {
   "settings.overlayDrag": "拖动可调整顺序",
   "settings.overlayCharts": "显示小图表",
   "settings.overlayChartsNote":
-    "在有历史数据的项目旁显示最近两分钟的折线（显存和功耗没有）",
+    "一键全开或全关；每个项目旁的图表按钮可单独开关。显存和功耗没有历史数据",
+  "settings.overlayChartFor": "{name}的小图表",
+  "settings.overlayNoChart": "{name}没有历史数据，无法显示图表",
   "settings.overlayUp": "把{name}往前移",
   "settings.overlayDown": "把{name}往后移",
   "settings.overlayDock": "位置",
