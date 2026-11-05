@@ -465,7 +465,7 @@
                       id="overlay-theme"
                       type="button"
                       aria-describedby="overlay-theme-note"
-                      class="flex h-8 w-48 items-center gap-2 rounded-md border border-input bg-transparent px-2.5 text-sm"
+                      class="flex h-8 w-56 items-center gap-2 rounded-md border border-input bg-transparent px-2.5 text-sm"
                       ><ThemeDots theme={overlayShown} /><span
                         class="flex-1 truncate text-left"
                         >{overlayOwn?.label ??
