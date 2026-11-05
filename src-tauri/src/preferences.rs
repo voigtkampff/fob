@@ -278,6 +278,28 @@ pub fn startup(app: &AppHandle) -> Startup {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn folders_follow_the_identifier_and_no_debug_log() {
+        let conf: Value = serde_json::from_str(include_str!("../tauri.conf.json")).unwrap();
+        assert_eq!(conf["identifier"], "com.hcb.fob");
+        for (name, src) in [
+            ("boot.rs", include_str!("boot.rs")),
+            ("preferences.rs", include_str!("preferences.rs")),
+            ("companion.rs", include_str!("companion.rs")),
+            ("overlay.rs", include_str!("overlay.rs")),
+            ("space.rs", include_str!("space.rs")),
+            ("main.rs", include_str!("main.rs")),
+        ] {
+            assert!(
+                !src.contains(concat!("com.", "the owner")),
+                "{name}: old folder"
+            );
+            assert!(
+                !src.contains(concat!("fob", ".log")),
+                "{name}: no debug log file"
+            );
+        }
+    }
     use serde_json::json;
     #[test]
     fn legacy_partial_configs_keep_defaults_and_reject_invalid_values() {

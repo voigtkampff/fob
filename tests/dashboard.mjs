@@ -516,3 +516,11 @@ console.log("PASS: per-app network rows group, stick for 30 s and sort");
   assert.ok(field.includes('<span class="size-8 shrink-0" aria-hidden="true"></span>'), "an unset field keeps the clear button's slot");
   console.log("PASS: hotkey fields line up set or unset");
 }
+
+{
+  const field = readFileSync(new URL("../src/lib/components/HotkeyField.svelte", import.meta.url), "utf8");
+  const root = field.slice(field.indexOf("</script>"));
+  assert.ok(root.trimStart().includes('<div class="w-[13.5rem]">'), "the field, error included, has one fixed width");
+  assert.ok(root.indexOf('role="alert"') < root.lastIndexOf("</div>"), "the error sits inside that width");
+  console.log("PASS: a hotkey error wraps under its box without moving it");
+}

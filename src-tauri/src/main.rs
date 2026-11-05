@@ -12,7 +12,6 @@ mod desktop;
 mod gpu;
 mod hotkey;
 mod i18n;
-mod migrate;
 mod monitoring;
 mod native_icons;
 mod overlay;
@@ -47,7 +46,6 @@ fn main() {
 
     tauri::Builder::default()
         .setup(|app| {
-            migrate::run(app.handle());
             let window = app.get_webview_window("main").unwrap();
             ui::setup_window_effects(&window).expect("Failed to apply window effects");
             if let Some(mini) = app.get_webview_window("overview") {
