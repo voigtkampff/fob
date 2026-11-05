@@ -10,6 +10,7 @@ import {
   shortRate,
   cells,
   reorderMetric,
+  dropSlot,
   overlayOpacity,
   chartFor,
   OPACITY_FLOOR,
@@ -219,4 +220,15 @@ assert.deepEqual(
     "--ob-chart": "#f0a",
   },
 );
+// Pointer drag: slot from the pointer's y over the shown rows' boxes.
+const rowsY = [0, 28, 56, 84].map((top) => ({ top, bottom: top + 28 }));
+assert.equal(dropSlot(-10, rowsY), 0);
+assert.equal(dropSlot(13, rowsY), 0);
+assert.equal(dropSlot(15, rowsY), 1);
+assert.equal(dropSlot(70, rowsY), 3);
+assert.equal(dropSlot(99, rowsY), 4);
+assert.equal(dropSlot(500, rowsY), 4);
+assert.equal(dropSlot(5, []), 0);
+// Dragging CPU (row 0) below the last row puts it last.
+assert.deepEqual(reorderMetric(four, 0, dropSlot(120, rowsY)), ["gpu", "ram", "net", "cpu"]);
 console.log("PASS: status bar settings, metric order and cell text");

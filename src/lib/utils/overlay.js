@@ -168,6 +168,14 @@ export function reorderMetric(shown, from, to) {
   return next;
 }
 
+/** The slot (0..rects.length) a row dragged to `y` lands in: before the
+ * first row whose middle is below `y`, else after the last.
+ * @param {number} y @param {{ top: number, bottom: number }[]} rects */
+export function dropSlot(y, rects) {
+  const i = rects.findIndex((r) => y < (r.top + r.bottom) / 2);
+  return i < 0 ? rects.length : i;
+}
+
 /** Every metric for the settings list: shown ones first, in their order.
  * @param {MetricId[]} shown */
 export function settingsRows(shown) {
