@@ -92,7 +92,7 @@ const folder = {
 };
 
 test("blocks: large items kept, the rest folded into one block", () => {
-  const out = blocks(folder, { minShare: 0.01 });
+  const out = blocks(folder, { area: 60_000 });
   assert.deepEqual(
     out.map((b) => b.node?.n ?? null),
     ["Windows", "pagefile.sys", "Users", null],
@@ -105,10 +105,10 @@ test("blocks: large items kept, the rest folded into one block", () => {
     folder.s,
     "nothing lost",
   );
-  const capped = blocks(folder, { minShare: 0, maxItems: 1 });
+  const capped = blocks(folder, { area: 1e12, maxItems: 1 });
   assert.equal(capped.length, 2);
   assert.equal(capped[1].size, 400);
-  assert.deepEqual(blocks({ n: "empty", s: 0, f: 0, d: true }), []);
+  assert.deepEqual(blocks({ n: "empty", s: 0, f: 0, d: true }, { area: 1e4 }), []);
 });
 
 test("paths, drill-down lookup and file types", () => {

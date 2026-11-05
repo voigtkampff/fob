@@ -6,15 +6,18 @@
  * @param {T[]} items
  * @param {(item: T) => number} value
  * @param {{ x: number, y: number, w: number, h: number }} rect
+ * @param {{ last?: (item: T) => boolean }} [options] Items `last` picks are
+ *  laid out after all others, so they end in the bottom-right corner
+ *  whatever their size.
  * @returns {{ item: T, x: number, y: number, w: number, h: number }[]}
  *  One rectangle per item with a positive value, largest first; the areas
  *  are proportional to the values and together fill `rect`.
  */
-export function squarify(items, value, rect) {
+export function squarify(items, value, rect, { last = () => false } = {}) {
   const sized = items
-    .map((item) => ({ item, v: value(item) }))
+    .map((item) => ({ item, v: value(item), end: last(item) ? 1 : 0 }))
     .filter((n) => Number.isFinite(n.v) && n.v > 0)
-    .sort((a, b) => b.v - a.v);
+    .sort((a, b) => a.end - b.end || b.v - a.v);
   const total = sized.reduce((sum, n) => sum + n.v, 0);
   if (!total || rect.w <= 0 || rect.h <= 0) return [];
   const scale = (rect.w * rect.h) / total;

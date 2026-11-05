@@ -68,6 +68,11 @@ pub struct Progress {
     pub skipped: AtomicU64,
     pub cancel: AtomicBool,
     pub current: Mutex<String>,
+    /// Folders listed, and time spent listing them and folding them, summed
+    /// over all threads (for space.log).
+    pub dirs: AtomicU64,
+    pub list_ns: AtomicU64,
+    pub fold_ns: AtomicU64,
 }
 
 /// Keeps the largest items of a folder and folds the rest into `other`:
@@ -205,7 +210,7 @@ impl Walker<'_> {
                     0
                 } else {
                     let len = (u64::from(data.nFileSizeHigh) << 32) | u64::from(data.nFileSizeLow);
-                    self.allocated(&path.join(&name), attrs, len)
+                    self.allocated(path, &name, attrs, len)
                 };
                 out.push(Entry { name, dir, size });
             }
@@ -221,12 +226,12 @@ impl Walker<'_> {
 
     /// Bytes the file takes on disk.
     #[cfg(windows)]
-    fn allocated(&self, path: &Path, attrs: u32, len: u64) -> u64 {
+    fn allocated(&self, folder: &Path, name: &str, attrs: u32, len: u64) -> u64 {
         // Compressed, sparse and cloud placeholder files: ask the file
         // system; others take their size rounded up to whole clusters.
         const SPECIAL: u32 = 0x800 | 0x200 | 0x400 | 0x1000 | 0x40_0000;
         let size = if attrs & SPECIAL != 0 {
-            compressed_size(path).unwrap_or(len)
+            compressed_size(&folder.join(name)).unwrap_or(len)
         } else {
             len
         };
@@ -242,7 +247,8 @@ impl Walker<'_> {
         if self.cancelled() {
             return None;
         }
-        if let Ok(mut current) = self.progress.current.lock() {
+        // try_lock: threads never queue on a label only the UI reads.
+        if let Ok(mut current) = self.progress.current.try_lock() {
             current.clear();
             current.push_str(&path.to_string_lossy());
         }
@@ -251,7 +257,13 @@ impl Walker<'_> {
             dir: true,
             ..Node::default()
         };
-        let entries = match self.list(path) {
+        let listing = Instant::now();
+        let listed = self.list(path);
+        let p = self.progress;
+        p.list_ns
+            .fetch_add(listing.elapsed().as_nanos() as u64, Ordering::Relaxed);
+        p.dirs.fetch_add(1, Ordering::Relaxed);
+        let entries = match listed {
             Ok(entries) => entries,
             Err(_) => {
                 self.progress.skipped.fetch_add(1, Ordering::Relaxed);
@@ -261,12 +273,13 @@ impl Walker<'_> {
         };
         let mut kids = Vec::with_capacity(entries.len());
         let mut dirs = Vec::new();
+        let (mut files, mut bytes) = (0, 0);
         for e in entries {
             if e.dir {
                 dirs.push(e.name);
             } else {
-                self.progress.files.fetch_add(1, Ordering::Relaxed);
-                self.progress.bytes.fetch_add(e.size, Ordering::Relaxed);
+                files += 1;
+                bytes += e.size;
                 kids.push(Node {
                     name: e.name,
                     size: e.size,
@@ -275,6 +288,9 @@ impl Walker<'_> {
                 });
             }
         }
+        // Once per folder, not per file: the counters are shared by all threads.
+        p.files.fetch_add(files, Ordering::Relaxed);
+        p.bytes.fetch_add(bytes, Ordering::Relaxed);
         let sub = |name: &String| self.folder(&path.join(name), name.clone());
         let subs: Option<Vec<Node>> = if self.parallel && dirs.len() > 1 {
             use rayon::prelude::*;
@@ -283,11 +299,14 @@ impl Walker<'_> {
             dirs.iter().map(sub).collect()
         };
         kids.extend(subs?);
+        let folding = Instant::now();
         node.size = kids.iter().map(|k| k.size).sum();
         node.files = kids.iter().map(|k| k.files).sum();
         // fold sorts by size, then name: the result does not depend on the
         // order folders finished in.
         fold(&mut node, kids);
+        p.fold_ns
+            .fetch_add(folding.elapsed().as_nanos() as u64, Ordering::Relaxed);
         Some(node)
     }
 }
@@ -340,20 +359,19 @@ pub enum DriveKind {
     Unknown,
 }
 
-/// SSD: many threads hide per-folder latency. HDD: one thread, because
-/// parallel reads make the heads seek. Unknown: a cautious two.
-pub fn scan_threads(kind: DriveKind, logical: usize) -> usize {
-    match kind {
-        DriveKind::Ssd => (logical * 2).clamp(2, 16),
-        DriveKind::Hdd => 1,
-        DriveKind::Unknown => 2,
-    }
+/// One thread on every kind of drive. Measured on Windows 11, example hybrid CPU,
+/// C: NVMe, 1.69M files: 16 threads 23.6 s, 1 thread 13 s. Parallel
+/// FindFirstFileEx on one NTFS volume did not pay; HDDs seek. Override with
+/// WINPERF_SPACE_THREADS to measure again.
+pub fn scan_threads(_kind: DriveKind) -> usize {
+    1
 }
 
 /// IOCTL_STORAGE_QUERY_PROPERTY / StorageDeviceSeekPenaltyProperty on
 /// `\\.\X:`, opened with no access rights (no admin needed). No seek
 /// penalty means solid state.
-pub fn drive_kind(_root: &str) -> DriveKind {
+/// The reason comes with `Unknown`, for space.log.
+pub fn drive_kind(_root: &str) -> (DriveKind, Option<String>) {
     #[cfg(windows)]
     unsafe {
         use windows::core::HSTRING;
@@ -368,11 +386,14 @@ pub fn drive_kind(_root: &str) -> DriveKind {
         };
         use windows::Win32::System::IO::DeviceIoControl;
         const DRIVE_FIXED: u32 = 3;
-        if GetDriveTypeW(&HSTRING::from(_root)) != DRIVE_FIXED {
-            return DriveKind::Unknown;
+        let unknown = |why: String| (DriveKind::Unknown, Some(why));
+        let drive_type = GetDriveTypeW(&HSTRING::from(_root));
+        if drive_type != DRIVE_FIXED {
+            // 2 removable, 4 network, 5 CD, 6 RAM disk.
+            return unknown(format!("drive type {drive_type}, not fixed"));
         }
         let letter = _root.trim_end_matches('\\');
-        let Ok(handle) = CreateFileW(
+        let handle = match CreateFileW(
             &HSTRING::from(format!(r"\\.\{letter}")),
             0,
             FILE_SHARE_READ | FILE_SHARE_WRITE,
@@ -380,8 +401,9 @@ pub fn drive_kind(_root: &str) -> DriveKind {
             OPEN_EXISTING,
             FILE_FLAGS_AND_ATTRIBUTES(0),
             None,
-        ) else {
-            return DriveKind::Unknown;
+        ) {
+            Ok(h) => h,
+            Err(e) => return unknown(format!(r"open \\.\{letter} failed: {e}")),
         };
         let query = STORAGE_PROPERTY_QUERY {
             PropertyId: StorageDeviceSeekPenaltyProperty,
@@ -399,30 +421,31 @@ pub fn drive_kind(_root: &str) -> DriveKind {
             std::mem::size_of_val(&desc) as u32,
             Some(&mut got),
             None,
-        )
-        .is_ok();
+        );
         let _ = CloseHandle(handle);
-        if !ok || (got as usize) < std::mem::size_of_val(&desc) {
-            return DriveKind::Unknown;
+        if let Err(e) = ok {
+            return unknown(format!("seek-penalty query failed: {e}"));
+        }
+        if (got as usize) < std::mem::size_of_val(&desc) {
+            return unknown(format!("seek-penalty query returned {got} bytes"));
         }
         if desc.IncursSeekPenalty {
-            DriveKind::Hdd
+            (DriveKind::Hdd, None)
         } else {
-            DriveKind::Ssd
+            (DriveKind::Ssd, None)
         }
     }
     #[cfg(not(windows))]
-    DriveKind::Unknown
+    (DriveKind::Unknown, Some("not Windows".into()))
 }
 
 /// Walks `root` on a pool sized for its drive; every worker runs at
 /// background priority. Returns the tree and the thread count used.
 pub fn walk_drive(root: &Path, progress: &Progress, kind: DriveKind) -> (Option<Node>, usize) {
-    let logical = std::thread::available_parallelism().map_or(4, |n| n.get());
     let threads = std::env::var("WINPERF_SPACE_THREADS")
         .ok()
         .and_then(|v| v.parse().ok())
-        .unwrap_or_else(|| scan_threads(kind, logical))
+        .unwrap_or_else(|| scan_threads(kind))
         .max(1);
     if threads == 1 {
         return (walk(root, progress), 1);
@@ -681,8 +704,11 @@ pub fn start(app: AppHandle, root: String) -> Result<(), String> {
             background_priority();
             let before_mb = own_memory_mb();
             let started = Instant::now();
-            let kind = drive_kind(&root);
+            let (kind, why) = drive_kind(&root);
+            let kind_ms = started.elapsed().as_millis();
+            let walking = Instant::now();
             let (tree, threads) = walk_drive(Path::new(&root), &progress, kind);
+            let walk_s = walking.elapsed().as_secs_f64();
             let state = app.state::<SpaceState>();
             if let Ok(mut running) = state.running.lock() {
                 if running
@@ -708,7 +734,9 @@ pub fn start(app: AppHandle, root: String) -> Result<(), String> {
                 };
                 let nodes = count_nodes(&scan.tree);
                 let peak_mb = own_memory_mb();
+                let writing = Instant::now();
                 let saved = write_cache(&dir, &scan);
+                let write_ms = writing.elapsed().as_millis();
                 if let Ok(mut unsaved) = state.unsaved.lock() {
                     unsaved.remove(&root);
                     if saved.is_err() {
@@ -725,14 +753,20 @@ pub fn start(app: AppHandle, root: String) -> Result<(), String> {
                     &format!(
                         "{root}: {kind:?}, {threads} threads, {files} files, {nodes} nodes kept, {} s, cache {}; \
                          fob memory {before_mb} MB before, {peak_mb} MB with the tree, \
-                         {} MB after",
+                         {} MB after; phases: kind query {kind_ms} ms{}, walk {walk_s:.1} s \
+                         ({dirs} folders, listing {list_s:.1} s and folding {fold_s:.1} s summed over threads), \
+                         cache write {write_ms} ms",
                         (started.elapsed().as_secs_f64() * 10.0).round() / 10.0,
                         if saved.is_ok() {
                             "written"
                         } else {
                             "NOT written"
                         },
-                        own_memory_mb()
+                        own_memory_mb(),
+                        why.as_deref().map(|w| format!(" ({w})")).unwrap_or_default(),
+                        dirs = progress.dirs.load(Ordering::Relaxed),
+                        list_s = progress.list_ns.load(Ordering::Relaxed) as f64 / 1e9,
+                        fold_s = progress.fold_ns.load(Ordering::Relaxed) as f64 / 1e9,
                     ),
                 );
             }
@@ -1234,12 +1268,10 @@ mod tests {
     }
 
     #[test]
-    fn threads_follow_the_drive_kind() {
-        assert_eq!(scan_threads(DriveKind::Ssd, 24), 16);
-        assert_eq!(scan_threads(DriveKind::Ssd, 4), 8);
-        assert_eq!(scan_threads(DriveKind::Ssd, 1), 2);
-        assert_eq!(scan_threads(DriveKind::Hdd, 24), 1);
-        assert_eq!(scan_threads(DriveKind::Unknown, 24), 2);
+    fn every_drive_kind_walks_on_one_thread() {
+        for kind in [DriveKind::Ssd, DriveKind::Hdd, DriveKind::Unknown] {
+            assert_eq!(scan_threads(kind), 1);
+        }
     }
 
     #[test]
@@ -1287,8 +1319,14 @@ fn space_speed() {
     let root = std::env::var("WINPERF_SPACE_BENCH").expect("WINPERF_SPACE_BENCH");
     let progress = Progress::default();
     let start = Instant::now();
-    let tree = walk(Path::new(&root), &progress).unwrap();
+    let (tree, threads) = walk_drive(Path::new(&root), &progress, DriveKind::Unknown);
+    let tree = tree.unwrap();
     let secs = start.elapsed().as_secs_f64();
+    println!(
+        "{threads} threads; listing {:.2} s, folding {:.2} s summed",
+        progress.list_ns.load(Ordering::Relaxed) as f64 / 1e9,
+        progress.fold_ns.load(Ordering::Relaxed) as f64 / 1e9
+    );
     let files = progress.files.load(Ordering::Relaxed);
     let json = serde_json::to_vec(&tree).unwrap().len();
     println!(

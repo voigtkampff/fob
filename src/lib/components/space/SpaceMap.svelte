@@ -57,6 +57,7 @@
       blocks(folder, { area: width * height, maxItems: 250 }),
       (b) => b.size,
       { x: 0, y: 0, w: width, h: height },
+      { last: (b) => !b.node },
     );
     for (const r of outer) {
       const names = r.item.node ? [...path, r.item.node.n] : path;
@@ -82,6 +83,7 @@
             w: r.w - 2 * PAD,
             h: r.h - HEADER - PAD,
           },
+          { last: (b) => !b.node },
         ))
           out.push({
             key: [...names, c.item.node?.n ?? "*"].join("/"),
