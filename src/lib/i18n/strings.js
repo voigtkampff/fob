@@ -127,7 +127,7 @@ export const en = {
     "No temperature or fan readings on this PC; NVIDIA graphics cards report their own, other sensors need the sensor helper",
   "detail.source": "Source: {v}",
   "setup.missingFiles":
-    "Fan and temperature readings need the <b>sensors</b> and <b>PawnIO</b> folders, keep them next to fob.exe",
+    "Re-extract the whole Fob folder and keep the matching <b>sensors</b> and <b>PawnIO</b> folders next to fob.exe",
   "setup.willDo": "Fob will do the following:",
   "setup.uacNote":
     "Windows asks once; Fob keeps normal permissions; the helper reads sensors and network counters; programs in your Windows user session can query names, sizes and structure across whole fixed NTFS Disks, including folders you cannot open; no file contents or writes, and no fan speed changes; Disable removes it",
@@ -770,7 +770,7 @@ export const zh = {
     "此电脑没有温度或风扇读数；NVIDIA 显卡自带读数，其他传感器需要传感器助手",
   "detail.source": "来源：{v}",
   "setup.missingFiles":
-    "风扇和温度读数需要 <b>sensors</b> 和 <b>PawnIO</b> 文件夹，请把它们和 fob.exe 放在一起",
+    "请重新解压完整的 Fob 文件夹，将配套的 <b>sensors</b> 和 <b>PawnIO</b> 文件夹保留在 fob.exe 旁",
   "setup.willDo": "Fob 将执行以下操作：",
   "setup.uacNote":
     "Windows 询问一次权限；Fob 保持普通权限；助手读取传感器和网络计数；同一 Windows 用户会话中的程序可查询整个固定 NTFS 硬盘的名称、大小和结构，包括无权打开的文件夹；不返回文件内容，不写入文件、不改风扇转速，可在此处停用",

@@ -75,3 +75,16 @@ Settings landed as e1a6e17 with a clean main tree. The same owner then cherry-pi
 The integrated change caches command and environment metadata by pid and start time, shares the environment list through Arc, retries initially empty metadata, and removes exited-process entries. The harness includes actual process_monitor.rs and types.rs source files rather than a copied algorithm. Arc serializes to the same JSON array. No Windows CPU or memory benefit is measured or claimed. No further optimization is included.
 
 A final lifecycle review found that the Settings webview remains mounted while hidden. A component timer would therefore keep hashing helper bundles in the background. The timer is removed. Refresh now happens on component entry, window focus, explicit Refresh status, and bounded setup completion checks only. Refresh stays available while another webview owns setup, so its busy snapshot is recoverable without periodic polling. The preview banner also counts status reads for desktop observation. This is a correction to the new Settings behavior, not another performance roadmap item or a measured speed claim.
+
+Invalid source-bundle feedback explicitly asks for a fresh complete extraction with matching sensors and PawnIO folders. Merely moving an already-present corrupted folder would not fix the new full-manifest status failure. Both locales retain a regression assertion for that recovery instruction.
+
+The resumed box lacked its previous compiler caches and a complete .NET SDK. The pinned local toolchains used for this build live under ignored dist/toolchain, not another project. Reproduce this environment with:
+
+```bash
+export RUSTUP_HOME=/workspace/winperf/dist/toolchain/rustup
+export CARGO_HOME=/workspace/winperf/dist/toolchain/cargo
+export PATH="$RUSTUP_HOME/toolchains/1.90.0-x86_64-unknown-linux-gnu/bin:/workspace/tools/xbin:/workspace/tools/llvm-mingw-20261020-ucrt-ubuntu-22.04-x86_64/bin:/home/box/.cargo/bin:$PATH"
+export DOTNET=/workspace/winperf/dist/toolchain/dotnet/dotnet
+```
+
+Rust is 1.90.0 and the complete local .NET SDK is 8.0.427. No VM, registered user computer, other project, or skill file was changed. The native-package repair remained blocked and installed no missing Fob development packages.

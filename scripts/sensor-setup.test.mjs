@@ -319,6 +319,8 @@ test("both locales retain meaningful helper scope, actions and outcome copy", ()
       assert.ok(table[key]);
       assert.doesNotMatch(table[key], /。/);
     }
+  assert.match(en["setup.missingFiles"], /Re-extract the whole Fob folder/);
+  assert.match(zh["setup.missingFiles"], /重新解压完整/);
   assert.match(en["helper.privacy"], /Windows user session/);
   assert.match(en["helper.privacy"], /whole fixed NTFS Disks/);
   assert.match(en["helper.privacy"], /folders you cannot open/);
