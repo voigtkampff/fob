@@ -32,6 +32,7 @@
     root: string;
     sep: string;
     scannedAt: number;
+    method?: "mft-helper" | "mft" | "walk";
     elapsedMs: number;
     files: number;
     skipped: number;
@@ -287,6 +288,15 @@
       })}{#if scan.skipped}<span class="muted">
           · {$t("space.skipped", { n: scan.skipped })}</span
         >{/if}
+      {#if scan.method}
+        <span class="muted">
+          · {scan.method === "mft-helper"
+            ? $t("space.methodHelper")
+            : scan.method === "mft"
+              ? "MFT"
+              : $t("space.methodWalk")}</span
+        >
+      {/if}
       {#if status?.ended?.[0] === root && status.ended[1]}<span class="muted">
           · {$t("space.stopped")}</span
         >{/if}

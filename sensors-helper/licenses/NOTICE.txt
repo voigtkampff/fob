@@ -1,9 +1,12 @@
 Fob bundles the following third-party components
 ==================================================
 
-sensors\  (fob-sensors.exe, Fob's read-only sensor helper)
+sensors\  (Fob's read-only sensor helper and MFT worker)
   fob-sensors.exe: part of Fob (MIT, see LICENSE.txt). Source:
     sensors-helper/ in the Fob source repository.
+  fob-mft.exe: part of Fob (MIT). Source: sensors-helper/mft-worker/.
+    The worker and fob.exe include ntfs-reader 0.6.0 under its MIT option
+    (ntfs-reader-LICENSE-MIT.txt). Source: https://github.com/kikijiki/ntfs-reader
   LibreHardwareMonitorLib.dll 0.9.6: Mozilla Public License 2.0
     (LibreHardwareMonitor-LICENSE-MPL-2.0.txt). Unmodified NuGet package.
     Source: https://github.com/LibreHardwareMonitor/LibreHardwareMonitor

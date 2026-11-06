@@ -6,7 +6,7 @@
 #   dist/licenses/           MPL-2.0, LHM third-party notices, PawnIO GPL-2.0, ...
 #   dist/manifest.sha256     hashes fob.exe embeds and checks before the
 #                            elevated setup copies or runs any of these files
-# Needs a .NET 8 SDK: $DOTNET, /workspace/tools/dotnet/dotnet or dotnet on PATH.
+# Needs cargo-xwin, llvm-rc on PATH, and a .NET 8 SDK: $DOTNET, /workspace/tools/dotnet/dotnet or dotnet on PATH.
 set -euo pipefail
 cd "$(dirname "$0")"
 DOTNET=${DOTNET:-$(command -v dotnet || echo /workspace/tools/dotnet/dotnet)}
@@ -18,6 +18,11 @@ PAWNIO_CACHE=${PAWNIO_CACHE:-$HOME/.cache/winperf/PawnIO_setup-2.2.0.exe}
 
 "$DOTNET" run --project tests -c Release
 rm -rf dist
+(cd mft-worker && cargo xwin build --target x86_64-pc-windows-msvc --release)
+mkdir -p src/obj dist/sensors
+cp mft-worker/target/x86_64-pc-windows-msvc/release/fob-mft.exe dist/sensors/
+WORKER_SHA=$(sha256sum dist/sensors/fob-mft.exe | cut -d ' ' -f 1)
+printf 'namespace WinperfSensors { static class MftWorkerHash { internal const string Value = "%s"; } }\n' "$WORKER_SHA" > src/obj/MftWorkerHash.g.cs
 "$DOTNET" publish src/winperf-sensors.csproj -c Release -o dist/sensors -p:ContinuousIntegrationBuild=true
 rm -f dist/sensors/*.pdb
 

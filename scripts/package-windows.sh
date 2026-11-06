@@ -34,7 +34,11 @@ Temp & fan card. Fob explains each step and Windows asks for permission
   - PawnIO driver (only if it is not installed yet),
   - the read-only helper copied to C:\Program Files\Fob\sensors,
   - the scheduled task "fob-sensors" that starts it when you sign in
-    (it also counts per-app network traffic for the Network detail).
+    (it also counts per-app network traffic and accelerates NTFS space scans).
+Existing installs: choose "Update sensor helper" in Temp & fan once and
+approve the Windows prompt to replace and restart the protected helper.
+Scanning itself never asks for permission. Old or absent helpers fall back
+to direct MFT when allowed, otherwise the existing folder scan.
 PawnIO's own installer window opens for the driver step.
 "Disable..." in the same place removes the task and the helper again.
 
@@ -45,6 +49,14 @@ TXT
 # Fail before zipping if an exe lacks its manifest (Common-Controls 6), VERSIONINFO or icon.
 COMPANY=$(sed -n 's/^CompanyName = "\(.*\)"$/\1/p' src-tauri/Cargo.toml)
 python3 scripts/check-windows-exe.py "$VER" "$COMPANY" "$OUT/fob.exe" "$OUT/sensors/fob-sensors.exe" src-tauri/icons/icon.ico
+python3 - "$OUT/sensors/fob-mft.exe" "$VER" "$COMPANY" <<'PY'
+import sys
+sys.dont_write_bytecode = True
+sys.path.insert(0, "scripts")
+from importlib.machinery import SourceFileLoader
+m = SourceFileLoader("check_exe", "scripts/check-windows-exe.py").load_module()
+assert m.check(sys.argv[1], sys.argv[2], sys.argv[3], False)
+PY
 (cd "$OUT" && find . -type f \( -iname '*.exe' -o -iname '*.dll' \) | sort | sed 's|^\./||' |
   xargs -d '\n' sha256sum > SHA256SUMS.txt)
 mkdir -p dist

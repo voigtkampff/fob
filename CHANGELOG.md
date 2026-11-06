@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.8.1
+
+- Normally launched Fob uses the updated elevated sensor helper for NTFS MFT space scans. The helper update uses the existing explicit one-time UAC flow.
+- Independent, current-user scan IPC keeps sensor updates separate. Requests only authorize a fixed NTFS drive root and return bounded read-only metadata. Cancellation, disconnects, and deadlines stop the worker.
+- Old or unavailable helpers retain direct-MFT and SSD-aware folder-scan fallback. Scan results identify the method used.
+
 ## [1.3.0] — 2026-10-29
 
 ### A refreshed desktop, with the themes you know

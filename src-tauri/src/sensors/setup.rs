@@ -142,7 +142,7 @@ pub fn task_xml(user: &str, command: &Path) -> String {
 <Task version="1.2" xmlns="http://schemas.microsoft.com/windows/2004/02/mit/task">
   <RegistrationInfo>
     <Author>Fob</Author>
-    <Description>Fob read-only sensor helper: reads temperatures, fan speeds and per-app network bytes for Fob. Never changes fan settings.</Description>
+    <Description>Fob read-only sensor helper: reads temperatures, fan speeds, per-app network counters and NTFS metadata for Fob. Never returns file contents or changes fan settings.</Description>
   </RegistrationInfo>
   <Triggers>
     <LogonTrigger>

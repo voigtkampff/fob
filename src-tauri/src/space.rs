@@ -1,8 +1,7 @@
 //! Fob: disk space map.
 //!
-//! Fob 0.8.0: on Windows NTFS, tries an MFT scan first when the volume can
-//! be opened (needs elevation). Otherwise falls back to a plain, read-only
-//! directory walk. Non-NTFS volumes always walk.
+//! On Windows NTFS, prefers the installed elevated helper, then direct MFT
+//! when the volume can be opened. Otherwise uses the read-only directory walk.
 //!
 //! A scan runs only when asked (`space_scan`), on its own thread at
 //! background CPU and I/O priority, so the UI and the sampler never wait on
@@ -447,18 +446,31 @@ pub fn drive_kind(_root: &str) -> (DriveKind, Option<String>) {
     (DriveKind::Unknown, Some("not Windows".into()))
 }
 
-/// Fob 0.8.0: try the NTFS MFT first; on any miss (non-NTFS, no admin,
-/// reader error) fall back to the directory walk silently. The elevated
-/// sensors helper is not used: its pipe only pushes sensor JSON, and an MFT
-/// dump would need a new protocol tied to sensor setup.
+/// Prefer the installed elevated helper, then direct MFT, then the existing walk.
+/// Missing, old, or rejected helpers never trigger elevation.
 pub fn scan_root(
     root: &Path,
     progress: &Progress,
     kind: DriveKind,
 ) -> (Option<Node>, usize, &'static str) {
+    if progress.cancel.load(Ordering::Relaxed) {
+        return (None, 1, "walk");
+    }
+    if let Some(tree) = crate::space_helper::try_scan(root, progress) {
+        return (Some(tree), 1, "mft-helper");
+    }
+    if progress.cancel.load(Ordering::Relaxed) {
+        return (None, 1, "walk");
+    }
     if let Some(tree) = crate::space_mft::try_scan(root, progress) {
         return (Some(tree), 1, "mft");
     }
+    if progress.cancel.load(Ordering::Relaxed) {
+        return (None, 1, "walk");
+    }
+    progress.files.store(0, Ordering::Relaxed);
+    progress.bytes.store(0, Ordering::Relaxed);
+    progress.dirs.store(0, Ordering::Relaxed);
     let (tree, threads) = walk_drive(root, progress, kind);
     (tree, threads, "walk")
 }
@@ -554,6 +566,8 @@ pub struct Scan {
     /// Unix seconds.
     pub scanned_at: u64,
     pub elapsed_ms: u64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub method: Option<String>,
     pub files: u64,
     pub skipped: u64,
     pub tree: Node,
@@ -727,7 +741,8 @@ pub fn start(app: AppHandle, root: String) -> Result<(), String> {
             background_priority();
             let started = Instant::now();
             let (kind, _why) = drive_kind(&root);
-            let (tree, _threads, _via) = scan_root(Path::new(&root), &progress, kind);
+            let (tree, _threads, via) = scan_root(Path::new(&root), &progress, kind);
+            let tree = tree.filter(|_| !progress.cancel.load(Ordering::Relaxed));
             let state = app.state::<SpaceState>();
             if let Ok(mut running) = state.running.lock() {
                 if running
@@ -746,6 +761,7 @@ pub fn start(app: AppHandle, root: String) -> Result<(), String> {
                         .map(|d| d.as_secs())
                         .unwrap_or(0),
                     elapsed_ms: started.elapsed().as_millis() as u64,
+                    method: Some(via.into()),
                     files: progress.files.load(Ordering::Relaxed),
                     skipped: progress.skipped.load(Ordering::Relaxed),
                     root: root.clone(),
@@ -1265,6 +1281,7 @@ mod tests {
             sep: "/".into(),
             scanned_at: 1_762_000_000,
             elapsed_ms: 12,
+            method: None,
             files: 1,
             skipped: 0,
             tree,
@@ -1426,6 +1443,7 @@ fn space_memory() {
         sep: "/".into(),
         scanned_at: 0,
         elapsed_ms: 0,
+        method: None,
         files: tree.files,
         skipped: 0,
         tree,

@@ -1,5 +1,5 @@
 #![cfg_attr(not(windows), allow(dead_code))]
-//! Fob 0.8.0: build the space-map tree from NTFS MFT records.
+//! Build the space-map tree from NTFS MFT records.
 //!
 //! The Windows reader (`try_scan`) lives behind `cfg(windows)`. The tree
 //! builder is pure and tested with fixtures on every OS. Hard links share one
@@ -12,26 +12,9 @@ use crate::space::{fold, Node, Progress};
 use std::collections::HashMap;
 use std::sync::atomic::Ordering;
 
-/// One name of a file or folder, as the MFT lists it.
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct MftLink {
-    /// Parent directory's MFT record number.
-    pub parent: u64,
-    /// This file's MFT record number (shared by hard links).
-    pub id: u64,
-    pub name: String,
-    pub dir: bool,
-    /// Allocated bytes; 0 for an extra hard-link name.
-    pub size: u64,
-}
-
-/// Round a logical size up to whole clusters (walk does the same for ordinary files).
-pub fn allocated(logical: u64, cluster: u64) -> u64 {
-    if cluster <= 1 {
-        return logical;
-    }
-    logical.div_ceil(cluster) * cluster
-}
+#[cfg(test)]
+use crate::mft_records::allocated;
+pub use crate::mft_records::MftLink;
 
 /// Builds the same `Node` tree the directory walk produces, from flat MFT links.
 /// `root_id` is the volume root's record number; `root_name` is the drive label
@@ -44,6 +27,9 @@ pub fn build_tree(
 ) -> Option<Node> {
     let mut by_parent: HashMap<u64, Vec<usize>> = HashMap::new();
     for (i, link) in links.iter().enumerate() {
+        if i % 1024 == 0 && progress.cancel.load(Ordering::Relaxed) {
+            return None;
+        }
         by_parent.entry(link.parent).or_default().push(i);
     }
     build_dir(root_id, root_name, &by_parent, links, progress)
@@ -72,6 +58,9 @@ fn build_dir(
     let mut files = 0u64;
     let mut bytes = 0u64;
     for &i in by_parent.get(&id).map(|v| v.as_slice()).unwrap_or(&[]) {
+        if progress.cancel.load(Ordering::Relaxed) {
+            return None;
+        }
         let link = &links[i];
         if link.dir {
             let child = build_dir(link.id, link.name.clone(), by_parent, links, progress)?;
@@ -111,106 +100,32 @@ pub fn try_scan(root: &std::path::Path, progress: &Progress) -> Option<Node> {
 }
 
 #[cfg(windows)]
-fn is_ntfs(root: &std::path::Path) -> bool {
-    use windows::Win32::Storage::FileSystem::GetVolumeInformationW;
-    let path = windows::core::HSTRING::from(root.as_os_str());
-    let mut fs = [0u16; 32];
-    let ok = unsafe { GetVolumeInformationW(&path, None, None, None, None, Some(&mut fs)) };
-    if ok.is_err() {
-        return false;
-    }
-    let end = fs.iter().position(|&c| c == 0).unwrap_or(fs.len());
-    String::from_utf16_lossy(&fs[..end]).eq_ignore_ascii_case("NTFS")
-}
-
-#[cfg(windows)]
-fn volume_path(root: &std::path::Path) -> Option<String> {
-    // ntfs-reader wants `\\.\C:` with no trailing slash.
-    let text = root.to_string_lossy();
-    let letter = text.chars().next()?.to_ascii_uppercase();
-    if !letter.is_ascii_alphabetic() {
-        return None;
-    }
-    Some(format!(r"\\.\{letter}:"))
-}
-
-#[cfg(windows)]
 fn read_volume(root: &std::path::Path, progress: &Progress) -> Option<Node> {
-    use ntfs_reader::{MftScan, NtfsFileNamespace, Volume, ROOT_RECORD};
-    if !is_ntfs(root) {
-        return None;
-    }
-    let device = volume_path(root)?;
-    let volume = match Volume::new(&device) {
-        Ok(v) => v,
-        Err(_) => return None, // AccessDenied without admin, or not a volume
-    };
-    let cluster = {
-        // Boot sector geometry: prefer the volume's cluster size when exposed.
-        // Fall back to GetDiskFreeSpaceW via space::cluster_size.
-        crate::space::cluster_size(root).max(1)
-    };
-    let mut scan = match MftScan::new(volume) {
-        Ok(s) => s,
-        Err(_) => return None,
-    };
-    let mut links: Vec<MftLink> = Vec::new();
-    let mut sized: std::collections::HashSet<u64> = std::collections::HashSet::new();
-    while let Ok(Some(chunk)) = scan.next_chunk() {
+    let mut links = crate::mft_wire::Links::default();
+    crate::mft_records::read_volume(root, |link| {
         if progress.cancel.load(Ordering::Relaxed) {
-            return None;
+            return Err(std::io::Error::other("cancelled"));
         }
-        for file in chunk.files() {
-            if file.is_directory() {
-                // Directory reparse points (junctions, mount points): the walk
-                // skips them; children live under the real target on this volume.
-                let reparse = file
-                    .standard_information()
-                    .map(|s| s.file_attributes() & 0x400 != 0)
-                    .unwrap_or(false)
-                    || file.hard_links().any(|n| n.is_reparse_point());
-                if reparse {
-                    continue;
-                }
-            }
-            let size_once = if file.is_directory() {
-                0
-            } else {
-                let logical = file
-                    .data_streams()
-                    .find(|s| s.name.is_none())
-                    .map(|s| s.size)
-                    .unwrap_or(0);
-                allocated(logical, cluster)
-            };
-            let id = file.number();
-            let mut first = sized.insert(id);
-            for name in file.hard_links() {
-                // Skip pure DOS 8.3 aliases; hard_links() already drops most,
-                // but keep a namespace guard for Win32AndDos-only oddities.
-                if matches!(name.namespace(), Some(NtfsFileNamespace::Dos)) {
-                    continue;
-                }
-                let size = if file.is_directory() {
-                    0
-                } else if first {
-                    first = false;
-                    size_once
+        if let Some(link) = link {
+            links.push(link)?;
+        }
+        Ok(())
+    })
+    .ok()?;
+    build_tree(
+        5,
+        root.to_string_lossy().into_owned(),
+        &links
+            .finish(|| {
+                if progress.cancel.load(Ordering::Relaxed) {
+                    Err(std::io::Error::other("cancelled"))
                 } else {
-                    0
-                };
-                links.push(MftLink {
-                    parent: name.parent_number(),
-                    id,
-                    name: name.to_string(),
-                    dir: file.is_directory(),
-                    size,
-                });
-            }
-        }
-    }
-    let root_name = root.to_string_lossy().into_owned();
-    build_tree(ROOT_RECORD, root_name, &links, progress)
+                    Ok(())
+                }
+            })
+            .ok()?,
+        progress,
+    )
 }
 
 #[cfg(test)]
@@ -226,6 +141,25 @@ mod tests {
             dir,
             size,
         }
+    }
+
+    #[test]
+    fn framed_scan_builds_the_existing_tree_and_counts_hardlinks_once() {
+        let records = vec![
+            link(5, 20, "folder", true, 0),
+            link(20, 21, "a", false, 300_000),
+            link(5, 21, "hard", false, 300_000),
+        ];
+        let mut bytes = crate::mft_wire::MAGIC.to_vec();
+        for record in records {
+            crate::mft_wire::frame(&mut bytes, 1, &serde_json::to_vec(&record).unwrap()).unwrap();
+        }
+        crate::mft_wire::frame(&mut bytes, 2, &[]).unwrap();
+        let links = crate::mft_wire::receive(&mut bytes.as_slice(), |_| Ok(())).unwrap();
+        assert_eq!(links[2].size, 0);
+        let tree = build_tree(5, "C:\\".into(), &links, &Progress::default()).unwrap();
+        assert_eq!((tree.files, tree.size), (2, 300_000));
+        assert_eq!(tree.children[0].children[0].name, "a");
     }
 
     #[test]

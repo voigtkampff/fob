@@ -87,6 +87,7 @@ namespace WinperfSensors
                     Console.Out.Write(Encoding.UTF8.GetString(latest.Bytes));
                     return 0;
                 }
+                MftService.Start();
                 new Thread(Accept) { IsBackground = true, Name = "pipe" }.Start();
                 while (true)
                 {

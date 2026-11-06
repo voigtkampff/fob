@@ -71,6 +71,18 @@ static class WireTests
 
     static int Main(string[] args)
     {
+        Check(MftRequest.Parse(new byte[] {70,77,48,49,67,0,0,0}) == 'C', "MFT drive root request");
+        Check(MftRequest.IsVolumeDevice(@"\Device\HarddiskVolume3"), "local volume device");
+        foreach (var target in new[] { @"\??\C:\Users", @"\Device\Mup\server", @"\Device\HarddiskVolume3\folder", @"\Device\HarddiskVolume" })
+            Check(!MftRequest.IsVolumeDevice(target), "reject SUBST, remote, and subtree aliases");
+        var rejected = 0;
+        foreach (var bytes in new[] { new byte[0], new byte[7], new byte[9],
+            new byte[] {70,77,48,48,67,0,0,0}, new byte[] {70,77,48,49,99,0,0,0},
+            new byte[] {70,77,48,49,67,1,0,0}, new byte[] {70,77,48,49,47,0,0,0} })
+        {
+            try { MftRequest.Parse(bytes); } catch (ArgumentException) { rejected++; }
+        }
+        Check(rejected == 7, "MFT rejects malformed, oversized, old-version, path, and unknown requests");
         // Prove the output does not depend on the machine's culture (decimal commas).
         Thread.CurrentThread.CurrentCulture = new CultureInfo("de-DE");
         var fixture = Path.Combine(AppContext.BaseDirectory, "../../../../../src-tauri/tests/fixtures/sensors-pipe.jsonl");
@@ -99,14 +111,16 @@ static class WireTests
         Check(NetAgg.Direction(10) == 1 && NetAgg.Direction(59) == -1 && NetAgg.Direction(18) == 0, "directions");
         var onDisk = File.Exists(fixture) ? File.ReadAllText(fixture) : "";
         Check(onDisk == text, "fixture " + Path.GetFullPath(fixture) + " is up to date (run with --write)");
-        Console.WriteLine(failures == 0 ? "PASS: helper wire format matches the fixture" : $"FAIL: {failures}");
+        Console.WriteLine(failures == 0 ?  $"PASS: {checks} checks, sensor fixture and MFT request validation" : $"FAIL: {failures}");
         return failures == 0 ? 0 : 1;
     }
 
     static int failures;
+    static int checks;
 
     static void Check(bool ok, string what)
     {
+        checks++;
         if (!ok)
         {
             failures++;

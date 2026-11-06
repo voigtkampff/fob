@@ -104,7 +104,7 @@ export const en = {
     "Fan and temperature readings need the <b>sensors</b> and <b>PawnIO</b> folders, keep them next to fob.exe",
   "setup.willDo": "Fob will do the following:",
   "setup.uacNote":
-    "Windows asks for permission once; Fob itself never runs as administrator, the helper only reads sensors and never changes fan speeds, and you can undo it here with Disable",
+    "Windows asks for permission once; Fob itself never runs as administrator, the helper reads sensors, network counters, and Disk metadata for faster scans, returns no file contents, and never changes fan settings, and you can undo it here with Disable",
   "setup.waiting": "Waiting for Windows…",
   "setup.continue": "Continue",
   "setup.cancel": "Cancel",
@@ -116,7 +116,7 @@ export const en = {
   "setup.repairMore": "Repair…",
   "setup.needHelper":
     "CPU, motherboard and fan sensors and per-app network speeds need the read-only sensor helper, set up once with your permission",
-  "setup.newer": "A newer sensor helper is available",
+  "setup.newer": "Update the helper to enable faster NTFS scans",
   "setup.incomplete": "The sensor helper isn't fully set up",
   "setup.running": "Sensor helper is running",
   "setup.starting": "Sensor helper is starting",
@@ -598,6 +598,8 @@ export const en = {
   "space.rescan": "Rescan",
   "space.stop": "Stop",
   "space.scanning": "Scanning… {n} files · {v} · {s} s",
+  "space.methodHelper": "MFT via helper",
+  "space.methodWalk": "Folder scan",
   "space.scanned": "Scanned {d} · {n} files in {s} s",
   "space.skipped": "{n} folders skipped (no access)",
   "space.stopped": "the last scan was stopped",
@@ -730,7 +732,7 @@ export const zh = {
     "风扇和温度读数需要 <b>sensors</b> 和 <b>PawnIO</b> 文件夹，请把它们和 fob.exe 放在一起",
   "setup.willDo": "Fob 将执行以下操作：",
   "setup.uacNote":
-    "Windows 只询问一次权限；Fob 本身不以管理员身份运行，助手只读取传感器、不改风扇转速，可随时在此处“停用”撤销",
+    "Windows 只询问一次权限；Fob 本身不以管理员身份运行，助手只读取传感器、网络计数和硬盘元数据来加速扫描，不返回文件内容、不改风扇转速，可随时在此处“停用”撤销",
   "setup.waiting": "正在等待 Windows…",
   "setup.continue": "继续",
   "setup.cancel": "取消",
@@ -742,7 +744,7 @@ export const zh = {
   "setup.repairMore": "修复…",
   "setup.needHelper":
     "CPU、主板、风扇传感器和各应用网速需要只读的传感器助手，经你同意后设置一次即可",
-  "setup.newer": "有更新的传感器助手",
+  "setup.newer": "更新助手后可加速 NTFS 扫描",
   "setup.incomplete": "传感器助手没有完整设置",
   "setup.running": "传感器助手正在运行",
   "setup.starting": "传感器助手正在启动",
@@ -1203,6 +1205,8 @@ export const zh = {
   "space.rescan": "重新扫描",
   "space.stop": "停止",
   "space.scanning": "正在扫描… {n} 个文件 · {v} · {s} 秒",
+  "space.methodHelper": "MFT 助手扫描",
+  "space.methodWalk": "文件夹扫描",
   "space.scanned": "扫描于 {d} · {n} 个文件，用时 {s} 秒",
   "space.skipped": "跳过 {n} 个无权访问的文件夹",
   "space.stopped": "上次扫描已停止",
