@@ -1,0 +1,15 @@
+# Runs the real src-tauri/src/monitoring process-monitor tests (and a
+# microbenchmark) without Tauri's GTK/WebKit build prerequisites. Not shipped.
+[package]
+name = "monitoring-harness"
+version = "0.0.0"
+edition = "2021"
+publish = false
+
+[workspace]
+
+[dependencies]
+# Same versions/features as src-tauri/Cargo.toml.
+sysinfo = { version = "0.35.2", features = ["disk", "multithread", "network", "system"] }
+serde = { version = "1.0", features = ["derive", "rc"] }
+serde_json = "1.0"

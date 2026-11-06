@@ -123,7 +123,8 @@ impl ProcessMonitor {
                     .or_insert_with(|| ProcessStaticInfo {
                         name: data.name.clone(),
                         command: String::new(),
-                        user: "-".to_string(),
+                        // As before: the owner seen first is kept for the process.
+                        user: data.user_id.clone().unwrap_or_else(|| "-".to_string()),
                         environ: Vec::new().into(),
                     });
                 if let Some(cmd) = data.cmd.filter(|c| !c.is_empty()) {
@@ -134,11 +135,6 @@ impl ProcessMonitor {
                 if let Some(environ) = data.environ.filter(|e| !e.is_empty()) {
                     if cached.environ.is_empty() {
                         cached.environ = environ.into();
-                    }
-                }
-                if cached.user == "-" {
-                    if let Some(user) = data.user_id {
-                        cached.user = user;
                     }
                 }
 
@@ -274,6 +270,38 @@ mod tests {
     }
 
     /// Tests creation of a new process monitor
+    #[test]
+    fn an_empty_reading_keeps_no_stale_process() {
+        let mut monitor = ProcessMonitor::new();
+        monitor.build_process_info(vec![data(9, 1, "gone.exe", Some(&["gone.exe"]))]);
+        assert!(monitor.build_process_info(vec![]).is_empty());
+        assert!(monitor.process_cache.is_empty());
+        let back = monitor.build_process_info(vec![data(9, 1, "next.exe", None)]);
+        assert_eq!(back[0].name, "next.exe");
+        assert_eq!(back[0].command, "");
+        assert!(back[0].environ.is_empty());
+    }
+
+    #[test]
+    fn the_owner_seen_first_is_kept_and_missing_stays_a_dash() {
+        let mut monitor = ProcessMonitor::new();
+        let mut first = data(3, 1, "a", Some(&["a"]));
+        first.user_id = None;
+        assert_eq!(monitor.build_process_info(vec![first])[0].user, "-");
+        let later = monitor.build_process_info(vec![data(3, 1, "a", None)]);
+        assert_eq!(later[0].user, "-");
+    }
+
+    #[test]
+    fn shared_environment_serialises_like_a_list() {
+        let mut monitor = ProcessMonitor::new();
+        let info = monitor.build_process_info(vec![data(5, 1, "a", Some(&["a"]))]);
+        let json = serde_json::to_value(&info[0]).unwrap();
+        assert_eq!(json["environ"], serde_json::json!(["A=1", "B=2"]));
+        assert_eq!(json["command"], "a");
+        assert_eq!(json["user"], "1000");
+    }
+
     #[test]
     fn cpu_is_a_share_of_the_whole_machine() {
         // node at 115.8 % of one core on a 24-thread example hybrid CPU
