@@ -104,7 +104,7 @@ export const en = {
     "Fan and temperature readings need the <b>sensors</b> and <b>PawnIO</b> folders, keep them next to fob.exe",
   "setup.willDo": "Fob will do the following:",
   "setup.uacNote":
-    "Windows asks for permission once; Fob itself never runs as administrator, the helper reads sensors, network counters, and Disk metadata for faster scans, returns no file contents, and never changes fan settings, and you can undo it here with Disable",
+    "Windows asks once; Fob keeps normal permissions; the helper reads sensors and network counters and lists names and sizes across entire NTFS Disks, including folders you cannot open; it returns no file contents and never changes fan speeds; Disable removes it",
   "setup.waiting": "Waiting for Windows…",
   "setup.continue": "Continue",
   "setup.cancel": "Cancel",
@@ -732,7 +732,7 @@ export const zh = {
     "风扇和温度读数需要 <b>sensors</b> 和 <b>PawnIO</b> 文件夹，请把它们和 fob.exe 放在一起",
   "setup.willDo": "Fob 将执行以下操作：",
   "setup.uacNote":
-    "Windows 只询问一次权限；Fob 本身不以管理员身份运行，助手只读取传感器、网络计数和硬盘元数据来加速扫描，不返回文件内容、不改风扇转速，可随时在此处“停用”撤销",
+    "Windows 询问一次权限；Fob 保持普通权限；助手读取传感器和网络计数，也能列出整个 NTFS 硬盘的文件名和大小，包括无权打开的文件夹；不返回文件内容、不改风扇转速，可在此处停用",
   "setup.waiting": "正在等待 Windows…",
   "setup.continue": "继续",
   "setup.cancel": "取消",

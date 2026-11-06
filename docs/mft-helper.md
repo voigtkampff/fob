@@ -79,9 +79,9 @@ This is a pending-verification Windows test package, not Windows acceptance.
 
 No Windows machine was operated, VM installed, or external upload made. The feasible automated checks ran first. Remaining target-platform evidence is a delivery gate, not a request for the user to perform full QA.
 
-The local test artifact is `dist/fob-v0.8.1-x86_64-windows.zip`, 8,283,961 bytes. Its SHA-256 is `281dd038823e4b91738b8e06e9232a7376a7505e361f7886395d64f9fa31efe2`.
+The initial artifact before the later permission-copy review was `dist/fob-v0.8.1-x86_64-windows.zip`, 8,283,961 bytes. Its SHA-256 was `281dd038823e4b91738b8e06e9232a7376a7505e361f7886395d64f9fa31efe2`.
 
-## Review follow-up on 979f5b4
+## Verification-only follow-up 72ff370 on 979f5b4
 
 The failing opacity test was reproduced before editing. Its old expectation `miniOpacity(12) === 40` was the fault, not the utility. The actual contract is consistent across the utility, backend, and slider:
 
@@ -89,7 +89,7 @@ The failing opacity test was reproduced before editing. Its old expectation `min
 - `src/lib/components/OpacitySlider.svelte` uses those bounds and the one-percent step. Mini opacity is not restricted to a few preset levels. The shared status-bar use can supply its own minimum and is unchanged.
 - `src-tauri/src/preferences.rs` accepts saved integer miniOpacity values from 0 through 100. Invalid raw saved values are rejected, leaving the previous setting intact. The adapter's coercion and the backend's rejection are intentionally different boundaries.
 
-Only `scripts/mini-opacity.test.mjs` and this document change in the follow-up. The revised tests exercise every integer from 0 through 100 and its numeric-string equivalent, negative and over-100 clamping, half-percent rounding, the former low-range failure, invalid and non-finite defaults, explicit UI bounds, the one-percent step, backend range agreement, shared slider use, opaque text, and transparent mini-window configuration. No production behavior, layout, visible strings, or skill files change.
+Only `scripts/mini-opacity.test.mjs` and this document changed in the verification-only commit 72ff370. The revised tests exercise every integer from 0 through 100 and its numeric-string equivalent, negative and over-100 clamping, half-percent rounding, the former low-range failure, invalid and non-finite defaults, explicit UI bounds, the one-percent step, backend range agreement, shared slider use, opaque text, and transparent mini-window configuration. No production behavior, layout, visible strings, or skill files change.
 
 The follow-up commands and results are:
 
@@ -113,3 +113,39 @@ Valid Linux smoke was rerun separately from the doctor verdict:
 The existing zip was not rebuilt or repackaged for test and documentation changes. A fresh audit compares all three packaged executable byte streams against their compiled outputs, verifies every entry in the embedded helper manifest and program SHA256SUMS, confirms the helper's UTF-16 worker SHA pin, and reads the actual PE resources. Main, helper, and worker still pass HCB 0.8.1, icon, and asInvoker checks. `git diff --quiet 979f5b4 -- src src-tauri sensors-helper/src sensors-helper/mft-worker sensors-helper/build.sh scripts/package-windows.sh` confirms production source and packaging are unchanged. The zip remains 8,283,961 bytes with SHA-256 `281dd038823e4b91738b8e06e9232a7376a7505e361f7886395d64f9fa31efe2`.
 
 Fix Root Causes kept the approved 0–100 behavior and repaired the obsolete test instead. Prove It Works required a real live-process/window check and actual zip inspection, rather than treating the doctor's unrelated exit status or a prior build as proof. The artifact remains a pending-verification Windows test package. No Windows acceptance is claimed and no full QA assignment is handed to the user.
+
+## Independent privilege review and upgrade trace
+
+The independent read-only review reported no source blocker in the IPC access mask, medium integrity label, request-before-impersonation ordering, server identity and hashes, or worker lifetime. No weaker executable-path-only client gate was introduced.
+
+The permission confirmation now plainly discloses that the helper can list names and sizes across entire NTFS Disks, including folders the user cannot normally open. Both Chinese and English explain that Fob keeps ordinary permissions, no file contents are returned, and fan speeds are not changed. `SensorSetup.svelte:44–58` shows this note before Continue for both initial setup and updates. `tests/i18n.mjs` checks the necessary scope and no-contents disclosures in both locales. The note includes other-user and administrator-only folders through the explicit normally-inaccessible-folder wording. This is a consequence of whole-volume MFT access, not a new capability in this follow-up. Actual target-platform layout and interaction remain unverified.
+
+The helper remains single-instance. An unavailable or busy pipe fails the open at `space_helper.rs:176–187`. `space.rs:459–475` then tries direct MFT if permitted or uses the existing walk. A successful helper result is labeled MFT via helper or MFT 助手扫描. A direct scan is labeled MFT. Walk fallback is labeled Folder scan or 文件夹扫描 by `SpacePage.svelte:291–298` and the locale tables. No wait queue or pipe-wait feature was added.
+
+The actual update sequence was traced through these source boundaries:
+
+1. `sensors/setup.rs:384–388` invokes `task::stop`, waits 1500 ms, and stops the old ETW session. `sensors/task.rs:89–92` calls the Task Scheduler COM task's `Stop(0)`. The existing task XML explicitly permits hard termination at `setup.rs:164`.
+2. During a live scan, `MftService.cs:105–106` holds the verified worker executable with `FileShare.Read`, which prevents write or delete replacement. Normal completion or cancellation closes worker stdin and kills/disposes the worker in `MftService.cs:140–147`.
+3. If task termination kills the helper instead of running its finally block, Windows closes the helper's file handles and the redirected parent-side stdin handle. The worker's stdin monitor at `mft-worker/src/main.rs:17–22` exits the worker when that stream closes. Its executable mapping is released when the worker exits. This is a source-level lifecycle trace, not a Windows lock-release observation.
+4. `setup.rs:422–440` stops the task before removing or copying the destination. It retries the removal/copy up to three times with one-second gaps. It only accepts a copy when every requested file copied successfully and the complete destination matches the embedded manifest. A surviving executable lock, incomplete copy, missing worker, or mismatched worker cannot pass that check.
+5. The failure path returns exit code 12. `run_elevated` maps the nonzero exit to the existing visible "Couldn't copy the sensor helper to Program Files" error. `SensorSetup.svelte:24–34` retains the confirmation and shows that error through its role=alert paragraph. Task registration and `run_task()` at `setup.rs:449–450` are reached only after full verification succeeds.
+6. A failed update is not an atomic rollback. Partial files can remain on disk after an error, and the old task registration can remain. The copy failure is reported rather than silently declared successful. Ordinary scanning separately requires the exact full helper manifest and falls back on a mixed installation instead of labeling it MFT. Windows termination timing, executable mapping release, and retry behavior under an actual file lock still require Windows evidence.
+
+A new behavior test, `sensors::setup::tests::mixed_or_incomplete_helper_worker_bundle_is_rejected`, starts with a matching helper/worker pair, checks success, replaces the worker with an old version and checks rejection, then removes it and checks rejection. It also checks the existing copy-error mapping. The targeted setup suite passes five tests. No production update logic needed modification based on this trace.
+
+Because the permission text is shipped inside Fob, this review changes a production frontend asset. The Windows test artifact is rebuilt for that change. The earlier verification-only phase did not rebuild or repackage identical binaries. The skill-owned doctor defect remains reported and unedited; no new application log writers or layout changes were made.
+
+### Current review artifact and final automatic checks
+
+After the permission-scope change, `node --test scripts/*.test.mjs` passes all 102 tests. `npm run check` reports zero errors and warnings. All ten `tests/*.mjs` scripts pass, including the new disclosure checks. Full Rust tests pass 130 tests with two opt-in benchmarks ignored. The targeted setup suite passes five tests. `cargo test --manifest-path src-tauri/Cargo.toml --offline mft` passes eleven tests. Worker protocol tests remain six passes, and the actual helper build reruns all 21 C# checks successfully.
+
+`PATH=/workspace/tools/xbin:/workspace/tools/llvm-mingw-20261020-ucrt-ubuntu-22.04-x86_64/bin:$PATH scripts/package-windows.sh` rebuilds the changed frontend and x86_64-pc-windows-msvc application. All three actual packaged executables pass the HCB 0.8.1, asInvoker manifest, and icon resource checks. A fresh zip audit confirms that each executable equals its compiled output, the embedded helper manifest matches every bundled program, all program SHA256SUMS match, and the helper's worker pin matches the worker. Both permission-scope strings are present in the newly built frontend assets.
+
+The current artifact supersedes the earlier 281dd038 checksum recorded above:
+
+- Zip: `/workspace/winperf/dist/fob-v0.8.1-x86_64-windows.zip`
+- Size: 8,284,112 bytes
+- SHA-256: `ec6dc9a7cb497c7b54d020bb75beb3e74add989cfb4758fa9d458deed536b5a4`
+- Checksum sidecar: `/workspace/winperf/dist/fob-v0.8.1-x86_64-windows.zip.sha256`
+
+This remains a pending-verification Windows test package. Ordinary-launch MFT, sensor responsiveness during real scans, actual upgrade lock release, Windows access denial and cancellation, and the affected permission-note layout are not Windows-verified. The independent source review and automatic tests do not replace those observations.

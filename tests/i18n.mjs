@@ -26,6 +26,25 @@ for (const key of Object.keys(en)) {
   );
 }
 
+for (const [locale, patterns] of [
+  [
+    en,
+    [
+      /names and sizes/,
+      /entire NTFS Disks/,
+      /including folders you cannot open/,
+      /returns no file contents/,
+    ],
+  ],
+  [
+    zh,
+    [/文件名和大小/, /整个 NTFS 硬盘/, /无权打开的文件夹/, /不返回文件内容/],
+  ],
+]) {
+  for (const pattern of patterns)
+    assert.match(locale["setup.uacNote"], pattern);
+}
+
 // Every literal key used in src/ exists ($t("…"), t("…"), $t(`prefix.${…}`)).
 function files(dir) {
   return readdirSync(dir).flatMap((name) => {
@@ -56,8 +75,28 @@ const dynamic = {
   detail: ["cpu", "gpu", "memory", "disk", "network", "temp"],
   lang: ["auto", "en", "zh"],
   "uptime.kind": ["cold", "fast", "hibernate"],
-  "overlay.short": ["cpu", "cpuTemp", "gpu", "gpuTemp", "ram", "vram", "disk", "net", "power"],
-  "overlay.metric": ["cpu", "cpuTemp", "gpu", "gpuTemp", "ram", "vram", "disk", "net", "power"],
+  "overlay.short": [
+    "cpu",
+    "cpuTemp",
+    "gpu",
+    "gpuTemp",
+    "ram",
+    "vram",
+    "disk",
+    "net",
+    "power",
+  ],
+  "overlay.metric": [
+    "cpu",
+    "cpuTemp",
+    "gpu",
+    "gpuTemp",
+    "ram",
+    "vram",
+    "disk",
+    "net",
+    "power",
+  ],
   "settings.overlayDock": ["top", "bottom", "free"],
 };
 assert.deepEqual(

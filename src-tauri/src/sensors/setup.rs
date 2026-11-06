@@ -535,6 +535,29 @@ mod tests {
     }
 
     #[test]
+    fn mixed_or_incomplete_helper_worker_bundle_is_rejected() {
+        let dir = std::env::temp_dir().join(format!("fob-bundle-pair-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let helper = dir.join("fob-sensors.exe");
+        let worker = dir.join("fob-mft.exe");
+        std::fs::write(&helper, b"new-helper").unwrap();
+        std::fs::write(&worker, b"new-worker").unwrap();
+        let manifest = format!(
+            "{}  sensors/fob-sensors.exe\n{}  sensors/fob-mft.exe\n",
+            sha256_file(&helper).unwrap(),
+            sha256_file(&worker).unwrap()
+        );
+        assert_eq!(verify(&dir, &manifest, "sensors/"), Ok(2));
+        std::fs::write(&worker, b"old-worker").unwrap();
+        assert!(verify(&dir, &manifest, "sensors/").is_err());
+        std::fs::remove_file(&worker).unwrap();
+        assert!(verify(&dir, &manifest, "sensors/").is_err());
+        assert!(exit_message(12).contains("Couldn't copy"));
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
     fn task_xml_round_trips_the_command_and_escapes() {
         let exe = Path::new(r"C:\Program Files\Fob & co\sensors\fob-sensors.exe");
         let xml = task_xml(r"DESKTOP-TEST\User", exe);
