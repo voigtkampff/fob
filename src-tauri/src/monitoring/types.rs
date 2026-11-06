@@ -10,8 +10,8 @@ pub(crate) struct ProcessData {
     pub pid: u32,
     /// Name of the process
     pub name: String,
-    /// Complete command line arguments
-    pub cmd: Vec<String>,
+    /// Complete command line arguments; `None` when the cache already holds them
+    pub cmd: Option<Vec<String>>,
     /// User ID that owns the process
     pub user_id: Option<String>,
     /// CPU usage as percentage (0-100)
@@ -22,8 +22,8 @@ pub(crate) struct ProcessData {
     pub status: ProcessStatus,
     /// Parent process ID
     pub ppid: Option<u32>,
-    /// Environment variables
-    pub environ: Vec<String>,
+    /// Environment variables; `None` when the cache already holds them
+    pub environ: Option<Vec<String>>,
     /// Root directory of the process
     pub root: String,
     /// Virtual memory usage in bytes
@@ -48,6 +48,8 @@ pub struct ProcessStaticInfo {
     pub command: String,
     /// Username of the process owner
     pub user: String,
+    /// Environment variables, shared by every frame of this process
+    pub environ: std::sync::Arc<[String]>,
 }
 
 /// Process information exposed to the frontend via Tauri
@@ -75,7 +77,7 @@ pub struct ProcessInfo {
     /// Number of threads (if available)
     pub threads: Option<u32>,
     /// Environment variables
-    pub environ: Vec<String>,
+    pub environ: std::sync::Arc<[String]>,
     /// Root directory of the process
     pub root: String,
     /// Virtual memory usage in bytes
