@@ -45,7 +45,7 @@ Native Linux verification is currently blocked by absent pkg-config and GTK/WebK
 
 ## Actual component preview
 
-The isolated Vite fixture imports the actual SettingsWindow, SensorSetup, lifecycle controller, settings store, locales, styles and theme. Only Tauri transport replies are mocked. It does not enter the production route or packaged build and cannot install anything. The visible banner marks the mocked state and counts setup calls. The existing external Tauri mockIPC type declaration promises arbitrary generic results even for concrete mock responses; a scoped expected type error documents that test-transport declaration mismatch only. Production types remain checked.
+The isolated Vite fixture imports the actual SettingsWindow, SensorSetup, lifecycle controller, settings store, locales, styles and theme. Only Tauri transport replies are mocked. It does not enter the production route or packaged build and cannot install anything. The outer fixture banner marks the mocked state and counts setup calls. The real component runs in a separate iframe with production CSS and no banner inside it. The existing external Tauri mockIPC type declaration promises arbitrary generic results even for concrete mock responses; a scoped expected type error documents that test-transport declaration mismatch only. Production types remain checked.
 
 Start with:
 
@@ -53,7 +53,7 @@ Start with:
 npx vite --config tests/fixtures/helper-settings.vite.config.js --host 0.0.0.0 --port 18082 --strictPort
 ```
 
-Open http://127.0.0.1:18082/helper-settings.html?lang=zh&state=absent for Chinese, or change lang to en. State options are absent, old, mixed, current, stopped, busy, missing, and query-error. Outcome options success, cancel and error apply after explicit Continue. The error fixture supplies long path/detail text. Language can also change through the actual Settings select. Review at the Settings minimum 580 by 560 and normal 640 by 640. The fixture banner adds its own space outside the app component. No screenshot or interaction is claimed from HTTP transform checks alone. Parent desktop review is still needed, followed by Windows Settings/UAC runtime evidence. The user's v0.8.1 ordinary-launch MFT confirmation remains separate evidence.
+Open http://127.0.0.1:18082/helper-settings.html?lang=zh&state=absent for Chinese, or change lang to en. State options are absent, old, mixed, current, stopped, busy, missing, and query-error. Outcome options success, cancel and error apply after explicit Continue. The error fixture supplies long path/detail text. Language can also change through the actual Settings select. Review at the Settings minimum 580 by 560 and normal 640 by 640. Use size=min for an exact 580 by 560 iframe viewport or size=normal for 640 by 640. The outer banner height may wrap and never reduces the iframe viewport. The banner reads the actual iframe innerWidth and innerHeight after load. Leave enough outer browser height for the banner plus the frame, or use helper-settings-panel.html directly at the desired browser viewport without a banner. No screenshot or interaction is claimed from HTTP transform checks alone. Parent desktop review is still needed, followed by Windows Settings/UAC runtime evidence. The user's v0.8.1 ordinary-launch MFT confirmation remains separate evidence.
 
 ## Settings commit verification
 
@@ -114,3 +114,38 @@ The actual section names are **Settings › General › Sensor helper** and **�
 An installed v0.8.1 helper does not match this build's exact manifest. Its explicit Update action requires Continue and the existing Windows permission prompt once to replace and restart the protected helper/worker bundle. Until then, missing, old or incompatible helper scans still use the unchanged direct-MFT-or-folder fallback and actual scan labels. Opening Settings, Refresh status and scanning never start installation, driver setup or UAC. PawnIO can only be installed through the existing explicit consent steps when missing. No user's computer was operated and no security policy, task privilege, app migration or log writer was added.
 
 Still missing are actual v0.8.2 Windows Settings layout, install/update/repair, UAC-decline behavior, upgrade file-lock release, sensor responsiveness and helper MFT during this new UI lifecycle. The user's ordinary-launch MFT confirmation is v0.8.1 evidence only. No Windows CPU or memory benefit is claimed for the integrated metadata cache. This report does not assign full QA to the user.
+
+## Preview-only styling correction
+
+The parent rejected the earlier layout screenshots because the surrounding Settings controls were unstyled. Those screenshots are not production-layout acceptance. The four previously observed mocked transport cases remain useful evidence only. They cover absent plus Refresh and local Cancel with zero setup calls, old plus permission cancellation with one setup call and no false success, English current action states, and the old plus long-error recovery path. The corrected styling and framing need a new browser review.
+
+### Root cause and chosen correction
+
+At 725b859, tests/fixtures/helper-settings.vite.config.js lines 6–7 set the Vite root to tests/fixtures and ran a separate Tailwind compiler. The fixture imported src/app.css at helper-settings-preview.js line 7. That stylesheet uses implicit Tailwind source detection at src/app.css line 1. The Tailwind Vite plugin uses config.root as its automatic scan base. It therefore scanned fixture files rather than src. Base styles compiled, but actual Settings utility classes did not. The captured CSS was 19,188 bytes and lacked flex, h-screen, p-6, text-lg and appearance-none. This accounts for the missing layout, text hierarchy, spacing, and native select appearance reset. It is a preview defect, not a production stylesheet defect.
+
+Production vite.config.js line 9 uses the repository root and includes the real sources. Its unchanged global CSS is 79,469 bytes and contains these utilities. The production route CSS is another 36,013 bytes. Neither the production configuration nor any shipped component, style, locale, backend or binary changes in this correction.
+
+The narrow alternatives were an explicit source directory for a second fixture Tailwind build, or reuse of the actual compiled production styles. Reuse avoids a second generation path. The fixture config now follows the production layout and page manifest imports, links both CSS assets into the panel, and serves their exact bytes without a Tailwind transform. Missing production output fails rather than falling back to incomplete CSS. Rebuild the frontend and restart the fixture after a future production styling change. No frontend or executable rebuild was needed for this preview-only correction.
+
+The preview state has an explicit minimum or normal viewport and transport counts for operations and status reads. helper-settings-viewport.js lines 12–20 create a borderless iframe with fixed width and height attributes. helper-settings-frame.js lines 50–62 accepts counts only from that same-origin child and reads its actual innerWidth and innerHeight. No production class, viewport unit, Settings markup or component style is overridden. The banner lives in the outer document, so its wrapping no longer changes the meaning of h-screen. The panel still mounts the actual SettingsWindow and only mocks Tauri transport.
+
+A separate adversarial pass checked static manifest dependency traversal, missing assets, duplicate CSS links, cache behavior, minimum and normal frame attributes, query preservation, message origin and source, and accidental production changes. The outer page has no inset, so the minimum frame fits an outer browser width of 580. For a standalone 580 by 560 capture, use the panel URL rather than estimating a banner height. Deterministic attribute tests do not claim browser layout acceptance.
+
+### Executed checks
+
+- node --test scripts/\*.test.mjs passes 145 tests with zero failures or skips. Seven new tests exercise both frame presets, invalid preset fallback and iframe attributes with a minimal DOM fixture. They do not claim real browser rendering. The 28 lifecycle tests and eight doctor regressions remain unchanged.
+- for t in tests/\*.mjs; do node "$t" || exit; done passes all 11 entries. The new helper-settings-preview.mjs starts a real local Vite server, fetches both production CSS assets, compares every byte to build output, checks ten actual utility declarations, and fetches the real Settings transform and isolated panel. Other checks still include copy, all 595 locale keys, treemap and Other drilldown.
+- npm run check reports zero errors and zero warnings. npm run release:check still reports 0.8.2. git diff --check passes. No dependency installation, native build, skill modification or user-computer operation was performed.
+- The persistent port 18082 server also serves both byte-identical production styles. Global CSS SHA256 is 0e28d816f1e39e54deaa14c301b0a157c05af1607574f60ebe77986efd3728f4. Route CSS SHA256 is 9a8c50b4bac119a778b8aa3c79511264d9a8854cd8367fd218efa022e015c30b. Exact responses are recorded in dist/v082-preview-live-style-audit.txt.
+- python3 scripts/audit-helper-package.py still passes CRC, compiled-program equality, all HCB 0.8.2 version resources, all asInvoker manifests, embedded bundle manifest, every program hash and worker pin. The zip remains 8,428,862 bytes with SHA256 0cab43bcd4c59abb6d932f95f908b53181342bfcb4eb07c52c975ea082ed317f. No artifact was rebuilt or repackaged. Audit output is dist/v082-preview-package-audit.txt.
+
+The corrected live entries are:
+
+- http://127.0.0.1:18082/helper-settings.html?lang=zh&state=absent&size=min
+- http://127.0.0.1:18082/helper-settings.html?lang=en&state=current&size=normal
+- http://127.0.0.1:18082/helper-settings.html?lang=zh&state=old&outcome=error&size=min
+- http://127.0.0.1:18082/helper-settings-panel.html?lang=zh&state=absent for a banner-free direct browser viewport capture
+
+State and outcome options remain the same. The new min and normal links only change fixture dimensions. The server stays running for parent desktop review. No screenshot was captured or fabricated. Parent should verify the displayed actual component viewport, tabs, headings, spacing, select chevron, helper consent, long error, and both languages at the supported sizes. This browser review and the previously listed Windows Settings and UAC runtime checks remain open. The package is still a pending-verification Windows test package. The blocked native full Rust suite is unchanged and was not retried.
+
+Fix Root Causes changed the fixture's CSS source rather than adding layout overrides. Model the Domain keeps frame dimensions in two explicit presets. Prove It Works compares served production bytes and re-audits the actual zip, without treating HTTP or mocked DOM checks as visual or Windows evidence.
