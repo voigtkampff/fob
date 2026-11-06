@@ -53,7 +53,7 @@ Executed on Linux:
 - `cargo test --manifest-path sensors-helper/mft-worker/Cargo.toml` passes six protocol tests.
 - `/workspace/tools/dotnet/dotnet run --project sensors-helper/tests -c Release` passes 21 checks, including the unchanged sensor fixture and the new request validation.
 - `npm run check` reports zero Svelte errors and warnings. `npm run release:check` reports 0.8.1.
-- `node --test scripts/*.test.mjs` reports 98 passes and one existing failure. `scripts/mini-opacity.test.mjs` still expects a minimum of 40 while unchanged `src/lib/utils/mini-opacity.js` allows 0. Neither file nor the matching backend preference validation changed in this work.
+- The initial `node --test scripts/*.test.mjs` run reported 98 passes and one stale opacity test failure. The review follow-up corrects the test contract and the full suite now passes all 102 tests. Production opacity behavior and backend validation are unchanged.
 - All ten `tests/*.mjs` scripts pass, including copy, both locales, treemap, Other, navigation, and dashboard tests.
 - The existing verify-fob build and launch procedure starts a real Linux app. The doctor confirms a live process and a visible 1280 by 900 Fob window. Its final exit code is 2 because it lists a log directory that no longer exists, not because the app failed. A Linux startup screenshot is retained. The changed setup confirmation and space-result method labels have not been driven in that UI.
 
@@ -80,3 +80,36 @@ This is a pending-verification Windows test package, not Windows acceptance.
 No Windows machine was operated, VM installed, or external upload made. The feasible automated checks ran first. Remaining target-platform evidence is a delivery gate, not a request for the user to perform full QA.
 
 The local test artifact is `dist/fob-v0.8.1-x86_64-windows.zip`, 8,283,961 bytes. Its SHA-256 is `281dd038823e4b91738b8e06e9232a7376a7505e361f7886395d64f9fa31efe2`.
+
+## Review follow-up on 979f5b4
+
+The failing opacity test was reproduced before editing. Its old expectation `miniOpacity(12) === 40` was the fault, not the utility. The actual contract is consistent across the utility, backend, and slider:
+
+- `src/lib/utils/mini-opacity.js` exports minimum 0, maximum 100, and step 1. It preserves every whole percent, accepts numeric strings, rounds finite fractional values, clamps out-of-range values, and returns 100 for invalid or non-finite inputs.
+- `src/lib/components/OpacitySlider.svelte` uses those bounds and the one-percent step. Mini opacity is not restricted to a few preset levels. The shared status-bar use can supply its own minimum and is unchanged.
+- `src-tauri/src/preferences.rs` accepts saved integer miniOpacity values from 0 through 100. Invalid raw saved values are rejected, leaving the previous setting intact. The adapter's coercion and the backend's rejection are intentionally different boundaries.
+
+Only `scripts/mini-opacity.test.mjs` and this document change in the follow-up. The revised tests exercise every integer from 0 through 100 and its numeric-string equivalent, negative and over-100 clamping, half-percent rounding, the former low-range failure, invalid and non-finite defaults, explicit UI bounds, the one-percent step, backend range agreement, shared slider use, opaque text, and transparent mini-window configuration. No production behavior, layout, visible strings, or skill files change.
+
+The follow-up commands and results are:
+
+- `node --test scripts/mini-opacity.test.mjs` initially reproduces the old failure, one pass and one failure.
+- `node --test scripts/*.test.mjs` after correction passes 102 tests, zero failures and zero skips.
+- `npm run check` reports zero errors and zero warnings.
+- `for f in tests/*.mjs; do node "$f" || exit; done` passes all ten scripts, including opacity contrast at 0/25/50/75/100 across 24 themes, copy, locales, treemap, and Other regression coverage.
+- `cargo test --manifest-path src-tauri/Cargo.toml` passes 129 tests, with the same two opt-in benchmarks ignored. This includes `preferences::tests::mini_opacity_is_opaque_by_default_and_kept_in_range`.
+- `cargo test --manifest-path sensors-helper/mft-worker/Cargo.toml` passes six tests.
+- `/workspace/tools/dotnet/dotnet run --project sensors-helper/tests -c Release` passes 21 checks.
+
+The doctor defect is in the skill-owned file `/workspace/winperf/.cursor/skills/verify-fob/bin/fob-verify.sh`, line 42. Its unconditional `ls "$LOGS"` runs under `set -euo pipefail`. The deliberately absent application log directory therefore makes doctor exit 2 after it has already printed a live process and visible window. The script was not edited under the explicit no-skill-edits constraint. The needed skill-owner fix is to make listing that optional directory conditional, report that absent logs are expected, and retain explicit failing checks for a dead process or missing visible app window. Creating a log directory or restoring log writers would hide the tool defect and is not a fix.
+
+Valid Linux smoke was rerun separately from the doctor verdict:
+
+1. `BIN=/workspace/scratch/verify/winperf-mft081 .cursor/skills/verify-fob/bin/fob-verify.sh relaunch mft081 WINPERF_SPACE_ROOTS=/workspace/winperf/tests` starts the existing Linux verification binary.
+2. Independent assertions read its actual PID, use `os.kill(pid, 0)` to prove it is alive, require a nonempty `xdotool search --onlyvisible --pid PID --name Fob` result on display :55, inspect the title and geometry, and assert the removed application log directory is absent.
+3. Observed process 875102 has visible window 2097155, title Fob, geometry 1280 by 900. Those assertions pass. The unmodified doctor then reproduces exit 2 on the same live process, isolating the verification-tool defect from application status.
+4. The existing stop command terminates only that verification process. No log writers or application log directories were added. This is startup/liveness evidence, not validation of the changed MFT dialogs or Windows execution.
+
+The existing zip was not rebuilt or repackaged for test and documentation changes. A fresh audit compares all three packaged executable byte streams against their compiled outputs, verifies every entry in the embedded helper manifest and program SHA256SUMS, confirms the helper's UTF-16 worker SHA pin, and reads the actual PE resources. Main, helper, and worker still pass HCB 0.8.1, icon, and asInvoker checks. `git diff --quiet 979f5b4 -- src src-tauri sensors-helper/src sensors-helper/mft-worker sensors-helper/build.sh scripts/package-windows.sh` confirms production source and packaging are unchanged. The zip remains 8,283,961 bytes with SHA-256 `281dd038823e4b91738b8e06e9232a7376a7505e361f7886395d64f9fa31efe2`.
+
+Fix Root Causes kept the approved 0–100 behavior and repaired the obsolete test instead. Prove It Works required a real live-process/window check and actual zip inspection, rather than treating the doctor's unrelated exit status or a prior build as proof. The artifact remains a pending-verification Windows test package. No Windows acceptance is claimed and no full QA assignment is handed to the user.
