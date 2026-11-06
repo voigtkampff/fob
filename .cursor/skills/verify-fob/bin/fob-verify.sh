@@ -35,11 +35,21 @@ relaunch) # relaunch <name> [ENV=value ...]: same HOME, keeps saved state
   for _ in $(seq 60); do [ -n "$(win Fob)" ] && break; sleep 0.5; done
   echo "ready pid $(cat "$H/pid")" ;;
 doctor) # doctor <name>: process alive, its windows, saved files
-  kill -0 "$(cat "$H/pid")" && echo "alive pid $(cat "$H/pid")"
-  for w in $(xdotool search --onlyvisible --pid "$(cat "$H/pid")" --name . 2>/dev/null); do
+  [ -r "$H/pid" ] || { echo "missing application pid"; exit 1; }
+  pid=$(< "$H/pid")
+  [[ "$pid" =~ ^[1-9][0-9]*$ ]] || { echo "invalid application pid"; exit 1; }
+  kill -0 "$pid" 2>/dev/null || { echo "application is not running"; exit 1; }
+  visible=$(xdotool search --onlyvisible --pid "$pid" --name . 2>/dev/null) || { echo "no visible application window"; exit 1; }
+  [ -n "$visible" ] || { echo "no visible application window"; exit 1; }
+  echo "alive pid $pid"
+  for w in $visible; do
     echo "window $w '$(xdotool getwindowname "$w")' $(xdotool getwindowgeometry "$w" | tr '\n' ' ')"; done
   ls "$CFG" 2>/dev/null | sed 's/^/config: /'
-  ls "$LOGS" 2>/dev/null | sed 's/^/log: /' ;;
+  if [ -d "$LOGS" ]; then
+    ls "$LOGS" | sed 's/^/log: /'
+  else
+    echo "no application log directory (optional)"
+  fi ;;
 windows) # windows <name>: visible window ids and titles
   for w in $(xdotool search --onlyvisible --pid "$(cat "$H/pid")" --name . 2>/dev/null); do
     echo "$w $(xdotool getwindowname "$w")"; done ;;
