@@ -88,3 +88,29 @@ export DOTNET=/workspace/winperf/dist/toolchain/dotnet/dotnet
 ```
 
 Rust is 1.90.0 and the complete local .NET SDK is 8.0.427. No VM, registered user computer, other project, or skill file was changed. The native-package repair remained blocked and installed no missing Fob development packages.
+
+## Final combined delivery evidence
+
+The final source build is dce9148, following the Settings commit e1a6e17, integrated lightweight commits ce2adfc and 4ffef1d, and hidden-window refresh correction 2b11a0e. The original perf commits remain 5b9520d and 940f020. No further roadmap item is included.
+
+The final actual artifact is `/workspace/winperf/dist/fob-v0.8.2-x86_64-windows.zip`, 8,428,862 bytes. SHA256 is `0cab43bcd4c59abb6d932f95f908b53181342bfcb4eb07c52c975ea082ed317f`. The adjacent `.zip.sha256` and `dist/fob-v0.8.2-SHA256SUMS.txt` are local delivery files. This is a pending-verification Windows test package, not Windows Settings acceptance.
+
+Executed final checks:
+
+- `node --test scripts/*.test.mjs` passes 138 tests with zero failures and zero skips. This includes 28 helper lifecycle cases and eight unchanged doctor regressions.
+- `for t in tests/*.mjs; do node "$t" || exit; done` passes all ten existing scripts. Copy, i18n, existing Settings/mini contracts, treemap, Other and navigation checks remain green.
+- `npm run check` reports zero errors and zero warnings. `npm run release:check`, `git diff --check`, `bash -n scripts/package-windows.sh`, and syntax checking the unchanged verification helper pass.
+- `cargo test --manifest-path tools/monitoring-harness/Cargo.toml` passes ten actual-module tests. It verifies pid reuse, live-cache eviction, late command data, shared environment retention, unchanged JSON and first-seen owner behavior. It supplements, not replaces, the blocked full suite.
+- `cargo test --manifest-path sensors-helper/mft-worker/Cargo.toml` passes six tests. The actual helper build passes all 21 C# checks.
+- `cargo xwin check --manifest-path src-tauri/Cargo.toml --target x86_64-pc-windows-msvc --all-targets` passes, including Windows test-target compilation. This does not execute the Windows tests.
+- `DOTNET="$PWD/dist/toolchain/dotnet/dotnet" scripts/package-windows.sh` builds the actual integrated x86_64-pc-windows-msvc app, helper and worker. All three packaged executable resources report HCB 0.8.2, asInvoker, and the expected icons. The main app also has the Common-Controls 6.0 manifest dependency. The identifier remains com.hcb.fob.
+- `python3 scripts/audit-helper-package.py` passes zip CRC, exact equality with all three compiled programs, the main executable's embedded helper manifest, every program checksum, and the helper's packaged worker hash pin. It records the final checksum above. Audit output is in `dist/v082-package-audit.txt`; build output is in `dist/v082-package-build.txt`.
+- The post-integration full main Rust command still exits 101 before tests in glib-sys, gobject-sys and gio-sys because pkg-config is missing. Official Debian HTTP access returns 500 and HTTPS returns unexpected SSL EOF. The prerequisite installation cannot resolve package names without indexes. The exact failure remains `dist/v082-rust-tests.txt`. No cross-target check or harness result is substituted for this missing full-suite evidence. Current native Linux app build and doctor are not claimed as passes.
+
+The live review entry is `http://127.0.0.1:18082/helper-settings.html?lang=zh&state=absent`. Use `lang=en`, `state=old|mixed|current|stopped|busy|missing|query-error`, and `outcome=success|cancel|error` as needed. The preview server remains running. HTML, the fixture module and the real Settings component transform returned HTTP 200 after the final source change. No GUI was driven from Shell and no screenshot was fabricated. Actual minimum-size, long-error and bilingual layout interaction remains for parent desktop review, not established by these HTTP checks.
+
+The actual section names are **Settings › General › Sensor helper** and **设置 › 常规 › 传感器助手**. Version labels are **Installed version / Bundled version** and **已安装版本 / 随附版本**. Actions are **Install / Update / Repair / Refresh status** and **安装 / 更新 / 修复 / 刷新状态**. Install, Update and Repair open the same inline consent steps as Temp & fan. Only Continue calls the existing elevated setup. An already-current responding helper offers no reinstall or update action.
+
+An installed v0.8.1 helper does not match this build's exact manifest. Its explicit Update action requires Continue and the existing Windows permission prompt once to replace and restart the protected helper/worker bundle. Until then, missing, old or incompatible helper scans still use the unchanged direct-MFT-or-folder fallback and actual scan labels. Opening Settings, Refresh status and scanning never start installation, driver setup or UAC. PawnIO can only be installed through the existing explicit consent steps when missing. No user's computer was operated and no security policy, task privilege, app migration or log writer was added.
+
+Still missing are actual v0.8.2 Windows Settings layout, install/update/repair, UAC-decline behavior, upgrade file-lock release, sensor responsiveness and helper MFT during this new UI lifecycle. The user's ordinary-launch MFT confirmation is v0.8.1 evidence only. No Windows CPU or memory benefit is claimed for the integrated metadata cache. This report does not assign full QA to the user.
