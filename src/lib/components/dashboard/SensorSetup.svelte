@@ -30,8 +30,6 @@
   );
   onMount(() => {
     void refreshSensorSetup();
-    const timer = setInterval(refreshSensorSetup, 3000);
-    return () => clearInterval(timer);
   });
 </script>
 
@@ -54,7 +52,11 @@
       </div>
     {/if}
     <p class="lead" role="status">
-      {busy ? $t("setup.waiting") : $t(`helper.state.${view.kind}`)}
+      {activity.kind === "working"
+        ? $t("setup.waiting")
+        : status?.busy
+          ? $t("helper.busy")
+          : $t(`helper.state.${view.kind}`)}
     </p>
     {#if view.kind === "missing-files"}
       <!-- eslint-disable-next-line svelte/no-at-html-tags -->
@@ -106,7 +108,8 @@
           >{/if}
         {#if details || feedback.kind === "error" || view.kind === "stopped"}
           <button
-            disabled={busy || activity.kind === "checking"}
+            disabled={activity.kind === "working" ||
+              activity.kind === "checking"}
             onclick={refreshSensorSetup}>{$t("helper.refresh")}</button
           >
         {/if}

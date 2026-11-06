@@ -45,6 +45,7 @@ const statuses = {
 };
 let status = statuses[scenario] ?? absent;
 let operations = 0;
+let reads = 0;
 let config = {
   ...DEFAULT_CONFIG,
   behavior: { ...DEFAULT_CONFIG.behavior, language: lang },
@@ -56,6 +57,9 @@ mockWindows("settings");
 // @ts-expect-error The test transport deliberately returns concrete fixture values.
 mockIPC(async (command, args) => {
   if (command === "sensor_setup_status") {
+    reads++;
+    const counter = document.querySelector("#fixture-reads");
+    if (counter) counter.textContent = String(reads);
     if (scenario === "query-error") throw "Fixture status query unavailable";
     return status;
   }
@@ -94,7 +98,11 @@ banner.textContent = `Browser fixture only. Mocked Windows helper, no installati
 const counter = document.createElement("span");
 counter.id = "fixture-count";
 counter.textContent = "0";
-banner.append(counter, ". ");
+banner.append(counter, ". Status reads ");
+const readCounter = document.createElement("span");
+readCounter.id = "fixture-reads";
+readCounter.textContent = "0";
+banner.append(readCounter, ". ");
 for (const name of [...Object.keys(statuses), "query-error"]) {
   const a = document.createElement("a");
   a.href = `?lang=${lang}&state=${name}&outcome=${outcome}`;

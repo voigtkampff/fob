@@ -67,3 +67,11 @@ Open http://127.0.0.1:18082/helper-settings.html?lang=zh&state=absent for Chines
 - Isolated preview HTML, its transport fixture module and the real Settings component transform return HTTP 200. This is readiness evidence only, not a claim of browser interaction, screenshot review, or Windows layout acceptance.
 
 Model the Domain led to one lifecycle controller instead of per-entry busy and error flags. Boundary Discipline keeps hash checks and version reads in the backend, and setup-error narrowing at the IPC boundary. Fix Root Causes removed stale lifecycle feedback/consent rather than changing the approved install flow. Prove It Works keeps mock, package, Linux dependency failure, and actual Windows evidence separate.
+
+## Approved lightweight integration
+
+Settings landed as e1a6e17 with a clean main tree. The same owner then cherry-picked both approved perf commits, 5b9520d and 940f020, in that order without conflicts. Their local integrated commits are ce2adfc and 4ffef1d. No perf worker writes were concurrent in this worktree. The second commit retains first-seen owner behavior, so both commits are included.
+
+The integrated change caches command and environment metadata by pid and start time, shares the environment list through Arc, retries initially empty metadata, and removes exited-process entries. The harness includes actual process_monitor.rs and types.rs source files rather than a copied algorithm. Arc serializes to the same JSON array. No Windows CPU or memory benefit is measured or claimed. No further optimization is included.
+
+A final lifecycle review found that the Settings webview remains mounted while hidden. A component timer would therefore keep hashing helper bundles in the background. The timer is removed. Refresh now happens on component entry, window focus, explicit Refresh status, and bounded setup completion checks only. Refresh stays available while another webview owns setup, so its busy snapshot is recoverable without periodic polling. The preview banner also counts status reads for desktop observation. This is a correction to the new Settings behavior, not another performance roadmap item or a measured speed claim.

@@ -2,6 +2,8 @@
 
 ## 0.8.2
 
+- Cache command and environment details by process identity, share environment lists between frames, and discard exited-process cache entries without changing JSON shape
+
 - Add persistent sensor helper controls in Settings › General, with installed and bundled versions, read-only status refresh, and explicit Install, Update, Repair, and Disable consent
 - Reuse the existing verified helper setup flow and disclose whole-Disk metadata access without elevating Fob
 - Detect mixed helper bundles and missing task or sensor response without claiming the helper is working, and prevent concurrent setup prompts across app windows
