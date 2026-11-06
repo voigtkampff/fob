@@ -1,3 +1,4 @@
+import { helperView } from "./sensor-setup.js";
 import { tEn } from "../i18n/strings.js";
 
 /** @typedef {(key: string, vars?: Record<string, string | number>) => string} Translate */
@@ -363,18 +364,24 @@ export function byKind(list) {
 }
 
 /** What the user has to do for fan/temperature readings, from the setup status.
- * "none": nothing to offer (not Windows / dev build / already working).
- * @param {{ supported: boolean, bundled: boolean, installed: boolean, task: string, update_available: boolean, running: boolean } | null | undefined} status
+ * "none": nothing to offer (not Windows / dev build / unsupported).
+ * @param {import("./sensor-setup.js").Status | null | undefined} status
  * @returns {"none" | "missing-files" | "enable" | "repair" | "update" | "starting" | "ready"}
  */
 export function setupState(status) {
-  if (!status || !status.supported) return "none";
-  const done = status.installed && status.task === "ok";
-  if (done && status.update_available)
-    return status.bundled ? "update" : "ready";
-  if (done) return status.running ? "ready" : "starting";
-  if (!status.bundled) return "missing-files";
-  return status.installed || status.task !== "missing" ? "repair" : "enable";
+  /** @type {Record<import("./sensor-setup.js").HelperKind, "none"|"missing-files"|"enable"|"repair"|"update"|"starting"|"ready">} */
+  const states = {
+    unsupported: "none",
+    checking: "none",
+    unavailable: "none",
+    "missing-files": "missing-files",
+    install: "enable",
+    repair: "repair",
+    update: "update",
+    current: "ready",
+    stopped: "starting",
+  };
+  return states[helperView(status).kind];
 }
 
 /** The steps the elevated setup will take, shown before anything runs.

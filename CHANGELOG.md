@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.8.2
+
+- Add persistent sensor helper controls in Settings › General, with installed and bundled versions, read-only status refresh, and explicit Install, Update, Repair, and Disable consent
+- Reuse the existing verified helper setup flow and disclose whole-Disk metadata access without elevating Fob
+- Detect mixed helper bundles and missing task or sensor response without claiming the helper is working, and prevent concurrent setup prompts across app windows
+
 ## 0.8.1
 
 - Normally launched Fob uses the updated elevated sensor helper for NTFS MFT space scans. The helper update uses the existing explicit one-time UAC flow.

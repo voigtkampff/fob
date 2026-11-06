@@ -27,20 +27,21 @@ cp LICENSE "$OUT/LICENSE.txt"
 cat > "$OUT/README.txt" <<TXT
 Fob $VER (portable, Windows 10/11 x64)
 
-Run fob.exe. Keep this folder together: the "sensors" and "PawnIO"
-folders are only used if you choose "Enable fan/temperature" in the
-Temp & fan card. Fob explains each step and Windows asks for permission
-(UAC) once before anything is installed:
-  - PawnIO driver (only if it is not installed yet),
-  - the read-only helper copied to C:\Program Files\Fob\sensors,
-  - the scheduled task "fob-sensors" that starts it when you sign in
-    (it also counts per-app network traffic and accelerates NTFS space scans).
-Existing installs: choose "Update sensor helper" in Temp & fan once and
-approve the Windows prompt to replace and restart the protected helper.
-Scanning itself never asks for permission. Old or absent helpers fall back
-to direct MFT when allowed, otherwise the existing folder scan.
-PawnIO's own installer window opens for the driver step.
-"Disable..." in the same place removes the task and the helper again.
+Run fob.exe. Keep the sensors and PawnIO folders next to it.
+Settings > General > Sensor helper shows status, installed and bundled versions,
+and Install, Update or Repair when needed. Refresh status never asks for UAC.
+Temp & fan keeps the same setup controls. Nothing installs until you choose
+an action, read the steps, press Continue, and approve Windows permission:
+  - PawnIO driver only if missing, with its own visible installer,
+  - the verified helper copied to C:\Program Files\Fob\sensors,
+  - the existing fob-sensors task, started now and each time you sign in.
+The helper provides temperatures, fans, per-app network counters and MFT scans
+without elevating Fob. Programs in the same Windows user session can query
+names, sizes and structure across whole fixed NTFS Disks, including otherwise
+inaccessible folders. No file contents or writes. It never changes fan speeds.
+Disable removes the task and helper after permission. PawnIO stays installed.
+Scanning itself never asks for permission. Old, absent or incompatible helpers
+fall back to direct MFT when allowed, otherwise the existing folder scan.
 
 SHA256SUMS.txt lists the hash of every program file in this folder.
 

@@ -329,7 +329,8 @@ console.log(
   const done = { ...base, pawnio_installed: true, installed: true, task: "ok" };
   assert.equal(setupState({ ...done, running: true }), "ready");
   assert.equal(setupState(done), "starting");
-  assert.equal(setupState({ ...done, update_available: true }), "update");
+  assert.equal(setupState({ ...done, update_available: true,
+    installed_version: "0.8.1", bundled_version: "0.8.2" }), "update");
   assert.equal(setupState({ ...done, task: "mismatch" }), "repair");
   assert.equal(setupState({ ...base, task: "unknown" }), "repair");
   const fresh = setupSteps(base);

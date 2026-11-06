@@ -30,15 +30,23 @@ for (const [locale, patterns] of [
   [
     en,
     [
-      /names and sizes/,
-      /entire NTFS Disks/,
+      /names, sizes and structure/,
+      /Windows user session/,
+      /whole fixed NTFS Disks/,
       /including folders you cannot open/,
-      /returns no file contents/,
+      /no file contents or writes/,
     ],
   ],
   [
     zh,
-    [/文件名和大小/, /整个 NTFS 硬盘/, /无权打开的文件夹/, /不返回文件内容/],
+    [
+      /同一 Windows 用户会话/,
+      /名称、大小和结构/,
+      /整个固定 NTFS 硬盘/,
+      /无权打开的文件夹/,
+      /不返回文件内容/,
+      /不写入文件/,
+    ],
   ],
 ]) {
   for (const pattern of patterns)
@@ -73,6 +81,16 @@ const dynamic = {
     ),
   ].map((m) => m[1]),
   detail: ["cpu", "gpu", "memory", "disk", "network", "temp"],
+  "helper.state": [
+    "checking",
+    "unavailable",
+    "missing-files",
+    "install",
+    "update",
+    "repair",
+    "current",
+    "stopped",
+  ],
   lang: ["auto", "en", "zh"],
   "uptime.kind": ["cold", "fast", "hibernate"],
   "overlay.short": [

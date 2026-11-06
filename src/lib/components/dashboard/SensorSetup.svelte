@@ -1,108 +1,116 @@
 <script lang="ts">
-  // winperf: enable/disable the read-only fan & temperature helper. Nothing
-  // runs until the user has read what will happen and pressed Continue.
+  import { onMount } from "svelte";
   import type { SensorSetupStatus } from "$lib/types";
-  import { setupState, setupSteps } from "$lib/utils/dashboard.js";
-  import { changeSensorSetup } from "$lib/stores/sensorSetup";
+  import { setupSteps } from "$lib/utils/dashboard.js";
+  import { helperView } from "$lib/utils/sensor-setup.js";
+  import {
+    sensorLifecycle,
+    sensorSetupController,
+    refreshSensorSetup,
+  } from "$lib/stores/sensorSetup";
   import { t } from "$lib/i18n";
 
   export let status: SensorSetupStatus | null;
-
-  let confirm: "enable" | "disable" | null = null;
-  let busy = false;
-  let error = "";
-
-  $: state = setupState(status);
+  export let details = false;
+  $: view = helperView(status, feedback);
+  $: activity = $sensorLifecycle.activity;
+  $: feedback = $sensorLifecycle.feedback;
+  $: busy = activity.kind === "working" || !!status?.busy;
+  $: confirming =
+    activity.kind === "confirm" || activity.kind === "working"
+      ? activity
+      : null;
   $: steps = status ? setupSteps(status, $t) : [];
-  $: action =
-    state === "update"
-      ? $t("dash.updateHelper")
-      : state === "repair" || state === "starting"
-        ? $t("dash.repair")
-        : $t("dash.enable");
-
-  async function run(enable: boolean) {
-    busy = true;
-    error = "";
-    try {
-      await changeSensorSetup(enable);
-      confirm = null;
-    } catch (e) {
-      error = String(e);
-    } finally {
-      busy = false;
-    }
-  }
+  $: action = $t(
+    view.kind === "install"
+      ? "helper.install"
+      : view.kind === "update"
+        ? "helper.update"
+        : "helper.repair",
+  );
+  onMount(() => {
+    void refreshSensorSetup();
+    const timer = setInterval(refreshSensorSetup, 3000);
+    return () => clearInterval(timer);
+  });
 </script>
 
-{#if state === "missing-files"}
-  <div class="setup">
-    <!-- Fixed strings from the locale tables (only <b>), no user data. -->
-    <!-- eslint-disable-next-line svelte/no-at-html-tags -->
-    <p class="note">{@html $t("setup.missingFiles")}</p>
-  </div>
-{:else if confirm === "enable" && status}
-  <div class="setup">
-    <p class="lead">{action}</p>
-    <p class="note">{$t("setup.willDo")}</p>
-    <ol class="steps">
-      {#each steps as step}<li>{step}</li>{/each}
-    </ol>
-    <p class="note">{$t("setup.uacNote")}</p>
-    {#if error}<p class="error" role="alert">{error}</p>{/if}
-    <div class="buttons">
-      <button class="primary" disabled={busy} onclick={() => run(true)}
-        >{busy ? $t("setup.waiting") : $t("setup.continue")}</button
-      >
-      <button disabled={busy} onclick={() => ((confirm = null), (error = ""))}
-        >{$t("setup.cancel")}</button
-      >
-    </div>
-  </div>
-{:else if confirm === "disable"}
-  <div class="setup">
-    <p class="lead">{$t("setup.disableTitle")}</p>
-    <p class="note">{$t("setup.disableNote")}</p>
-    {#if error}<p class="error" role="alert">{error}</p>{/if}
-    <div class="buttons">
-      <button class="primary" disabled={busy} onclick={() => run(false)}
-        >{busy ? $t("setup.waiting") : $t("setup.disable")}</button
-      >
-      <button disabled={busy} onclick={() => ((confirm = null), (error = ""))}
-        >{$t("setup.cancel")}</button
-      >
-    </div>
-  </div>
-{:else if state === "enable" || state === "repair" || state === "update"}
-  <div class="setup">
-    <p class="note">
-      {state === "enable"
-        ? $t("setup.needHelper")
-        : state === "update"
-          ? $t("setup.newer")
-          : $t("setup.incomplete")}
+<svelte:window onfocus={refreshSensorSetup} />
+
+{#if view.kind !== "unsupported"}
+  <div class="setup" aria-busy={busy}>
+    {#if details}
+      <p class="note">{$t("helper.benefit")}</p>
+      <p class="note">{$t("helper.privacy")}</p>
+      <div class="versions note">
+        <span
+          >{$t("helper.installedVersion")}: {status?.installed_version ??
+            $t("helper.unknownVersion")}</span
+        >
+        <span
+          >{$t("helper.bundledVersion")}: {status?.bundled_version ??
+            $t("helper.unknownVersion")}</span
+        >
+      </div>
+    {/if}
+    <p class="lead" role="status">
+      {busy ? $t("setup.waiting") : $t(`helper.state.${view.kind}`)}
     </p>
+    {#if view.kind === "missing-files"}
+      <!-- eslint-disable-next-line svelte/no-at-html-tags -->
+      <p class="note">{@html $t("setup.missingFiles")}</p>
+    {/if}
+    {#if confirming?.enable && status}
+      <p class="note">{$t("setup.willDo")}</p>
+      <ol class="steps">
+        {#each steps as step}<li>{step}</li>{/each}
+      </ol>
+      <p class="note">{$t("setup.uacNote")}</p>
+    {:else if confirming && !confirming.enable}
+      <p class="lead">{$t("setup.disableTitle")}</p>
+      <p class="note">{$t("setup.disableNote")}</p>
+    {/if}
+    {#if feedback.kind === "error"}
+      <p class="error" role="alert">
+        {$t(
+          feedback.message === "busy" ? "helper.busy" : "helper.failed",
+        )}{feedback.message !== "busy" ? ` ${feedback.message}` : ""}
+      </p>
+    {:else if feedback.kind === "cancelled"}
+      <p class="note" role="status">{$t("helper.cancelled")}</p>
+    {:else if feedback.kind === "success"}
+      <p class="note" role="status">{$t("helper.completed")}</p>
+    {/if}
     <div class="buttons">
-      <button class="primary" onclick={() => (confirm = "enable")}
-        >{action}…</button
-      >
-      {#if state !== "enable"}<button onclick={() => (confirm = "disable")}
-          >{$t("setup.disableMore")}</button
-        >{/if}
-    </div>
-  </div>
-{:else if state === "starting" || state === "ready"}
-  <div class="setup row">
-    <p class="note">
-      {state === "ready" ? $t("setup.running") : $t("setup.starting")}
-    </p>
-    <div class="buttons">
-      {#if state === "starting"}<button onclick={() => (confirm = "enable")}
-          >{$t("setup.repairMore")}</button
-        >{/if}
-      <button onclick={() => (confirm = "disable")}
-        >{$t("setup.disableMore")}</button
-      >
+      {#if confirming}
+        <button
+          class="primary"
+          disabled={busy}
+          onclick={sensorSetupController.run}
+          >{busy ? $t("setup.waiting") : $t("setup.continue")}</button
+        >
+        <button disabled={busy} onclick={sensorSetupController.dismiss}
+          >{$t("setup.cancel")}</button
+        >
+      {:else}
+        {#if view.enable}<button
+            class="primary"
+            disabled={busy}
+            onclick={() => sensorSetupController.request(true)}
+            >{action}…</button
+          >{/if}
+        {#if view.disable}<button
+            disabled={busy}
+            onclick={() => sensorSetupController.request(false)}
+            >{$t("setup.disableMore")}</button
+          >{/if}
+        {#if details || feedback.kind === "error" || view.kind === "stopped"}
+          <button
+            disabled={busy || activity.kind === "checking"}
+            onclick={refreshSensorSetup}>{$t("helper.refresh")}</button
+          >
+        {/if}
+      {/if}
     </div>
   </div>
 {/if}
@@ -117,17 +125,11 @@
     border: 1px solid color-mix(in oklab, var(--foreground) 12%, transparent);
     background: color-mix(in oklab, var(--foreground) 4%, transparent);
   }
-  .setup.row {
-    flex-direction: row;
+  .versions {
+    display: flex;
     flex-wrap: wrap;
-    align-items: center;
-    justify-content: space-between;
-    column-gap: 12px;
-    padding: 8px 12px;
-  }
-  .setup.row .note {
-    flex: 1 1 12rem;
-    min-width: 0;
+    gap: 4px 18px;
+    overflow-wrap: anywhere;
   }
   .lead {
     font-weight: 600;
@@ -147,6 +149,7 @@
     gap: 4px;
   }
   .error {
+    overflow-wrap: anywhere;
     font-size: 12px;
     color: var(--red, #f87171);
   }

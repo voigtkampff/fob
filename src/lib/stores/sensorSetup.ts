@@ -1,26 +1,21 @@
-// winperf: status of the optional fan/temperature helper (Windows only).
-import { get, writable } from "svelte/store";
+import { derived, writable } from "svelte/store";
 import { invoke } from "@tauri-apps/api/core";
 import type { SensorSetupStatus } from "$lib/types";
+import {
+  createSensorSetupController,
+  type Lifecycle,
+} from "$lib/utils/sensor-setup.js";
 
-export const sensorSetup = writable<SensorSetupStatus | null>(null);
-
-let pending: Promise<void> | null = null;
-export function refreshSensorSetup() {
-  pending ??= invoke<SensorSetupStatus>("sensor_setup_status")
-    .then((s) => sensorSetup.set(s))
-    .catch(() => {})
-    .finally(() => (pending = null));
-  return pending;
-}
-
-/** Runs the elevated setup/removal (one UAC prompt). Throws the message to show. */
-export async function changeSensorSetup(enable: boolean) {
-  const status = await invoke<SensorSetupStatus>("sensor_setup", { enable });
-  sensorSetup.set(status);
-  // The helper needs a few seconds to open the hardware and answer.
-  for (let i = 0; enable && i < 8 && !get(sensorSetup)?.running; i++) {
-    await new Promise((r) => setTimeout(r, 1500));
-    await refreshSensorSetup();
-  }
-}
+export const sensorLifecycle = writable<Lifecycle>({
+  status: null,
+  activity: { kind: "idle" },
+  feedback: { kind: "none" },
+});
+export const sensorSetup = derived(sensorLifecycle, (state) => state.status);
+export const sensorSetupController = createSensorSetupController({
+  read: () => invoke<SensorSetupStatus>("sensor_setup_status"),
+  change: (enable) => invoke<SensorSetupStatus>("sensor_setup", { enable }),
+  publish: (state) => sensorLifecycle.set(state),
+  delay: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
+});
+export const refreshSensorSetup = sensorSetupController.refresh;

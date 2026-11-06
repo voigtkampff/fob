@@ -253,6 +253,9 @@ export interface SensorSetupStatus {
   update_available: boolean;
   running: boolean;
   fake: boolean;
+  installed_version: string | null;
+  bundled_version: string | null;
+  busy: boolean;
 }
 export interface FrameExtra {
   sensors: { sensors: Sensor[]; sources: string[] };

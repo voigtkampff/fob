@@ -1,8 +1,8 @@
 1 24 "../../src-tauri/fob.manifest"
 1 ICON "../../src-tauri/icons/icon.ico"
 1 VERSIONINFO
-FILEVERSION 0,8,1,0
-PRODUCTVERSION 0,8,1,0
+FILEVERSION 0,8,2,0
+PRODUCTVERSION 0,8,2,0
 FILEOS 0x40004
 FILETYPE 1
 BEGIN
@@ -12,9 +12,9 @@ BEGIN
   BEGIN
    VALUE "CompanyName", "HCB\0"
    VALUE "FileDescription", "Fob read-only MFT worker\0"
-   VALUE "FileVersion", "0.8.1\0"
+   VALUE "FileVersion", "0.8.2\0"
    VALUE "ProductName", "Fob\0"
-   VALUE "ProductVersion", "0.8.1\0"
+   VALUE "ProductVersion", "0.8.2\0"
   END
  END
  BLOCK "VarFileInfo"

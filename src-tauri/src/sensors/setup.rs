@@ -17,6 +17,7 @@
 use serde::Serialize;
 use sha2::{Digest, Sha256};
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicBool, Ordering};
 
 pub const TASK_NAME: &str = "fob-sensors";
 pub const HELPER_EXE: &str = "fob-sensors.exe";
@@ -54,6 +55,33 @@ pub struct SetupStatus {
     pub running: bool,
     /// Debug-only simulated status (screenshots).
     pub fake: bool,
+    pub installed_version: Option<String>,
+    pub bundled_version: Option<String>,
+    pub busy: bool,
+}
+
+static SETUP_BUSY: AtomicBool = AtomicBool::new(false);
+
+#[derive(Serialize, Debug, PartialEq)]
+#[serde(tag = "kind", content = "message", rename_all = "lowercase")]
+pub enum SetupFailure {
+    Cancelled,
+    Busy,
+    Failed(String),
+}
+
+struct SetupGuard<'a>(&'a AtomicBool);
+impl<'a> SetupGuard<'a> {
+    fn acquire(flag: &'a AtomicBool) -> Result<Self, SetupFailure> {
+        flag.compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
+            .map(|_| Self(flag))
+            .map_err(|_| SetupFailure::Busy)
+    }
+}
+impl Drop for SetupGuard<'_> {
+    fn drop(&mut self) {
+        self.0.store(false, Ordering::Release);
+    }
 }
 
 /// Parse `sha256  path` lines (sha256sum format).
@@ -235,6 +263,7 @@ fn fake_status() -> Option<SetupStatus> {
         update_available: false,
         running: super::pipe::helper_live(),
         fake: true,
+        ..Default::default()
     })
 }
 #[cfg(not(debug_assertions))]
@@ -248,8 +277,10 @@ pub fn status() -> SetupStatus {
 }
 
 #[cfg(not(target_os = "windows"))]
-fn run_elevated(_arg: &str) -> Result<(), String> {
-    Err("Sensor setup is only available on Windows.".into())
+fn run_elevated(_arg: &str) -> Result<(), SetupFailure> {
+    Err(SetupFailure::Failed(
+        "Sensor setup is only available on Windows.".into(),
+    ))
 }
 
 #[cfg(not(target_os = "windows"))]
@@ -275,6 +306,38 @@ mod win {
     use windows::Win32::System::Threading::{GetExitCodeProcess, WaitForSingleObject, INFINITE};
     use windows::Win32::UI::Shell::{ShellExecuteExW, SEE_MASK_NOCLOSEPROCESS, SHELLEXECUTEINFOW};
     use windows::Win32::UI::WindowsAndMessaging::SW_HIDE;
+
+    fn file_version(path: &Path) -> Option<String> {
+        use windows::Win32::Storage::FileSystem::{
+            GetFileVersionInfoSizeW, GetFileVersionInfoW, VerQueryValueW, VS_FIXEDFILEINFO,
+        };
+        let path = HSTRING::from(path.as_os_str());
+        unsafe {
+            let size = GetFileVersionInfoSizeW(&path, None);
+            if size == 0 || size > 1024 * 1024 {
+                return None;
+            }
+            let mut data = vec![0u8; size as usize];
+            GetFileVersionInfoW(&path, None, size, data.as_mut_ptr().cast()).ok()?;
+            let mut value = std::ptr::null_mut();
+            let mut length = 0;
+            if !VerQueryValueW(data.as_ptr().cast(), w!("\\"), &mut value, &mut length).as_bool()
+                || value.is_null()
+                || length < std::mem::size_of::<VS_FIXEDFILEINFO>() as u32
+            {
+                return None;
+            }
+            let info = std::ptr::read_unaligned(value.cast::<VS_FIXEDFILEINFO>());
+            (info.dwSignature == 0xFEEF04BD).then(|| {
+                format!(
+                    "{}.{}.{}",
+                    info.dwProductVersionMS >> 16,
+                    info.dwProductVersionMS & 0xffff,
+                    info.dwProductVersionLS >> 16
+                )
+            })
+        }
+    }
 
     /// Ask Task Scheduler to start the helper (it runs elevated without a
     /// prompt because the task was registered elevated). No child process.
@@ -311,36 +374,33 @@ mod win {
         }
     }
 
-    fn same_file(a: &Path, b: &Path) -> bool {
-        match (std::fs::read(a), std::fs::read(b)) {
-            (Ok(x), Ok(y)) => x == y,
-            _ => false,
-        }
-    }
-
     pub fn status() -> SetupStatus {
         if let Some(fake) = fake_status() {
             return fake;
         }
+        let source = exe_dir();
         let bundled_helper = bundled_dir().join(HELPER_EXE);
         let installed = installed_helper();
         SetupStatus {
             supported: !MANIFEST.trim().is_empty(),
-            bundled: bundled_helper.exists() && exe_dir().join(PAWNIO_SETUP).exists(),
+            bundled: verify(&source.join("sensors"), MANIFEST, "sensors/").is_ok()
+                && verify(&source.join("PawnIO"), MANIFEST, "PawnIO/").is_ok(),
             pawnio_installed: pawnio_installed(),
             installed: installed.exists(),
             task: task_state(query_task().as_deref().map_err(|e| *e), &installed),
             update_available: installed.exists()
-                && bundled_helper.exists()
-                && !same_file(&bundled_helper, &installed),
+                && verify(&install_dir(), MANIFEST, "sensors/").is_err(),
             running: crate::sensors::pipe::helper_live(),
             fake: false,
+            installed_version: file_version(&installed),
+            bundled_version: file_version(&bundled_helper),
+            busy: SETUP_BUSY.load(Ordering::Acquire),
         }
     }
 
     /// Relaunch this exe elevated (one UAC prompt) and wait for it.
-    pub fn run_elevated(arg: &str) -> Result<(), String> {
-        let exe = std::env::current_exe().map_err(|e| e.to_string())?;
+    pub fn run_elevated(arg: &str) -> Result<(), SetupFailure> {
+        let exe = std::env::current_exe().map_err(|e| SetupFailure::Failed(e.to_string()))?;
         let file = HSTRING::from(exe.as_os_str());
         let params = HSTRING::from(arg);
         let mut info = SHELLEXECUTEINFOW {
@@ -354,9 +414,9 @@ mod win {
         };
         if let Err(e) = unsafe { ShellExecuteExW(&mut info) } {
             return Err(if e.code() == ERROR_CANCELLED.to_hresult() {
-                "The Windows permission prompt was cancelled. Nothing was changed.".into()
+                SetupFailure::Cancelled
             } else {
-                format!("Couldn't start the elevated setup: {e}")
+                SetupFailure::Failed(format!("Couldn't start the elevated setup: {e}"))
             });
         }
         let mut code = 1u32;
@@ -367,7 +427,7 @@ mod win {
         }
         match code as i32 {
             0 => Ok(()),
-            c => Err(exit_message(c)),
+            c => Err(SetupFailure::Failed(exit_message(c))),
         }
     }
 
@@ -474,34 +534,64 @@ mod win {
 }
 
 #[tauri::command]
-pub async fn sensor_setup_status() -> SetupStatus {
+pub async fn sensor_setup_status() -> Result<SetupStatus, String> {
     tauri::async_runtime::spawn_blocking(status)
         .await
-        .unwrap_or_default()
+        .map_err(|e| e.to_string())
 }
 
 /// Enable (`true`) or disable the helper. The UI explains what happens and
 /// asks first; this shows the Windows UAC prompt.
 #[tauri::command]
-pub async fn sensor_setup(enable: bool) -> Result<SetupStatus, String> {
+pub async fn sensor_setup(enable: bool) -> Result<SetupStatus, SetupFailure> {
+    let guard = SetupGuard::acquire(&SETUP_BUSY)?;
     tauri::async_runtime::spawn_blocking(move || {
+        let _guard = guard;
         if fake_status().is_some() {
-            return Err("Debug build: sensor setup is simulated and does nothing.".into());
+            return Err(SetupFailure::Failed(
+                "Debug build: sensor setup is simulated and does nothing.".into(),
+            ));
+        }
+        if enable && !status().bundled {
+            return Err(SetupFailure::Failed(exit_message(10)));
         }
         run_elevated(if enable {
             "--sensors-setup"
         } else {
             "--sensors-remove"
         })?;
+        drop(_guard);
         Ok(status())
     })
     .await
-    .map_err(|e| e.to_string())?
+    .map_err(|e| SetupFailure::Failed(e.to_string()))?
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn setup_gate_rejects_duplicates_and_releases_after_failure_or_completion() {
+        let busy = AtomicBool::new(false);
+        let guard = SetupGuard::acquire(&busy).unwrap();
+        assert!(busy.load(Ordering::Acquire));
+        assert!(matches!(
+            SetupGuard::acquire(&busy),
+            Err(SetupFailure::Busy)
+        ));
+        drop(guard);
+        assert!(SetupGuard::acquire(&busy).is_ok());
+        assert!(!busy.load(Ordering::Acquire));
+        assert_eq!(
+            serde_json::to_value(SetupFailure::Cancelled).unwrap()["kind"],
+            "cancelled"
+        );
+        assert_eq!(
+            serde_json::to_value(SetupFailure::Busy).unwrap()["kind"],
+            "busy"
+        );
+    }
 
     #[test]
     fn manifest_lines_are_validated() {
