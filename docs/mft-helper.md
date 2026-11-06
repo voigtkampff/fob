@@ -53,9 +53,9 @@ Executed on Linux:
 - `cargo test --manifest-path sensors-helper/mft-worker/Cargo.toml` passes six protocol tests.
 - `/workspace/tools/dotnet/dotnet run --project sensors-helper/tests -c Release` passes 21 checks, including the unchanged sensor fixture and the new request validation.
 - `npm run check` reports zero Svelte errors and warnings. `npm run release:check` reports 0.8.1.
-- The initial `node --test scripts/*.test.mjs` run reported 98 passes and one stale opacity test failure. The review follow-up corrects the test contract and the full suite now passes all 102 tests. Production opacity behavior and backend validation are unchanged.
+- The initial `node --test scripts/*.test.mjs` run reported 98 passes and one stale opacity test failure. The review follow-up corrects the test contract and that phase passed all 102 tests. The latest doctor-contract follow-up below passes all 110 tests. Production opacity behavior and backend validation are unchanged.
 - All ten `tests/*.mjs` scripts pass, including copy, both locales, treemap, Other, navigation, and dashboard tests.
-- The existing verify-fob build and launch procedure starts a real Linux app. The doctor confirms a live process and a visible 1280 by 900 Fob window. Its final exit code is 2 because it lists a log directory that no longer exists, not because the app failed. A Linux startup screenshot is retained. The changed setup confirmation and space-result method labels have not been driven in that UI.
+- The existing verify-fob build and launch procedure starts a real Linux app. The initial doctor attempt printed a live process and visible window but exited 2 on the removed log directory; that attempt was not treated as a doctor pass. Parent commit d00f670 repairs both the optional-log handling and missing-PID or unscoped-window false successes. The final corrected real-app doctor smoke below exits 0. A Linux startup screenshot is retained. The changed setup confirmation and space-result method labels have not been driven in that UI.
 
 `scripts/package-windows.sh` builds the actual .NET 4.7.2 helper, the Rust worker, the frontend, and `cargo xwin build --target x86_64-pc-windows-msvc --release`. Its resource checks require HCB, version 0.8.1, the asInvoker manifest, and icons in all three executables. The final package also retains the existing com.hcb.fob identifier and includes the MFT reader's MIT notice.
 
@@ -101,7 +101,7 @@ The follow-up commands and results are:
 - `cargo test --manifest-path sensors-helper/mft-worker/Cargo.toml` passes six tests.
 - `/workspace/tools/dotnet/dotnet run --project sensors-helper/tests -c Release` passes 21 checks.
 
-The doctor defect is in the skill-owned file `/workspace/winperf/.cursor/skills/verify-fob/bin/fob-verify.sh`, line 42. Its unconditional `ls "$LOGS"` runs under `set -euo pipefail`. The deliberately absent application log directory therefore makes doctor exit 2 after it has already printed a live process and visible window. The script was not edited under the explicit no-skill-edits constraint. The needed skill-owner fix is to make listing that optional directory conditional, report that absent logs are expected, and retain explicit failing checks for a dead process or missing visible app window. Creating a log directory or restoring log writers would hide the tool defect and is not a fix.
+The historical doctor defect was in the skill-owned file `/workspace/winperf/.cursor/skills/verify-fob/bin/fob-verify.sh`, line 42. Its unconditional `ls "$LOGS"` runs under `set -euo pipefail`. The deliberately absent application log directory made the old doctor exit 2 after printing a live process and visible window. This agent did not edit the skill file. Parent commit d00f670 now lists logs conditionally and explicitly rejects missing or invalid PIDs, dead processes, and absent PID-scoped visible windows. The former unscoped root-desktop false success is not accepted as app evidence. No log directory or log writer was restored.
 
 Valid Linux smoke was rerun separately from the doctor verdict:
 
@@ -133,7 +133,7 @@ The actual update sequence was traced through these source boundaries:
 
 A new behavior test, `sensors::setup::tests::mixed_or_incomplete_helper_worker_bundle_is_rejected`, starts with a matching helper/worker pair, checks success, replaces the worker with an old version and checks rejection, then removes it and checks rejection. It also checks the existing copy-error mapping. The targeted setup suite passes five tests. No production update logic needed modification based on this trace.
 
-Because the permission text is shipped inside Fob, this review changes a production frontend asset. The Windows test artifact is rebuilt for that change. The earlier verification-only phase did not rebuild or repackage identical binaries. The skill-owned doctor defect remains reported and unedited; no new application log writers or layout changes were made.
+Because the permission text is shipped inside Fob, this review changes a production frontend asset. The Windows test artifact is rebuilt for that change. The earlier verification-only phase did not rebuild or repackage identical binaries. The parent repaired the verification helper in d00f670, and this agent leaves skill files untouched. The corrected real-app smoke and persisted regression contracts are recorded below. No new application log writers or layout changes were made.
 
 ### Current review artifact and final automatic checks
 
@@ -149,3 +149,46 @@ The current artifact supersedes the earlier 281dd038 checksum recorded above:
 - Checksum sidecar: `/workspace/winperf/dist/fob-v0.8.1-x86_64-windows.zip.sha256`
 
 This remains a pending-verification Windows test package. Ordinary-launch MFT, sensor responsiveness during real scans, actual upgrade lock release, Windows access denial and cancellation, and the affected permission-note layout are not Windows-verified. The independent source review and automatic tests do not replace those observations.
+
+## Corrected doctor and final Linux startup evidence
+
+The parent repaired the project-local verification helper in commit d00f670. This follow-up only changes this document and adds `scripts/verification-doctor.test.mjs`; it does not edit skill files, application code, or packaged binaries.
+
+Eight deterministic tests exercise the actual helper command using temporary fixture homes and a fake xdotool outside the skill directory. They reject missing PID, PID zero, malformed PID, an exited process, successful-but-empty window search, and failed window search. They also accept a live test process with its explicitly PID-scoped fixture window both with optional logs absent and with a fixture log directory present. The fake backend would supply a root-desktop window to an unscoped search, so the tests assert that invalid PID cases never call it and valid cases use the expected `--pid` argument. These tests prove helper command contracts only, not real Fob startup or Windows behavior.
+
+The separate real-app operation uses the existing compiled Linux binary, with no build:
+
+```bash
+export FOB_VERIFY_RUNS=/workspace/winperf/dist/verify-doctor
+V=.cursor/skills/verify-fob/bin/fob-verify.sh
+BIN=/workspace/scratch/verify/winperf-mft081 \
+SETTINGS='{"behavior":{"language":"zh","startInTray":false,"menuBarEnabled":false}}' \
+  "$V" launch actual081 WINPERF_SPACE_ROOTS=/workspace/winperf/tests
+"$V" doctor actual081
+"$V" stop actual081
+```
+
+The doctor ran directly before its output was displayed, so its exit status was not hidden by a tee pipeline. Exact final output was:
+
+```text
+ready pid 882699
+alive pid 882699
+window 2097155 'Fob' Window 2097155   Position: 0,0 (screen: 0)   Geometry: 1280x900
+config: settings.json
+no application log directory (optional)
+doctor exit 0
+PASS: real Linux app alive; application log directory absent as expected
+stopped
+```
+
+An independent `os.kill(pid, 0)` check confirmed that actual process was alive while doctor ran, and the isolated home's application log directory was absent. The EXIT cleanup stopped only the app instance launched by this smoke, and a subsequent check confirmed that process is gone. Exact doctor output is retained in `/workspace/winperf/dist/fob-v0.8.1-linux-doctor-evidence.txt`. This is actual Linux startup and own-window evidence from the existing Linux verification build, not validation of the Windows zip or the changed setup dialog.
+
+Final checks for this docs-and-tests-only follow-up:
+
+- `node --test scripts/verification-doctor.test.mjs` passes all eight new contracts.
+- `node --test scripts/*.test.mjs` passes 110 tests, zero failures, zero skips.
+- `bash -n .cursor/skills/verify-fob/bin/fob-verify.sh` passes.
+- `git diff --check` passes, and the skill file has no diff against parent commit d00f670.
+- `sha256sum dist/fob-v0.8.1-x86_64-windows.zip` remains `ec6dc9a7cb497c7b54d020bb75beb3e74add989cfb4758fa9d458deed536b5a4`. No rebuild or repackaging was performed.
+
+The Windows artifact remains a pending-verification test package. Real ordinary-launch helper MFT, concurrent sensor responsiveness, upgrade lock release, actual cancellation and access-denial behavior, and affected permission-note layout remain Windows runtime gaps. Mocked helper tests and this Linux smoke do not claim Windows acceptance or assign full QA to the user.
