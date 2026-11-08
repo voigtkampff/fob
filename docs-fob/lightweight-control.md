@@ -139,7 +139,10 @@ honest unchanged declaration, not proof of helper health.
 - Existing release tests: 145 passed, plus metrics formatting passed. Standalone
   sampler: 39 passed. Frontend build passed; Svelte check: zero errors and warnings.
 - Fresh offline locked Windows release builds and Windows all-target checks passed
-  for both variants. These are cross-build checks, not Windows test execution.
+  for both variants. `cargo xwin test --offline --locked --release --no-run
+  --all-targets --target x86_64-pc-windows-msvc` also linked all Windows test
+  targets for A and B successfully. These are cross-build checks, not Windows test
+  execution. Release executable hashes were rechecked afterward.
 - Full native main Rust tests could not start: `glib-sys` cannot find `pkg-config`.
   GTK/WebKit prerequisites remain unavailable. No dependency installation or
   network retry was attempted. No new GUI preview: frontend source and A/B assets
@@ -176,7 +179,8 @@ Actual test/build stdout is retained in `harness-A.txt`, `harness-B.txt`,
 `sampler-tests.txt`, `release-tests.txt`, `release-version.txt`, `frontend-B.txt`,
 `frontend-check.txt`, `native-main-tests.txt`, `windows-release-A.txt`,
 `windows-release-B.txt`, `windows-all-targets-A.txt`, `windows-all-targets-B.txt`
-and `package-audit-passed.txt`. `variant-source.diff` records the complete variant
+`windows-tests-no-run-A.txt`, `windows-tests-no-run-B.txt` and
+`package-audit-passed.txt`. `variant-source.diff` records the complete variant
 difference; `production-source-equivalence.diff` is empty as expected.
 
 ### Exact deliverables
