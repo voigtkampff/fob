@@ -97,3 +97,16 @@ fn modes_are_compared_separately() {
     assert_eq!((mini.a_runs, mini.b_runs), (1, 0));
     assert!(mini.metrics.is_empty());
 }
+
+#[test]
+fn mixed_builds_within_one_label_are_rejected() {
+    let mut v = interleaved(&[80; 5], &[10; 5]);
+    v[2].meta.root_exe_sha256 = Some("cc".into());
+    assert!(compare(&v, "A", "B").is_err());
+}
+
+#[test]
+fn equal_labels_are_rejected() {
+    let v = interleaved(&[80; 1], &[10; 1]);
+    assert!(compare(&v[..1], "A", "A").is_err());
+}

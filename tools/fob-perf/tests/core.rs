@@ -183,3 +183,27 @@ fn many_processor_groups_normalise_by_all_cores() {
     let s = run(&mut os, 2, |i, os| if i == 1 { os.burn(100, 128 * SEC) });
     assert!((intervals(&s, 128, 1000)[0].cpu_pct.unwrap() - 100.0).abs() < 1e-9);
 }
+
+#[test]
+fn arbitrary_descendants_are_not_webviews() {
+    let mut os = fob();
+    os.add(150, 100, "notepad.exe", WALL0, 5);
+    os.add(151, 150, "msedgewebview2.exe", WALL0, 5);
+    let s = run(&mut os, 1, |_, _| {});
+    assert_eq!(pids(&s[0]), vec![100, 110, 111]);
+}
+
+#[test]
+fn losing_one_requested_interval_is_not_complete() {
+    let mut os = fob();
+    let s = run(&mut os, 10, |_, _| {});
+    assert_ne!(summarize(meta("A", "tray", 0, 10, 8), &s, None).quality, "complete");
+}
+
+#[test]
+fn a_sequence_gap_cannot_be_complete() {
+    let mut os = fob();
+    let mut s = run(&mut os, 11, |_, _| {});
+    for x in s.iter_mut().skip(5) { x.seq += 1; }
+    assert_ne!(summarize(meta("A", "tray", 0, 10, 8), &s, None).quality, "complete");
+}
