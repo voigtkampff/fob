@@ -21,7 +21,7 @@ impl Reader for Os {
     }
     fn read(&mut self, pid: u32) -> Result<Read, String> {
         let i = self.info.get(&pid).ok_or("gone")?;
-        Ok(Read { create: i.0, cpu: i.1, private_bytes: i.2, working_set: Some(i.3) })
+        Ok(Read { create: i.0, cpu: i.1, cpu_t_ns: None, private_bytes: i.2, working_set: Some(i.3), memory_error: None })
     }
 }
 
@@ -85,7 +85,7 @@ pub fn meta(label: &str, mode: &str, settle: u64, steady: u64, cores: u32) -> Ru
         started_utc: "unix:000000000001".into(),
         root: Identity { pid: 100, create: WALL0 - 300 * SEC },
         root_exe_name: "fob.exe".into(),
-        root_exe_sha256: Some("aa".into()),
+        root_exe_sha256: Some("aa".repeat(32)),
         root_exe_bytes: Some(1),
         root_age_at_attach_s: 300.0,
         scope: SCOPE.into(),

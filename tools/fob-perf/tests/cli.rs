@@ -22,7 +22,7 @@ fn raw_run(dir: &Path, label: &str, order: u32, cpu_ms: u64, refresh: u32) {
     let s = run(&mut os, 11, |i, os| if i > 0 { os.burn(100, cpu_ms * 10_000); os.burn(110, 1000) });
     let mut m = meta(label, "processes", 0, 10, 8);
     m.run_id = format!("{label}{order}");
-    m.started_utc = format!("unix:{order:012}");
+    m.started_utc = format!("unix:{:012}", order as u64 * 20);
     m.refresh_ms = refresh;
     std::fs::write(dir.join("run.json"), serde_json::to_string(&m).unwrap()).unwrap();
     let lines: Vec<String> = s.iter().map(|x| serde_json::to_string(x).unwrap()).collect();
@@ -116,4 +116,44 @@ fn invalid_input_is_rejected() {
     std::fs::write(d.join("broken/run.json"), "{not json").unwrap();
     assert!(bin(&["analyze", d.join("broken").to_str().unwrap(), "--out", d.join("o").to_str().unwrap()]).2.contains("run.json"));
     assert!(bin(&["compare", "--a", "A", "--b", "B", d.join("missing").to_str().unwrap()]).2.contains("summary.json"));
+}
+
+#[test]
+fn cli_help_flags_and_corrupted_run_are_checked() {
+    assert_eq!(bin(&["--help"]).0, 0);
+    assert!(bin(&["sample", "--help"]).1.contains(".\\fob-perf.exe"));
+    assert_eq!(bin(&["smoke", "unexpected"]).0, 2);
+    assert!(bin(&["smoke", "--pid", "1", "--pid", "2"]).2.contains("duplicate"));
+    assert!(bin(&["smoke", "--pid", "--pid"]).2.contains("needs a value"));
+    let d = tmp("corrupt");
+    raw_run(&d.join("raw"), "A", 0, 80, 2000);
+    let out = d.join("out");
+    assert_eq!(bin(&["analyze", d.join("raw").to_str().unwrap(), "--out", out.to_str().unwrap()]).0, 0);
+    let path = out.join("summary.json");
+    let mut summary: serde_json::Value = serde_json::from_slice(&std::fs::read(&path).unwrap()).unwrap();
+    summary["meta"]["refresh_ms"] = 1234.into();
+    std::fs::write(path, serde_json::to_vec(&summary).unwrap()).unwrap();
+    assert!(bin(&["compare", "--a", "A", "--b", "B", out.to_str().unwrap()]).2.contains("disagrees with raw"));
+    let path = d.join("raw/samples.jsonl");
+    let text = std::fs::read_to_string(&path).unwrap();
+    let mut lines: Vec<_> = text.lines().collect();
+    lines.swap(0, 1);
+    std::fs::write(&path, lines.join("\n")).unwrap();
+    let bad = d.join("bad");
+    assert!(bin(&["analyze", d.join("raw").to_str().unwrap(), "--out", bad.to_str().unwrap()]).2.contains("must increase"));
+    assert!(!bad.exists());
+}
+
+#[test]
+fn cli_duplicate_source_and_root_mismatch_are_rejected() {
+    let d = tmp("identity");
+    raw_run(&d.join("raw"), "A", 0, 80, 2000);
+    let out = d.join("out");
+    assert_eq!(bin(&["analyze", d.join("raw").to_str().unwrap(), "--out", out.to_str().unwrap()]).0, 0);
+    assert!(bin(&["compare", "--a", "A", "--b", "B", out.to_str().unwrap(), out.to_str().unwrap()]).2.contains("twice"));
+    let p = d.join("raw/run.json");
+    let mut m: serde_json::Value = serde_json::from_slice(&std::fs::read(&p).unwrap()).unwrap();
+    m["root"]["pid"] = 777.into();
+    std::fs::write(&p, serde_json::to_vec(&m).unwrap()).unwrap();
+    assert!(bin(&["analyze", d.join("raw").to_str().unwrap(), "--out", d.join("bad").to_str().unwrap()]).2.contains("root disagrees"));
 }

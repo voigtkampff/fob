@@ -1,6 +1,6 @@
 //! Which processes belong to the Fob being measured.
 use crate::model::{Entry, Excluded, Identity, RootState, HELPERS};
-use std::collections::{BTreeMap, HashMap};
+use std::collections::{BTreeMap, HashMap, HashSet};
 
 pub struct Selection {
     pub root: RootState,
@@ -34,6 +34,10 @@ pub fn select(
         sel.root = RootState::Exited;
         return sel;
     };
+    if !r.name.eq_ignore_ascii_case("fob.exe") {
+        sel.root = RootState::PidReused;
+        return sel;
+    }
     match create_of(root.pid) {
         Ok(c) if c == root.create => {}
         Ok(_) => {
@@ -54,13 +58,17 @@ pub fn select(
         }
     }
     let mut stack = vec![root];
+    let mut seen = HashSet::from([root.pid]);
     while let Some(parent) = stack.pop() {
         for k in kids.get(&parent.pid).into_iter().flatten() {
-            if k.pid == root.pid {
+            if !seen.insert(k.pid) {
                 continue;
             }
             if HELPERS.iter().any(|h| k.name.eq_ignore_ascii_case(h)) {
                 sel.excluded.push(Excluded { pid: k.pid, name: k.name.clone(), reason: "helper".into() });
+                continue;
+            }
+            if !k.name.eq_ignore_ascii_case("msedgewebview2.exe") {
                 continue;
             }
             match create_of(k.pid) {

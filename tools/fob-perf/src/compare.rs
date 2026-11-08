@@ -44,8 +44,8 @@ fn key(s: &Summary) -> String {
     let mut set = m.settings.clone();
     set.sort();
     format!(
-        "schema={} machine={} cores={} interval={} settle={} steady={} refresh={} helper={} scope={} excluded={:?} settings={:?}",
-        m.schema, m.machine, m.logical_cores, m.interval_ms, m.settle_s, m.steady_s, m.refresh_ms, m.helper, m.scope, s.excluded, set
+        "schema={} tool={} machine={} cores={} groups={} interval={} settle={} steady={} refresh={} helper={} scope={} excluded={:?} settings={:?}",
+        m.schema, m.tool_version, m.machine, m.logical_cores, m.processor_groups, m.interval_ms, m.settle_s, m.steady_s, m.refresh_ms, m.helper, m.scope, s.excluded, set
     )
 }
 
@@ -58,9 +58,23 @@ fn stats(v: &[f64]) -> (f64, f64, f64, f64) {
 
 /// Returns Err for incompatible inputs.
 pub fn compare(runs: &[Summary], label_a: &str, label_b: &str) -> Result<Report, String> {
+    if label_a.is_empty() || label_b.is_empty() || label_a == label_b {
+        return Err("comparison needs two distinct labels".into());
+    }
     let mut skipped = vec![];
     let mut used: Vec<&Summary> = vec![];
     for r in runs {
+        crate::store::validate_meta(&r.meta)?;
+        if r.quality == "complete" && (!r.problems.is_empty()
+            || [r.cpu_mean_pct, r.cpu_interval_p95_pct, r.private_steady.mean_mb, r.private_drift_mb_per_h]
+                .iter().any(|x| x.is_none_or(|v| !v.is_finite()))
+            || r.steady_clean_intervals != r.steady_intervals
+            || r.steady_elapsed_s + 0.02 < r.meta.steady_s as f64
+            || r.meta.root_exe_sha256.is_none()
+            || !r.processes.iter().any(|p| p.role == "root" && p.pid == r.meta.root.pid
+                && p.create == r.meta.root.create && p.name.eq_ignore_ascii_case(&r.meta.root_exe_name))) {
+            return Err(format!("run {} claims complete but lacks consistent metrics/root metadata", r.meta.run_id));
+        }
         if r.meta.label != label_a && r.meta.label != label_b {
             return Err(format!("run {} has label {:?}, expected {label_a} or {label_b}", r.meta.run_id, r.meta.label));
         }
@@ -70,9 +84,9 @@ pub fn compare(runs: &[Summary], label_a: &str, label_b: &str) -> Result<Report,
             used.push(r);
         }
     }
-    if let Some(first) = used.first() {
+    if let Some(first) = runs.first() {
         let k = key(first);
-        for r in &used {
+        for r in runs {
             if key(r) != k {
                 return Err(format!("incompatible runs {} and {}:\n  {}\n  {}", first.meta.run_id, r.meta.run_id, k, key(r)));
             }
@@ -84,16 +98,16 @@ pub fn compare(runs: &[Summary], label_a: &str, label_b: &str) -> Result<Report,
             return Err(format!("run {} given twice", r.meta.run_id));
         }
     }
-    let mut confounders = vec![];
+    let mut confounders = vec!["Directional differences are not proof of lightweight benefit; baseline equivalence and workload were not verified. Memory slope is not proof of a leak.".into()];
     let ver = |l: &str| {
-        let mut v: Vec<String> = used.iter().filter(|r| r.meta.label == l).map(|r| format!("{} sha256={}", r.meta.app_version, r.meta.root_exe_sha256.as_deref().unwrap_or("unknown"))).collect();
+        let mut v: Vec<String> = runs.iter().filter(|r| r.meta.label == l).map(|r| format!("{} sha256={} bytes={:?}", r.meta.app_version, r.meta.root_exe_sha256.as_deref().unwrap_or("unknown"), r.meta.root_exe_bytes)).collect();
         v.sort();
         v.dedup();
         v
     };
     let (va, vb) = (ver(label_a), ver(label_b));
     if va.len() > 1 || vb.len() > 1 {
-        confounders.push(format!("one side mixes app builds: A {va:?} B {vb:?}"));
+        return Err(format!("one side mixes app builds: A {va:?} B {vb:?}"));
     }
     if va != vb {
         confounders.push("A and B are different builds; any difference covers every change between them, not one optimisation".into());
@@ -105,12 +119,16 @@ pub fn compare(runs: &[Summary], label_a: &str, label_b: &str) -> Result<Report,
     }
     let mut modes = vec![];
     for (mode, mut rs) in by_mode {
-        rs.sort_by(|a, b| a.meta.started_utc.cmp(&b.meta.started_utc));
+        let timestamp = |r: &&Summary| r.meta.started_utc.strip_prefix("unix:").unwrap().parse::<u64>().unwrap();
+        rs.sort_by_key(timestamp);
+        let chronological = rs.windows(2).all(|w| timestamp(&w[0])
+            .checked_add(w[0].meta.settle_s + w[0].meta.steady_s)
+            .is_some_and(|end| end <= timestamp(&w[1])));
+        let has_incomplete = runs.iter().any(|r| r.meta.mode == mode && r.quality != "complete");
         let order: Vec<String> = rs.iter().map(|r| r.meta.label.clone()).collect();
-        let switches = order.windows(2).filter(|w| w[0] != w[1]).count();
         let side = |l: &str| rs.iter().filter(|r| r.meta.label == l).copied().collect::<Vec<_>>();
         let (a, b) = (side(label_a), side(label_b));
-        let interleaved = !a.is_empty() && !b.is_empty() && switches + 1 >= 2 * a.len().min(b.len());
+        let interleaved = !a.is_empty() && !b.is_empty() && chronological && order.windows(2).all(|w| w[0] != w[1]);
         let mut metrics = vec![];
         type Get = fn(&Summary) -> Option<f64>;
         let list: [(&str, Get); 4] = [
@@ -129,8 +147,10 @@ pub fn compare(runs: &[Summary], label_a: &str, label_b: &str) -> Result<Report,
             let (bm, bsd, bmin, bmax) = stats(&bv);
             let verdict = if av.len() < MIN_RUNS || bv.len() < MIN_RUNS {
                 format!("inconclusive: need >= {MIN_RUNS} complete runs per side")
+            } else if has_incomplete {
+                "inconclusive: input mode contains incomplete runs".into()
             } else if !interleaved {
-                "inconclusive: runs not interleaved".into()
+                "inconclusive: runs not interleaved or overlap in time".into()
             } else if bmax < amin {
                 format!("{label_b} lower: ranges do not overlap")
             } else if bmin > amax {

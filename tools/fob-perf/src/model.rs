@@ -1,7 +1,7 @@
 //! Raw data shapes shared by the Windows collector, the analyzer and tests.
 use serde::{Deserialize, Serialize};
 
-pub const SCHEMA: u32 = 1;
+pub const SCHEMA: u32 = 2;
 
 /// A process is identified by pid plus creation time (FILETIME, 100 ns units).
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
@@ -34,6 +34,8 @@ pub struct Obs {
     pub role: Role,
     /// Kernel + user CPU time since creation, 100 ns units.
     pub cpu: Option<u64>,
+    /// Monotonic midpoint of the CPU counter read, ns since sampler start.
+    pub cpu_t_ns: u64,
     /// PROCESS_MEMORY_COUNTERS_EX.PrivateUsage: private committed bytes.
     pub private_bytes: Option<u64>,
     /// Working set bytes (includes shared pages; summing can double-count).
@@ -62,7 +64,7 @@ pub struct Sample {
     pub seq: u64,
     /// Monotonic ns since the sampler started.
     pub t_ns: u64,
-    /// Wall clock FILETIME at the sample (to tell children born mid-interval).
+    /// Wall clock FILETIME for metadata, never a CPU denominator.
     pub wall: u64,
     pub root: RootState,
     pub procs: Vec<Obs>,
@@ -98,5 +100,5 @@ pub struct RunMeta {
 }
 
 pub const MODES: [&str; 4] = ["tray", "mini", "statusbar", "processes"];
-pub const SCOPE: &str = "fob.exe root + descendants verified by parent pid and creation time; sensor/MFT helpers excluded";
+pub const SCOPE: &str = "fob.exe root + msedgewebview2.exe descendants through verified WebView parents; sensor/MFT helpers excluded";
 pub const HELPERS: [&str; 2] = ["fob-sensors.exe", "fob-mft.exe"];

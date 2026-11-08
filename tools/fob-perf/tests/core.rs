@@ -71,7 +71,7 @@ fn mean_is_time_weighted_and_peak_is_per_interval() {
 }
 
 #[test]
-fn child_born_mid_interval_counts_its_whole_cpu() {
+fn child_birth_requires_a_baseline_not_wall_clock_inference() {
     let mut os = fob();
     let s = run(&mut os, 3, |i, os| if i == 1 {
         os.add(130, 100, "msedgewebview2.exe", WALL0 + SEC / 2, 30);
@@ -79,8 +79,9 @@ fn child_born_mid_interval_counts_its_whole_cpu() {
     });
     let iv = intervals(&s, 1, 1000);
     assert_eq!(iv[0].born, 1);
-    assert!((iv[0].cpu_pct.unwrap() - 20.0).abs() < 1e-9);
-    assert!(iv[0].clean());
+    assert!(iv[0].cpu_pct.is_none());
+    assert!(!iv[0].clean());
+    assert!(iv[1].clean());
 }
 
 #[test]
@@ -107,7 +108,7 @@ fn root_exit_and_pid_reuse_invalidate_the_run() {
     let mut os = fob();
     let s = run(&mut os, 3, |i, os| if i == 2 { os.kill(100); os.add(100, 50, "fob.exe", WALL0 + 2 * SEC, 50) });
     assert_eq!(s[2].root, RootState::PidReused);
-    assert_eq!(summarize(meta("A", "tray", 0, 2, 1), &s, None).problems[0], "root pidreused");
+    assert!(summarize(meta("A", "tray", 0, 2, 1), &s, None).problems.iter().any(|p| p == "root pidreused"));
 }
 
 #[test]
@@ -206,4 +207,73 @@ fn a_sequence_gap_cannot_be_complete() {
     let mut s = run(&mut os, 11, |_, _| {});
     for x in s.iter_mut().skip(5) { x.seq += 1; }
     assert_ne!(summarize(meta("A", "tray", 0, 10, 8), &s, None).quality, "complete");
+}
+
+#[test]
+fn cpu_uses_counter_read_times_not_discovery_start() {
+    let mut os = fob();
+    let mut s = run(&mut os, 3, |i, os| if i > 0 { os.burn(100, SEC) });
+    s[0].procs[0].cpu_t_ns = 100_000_000;
+    s[1].procs[0].cpu_t_ns = 1_300_000_000;
+    s[2].procs[0].cpu_t_ns = 2_100_000_000;
+    let iv = intervals(&s, 2, 1000);
+    assert!((iv[0].cpu_pct.unwrap() - 100.0 / 2.4).abs() < 1e-9);
+    assert!((iv[1].cpu_pct.unwrap() - 62.5).abs() < 1e-9);
+    assert_ne!(summarize(meta("A", "tray", 0, 2, 2), &s, None).quality, "complete");
+}
+
+#[test]
+fn smoke_rejects_empty_failed_discovery_and_lost_root() {
+    let mut os = fob();
+    let s = run(&mut os, 3, |i, os| { if i == 1 { os.list_fails = true; } if i == 2 { os.list_fails = false; os.kill(100); } });
+    assert!(fob_perf::collect::smoke_ready(&s[0]));
+    assert!(!fob_perf::collect::smoke_ready(&s[1]));
+    assert!(!fob_perf::collect::smoke_ready(&s[2]));
+}
+
+#[test]
+fn missing_working_set_and_initial_memory_are_not_complete() {
+    let mut os = fob();
+    let mut s = run(&mut os, 11, |_, _| {});
+    s[0].procs[0].working_set = None;
+    let r = summarize(meta("A", "tray", 2, 8, 8), &s, None);
+    assert_ne!(r.quality, "complete");
+    assert_eq!(r.missing_reads, 1);
+}
+
+#[test]
+fn changed_or_unavailable_executable_hash_disqualifies() {
+    let mut os = fob();
+    let s = run(&mut os, 11, |_, _| {});
+    let mut m = meta("A", "tray", 0, 10, 8);
+    m.root_exe_sha256 = None;
+    m.root_exe_bytes = None;
+    assert_ne!(summarize(m, &s, None).quality, "complete");
+}
+
+#[test]
+fn backwards_wall_clock_does_not_invent_birth_cpu() {
+    let mut os = fob();
+    let mut s = run(&mut os, 3, |i, os| if i == 1 { os.add(130, 100, "msedgewebview2.exe", WALL0 - SEC, 2); os.burn(130, SEC); });
+    s[0].wall -= 1000 * SEC;
+    let iv = intervals(&s, 8, 1000);
+    assert!(iv[0].cpu_pct.is_none());
+    assert!(iv[1].clean());
+}
+
+#[test]
+fn failed_root_metrics_do_not_pass_smoke() {
+    let mut os = fob();
+    let mut s = run(&mut os, 1, |_, _| {});
+    s[0].procs[0].cpu = None;
+    assert!(!fob_perf::collect::smoke_ready(&s[0]));
+}
+
+#[test]
+fn too_few_memory_points_cannot_claim_complete() {
+    let mut os = fob();
+    let s = run(&mut os, 2, |_, _| {});
+    let r = summarize(meta("A", "tray", 0, 1, 8), &s, None);
+    assert_ne!(r.quality, "complete");
+    assert!(r.private_drift_mb_per_h.is_none());
 }

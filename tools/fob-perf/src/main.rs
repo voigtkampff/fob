@@ -4,16 +4,18 @@ use std::path::PathBuf;
 use std::process::ExitCode;
 
 const USAGE: &str = "fob-perf: read-only Fob CPU/memory sampler
+Run in PowerShell from the extracted directory. Double-clicking may close immediately.
+App version, refresh, mode and helper state are declarations, not auto-detected.
 
-  fob-perf smoke [--pid N]
+  .\\fob-perf.exe smoke [--pid N]
       Find the running Fob and list measured and excluded processes. Writes nothing
-  fob-perf sample --out DIR --label A|B --app-version V --mode tray|mini|statusbar|processes
+  .\\fob-perf.exe sample --out DIR --label A|B --app-version V --mode tray|mini|statusbar|processes
                   --refresh-ms N --helper STATE [--settle-s 120] [--steady-s 600]
                   [--interval-ms 1000] [--setting KEY=VALUE]... [--pid N]
       Attach to the running Fob, sample, then write a new result directory DIR
-  fob-perf analyze RUN_DIR --out NEW_DIR
+  .\\fob-perf.exe analyze RUN_DIR --out NEW_DIR
       Recompute reports from a run's raw data into a new directory
-  fob-perf compare --a LABEL --b LABEL [--out FILE] RUN_DIR...
+  .\\fob-perf.exe compare --a LABEL --b LABEL [--out FILE] RUN_DIR...
       Compare complete runs. Rejects incompatible runs. Prints inconclusive
       until each side has at least 5 interleaved complete runs per mode
 ";
@@ -32,6 +34,8 @@ fn parse(v: &[String], known: &[&str]) -> Result<Args, String> {
                 return Err(format!("unknown option --{k}"));
             }
             let val = v.get(i + 1).ok_or(format!("--{k} needs a value"))?;
+            if val.starts_with("--") { return Err(format!("--{k} needs a value")); }
+            if k != "setting" && a.flags.contains_key(k) { return Err(format!("duplicate --{k}")); }
             a.flags.entry(k.into()).or_default().push(val.clone());
             i += 2;
         } else {
@@ -55,6 +59,7 @@ impl Args {
 }
 
 fn run(v: Vec<String>) -> Result<(), String> {
+    if v.len() == 2 && v[1] == "--help" { print!("{USAGE}"); return Ok(()); }
     match v.first().map(|s| s.as_str()) {
         Some("compare") => {
             let a = parse(&v[1..], &["a", "b", "out"])?;
@@ -72,22 +77,27 @@ fn run(v: Vec<String>) -> Result<(), String> {
         }
         Some("analyze") => {
             let a = parse(&v[1..], &["out"])?;
-            let src = a.pos.first().ok_or("analyze needs RUN_DIR")?;
+            if a.pos.len() != 1 { return Err("analyze needs exactly one RUN_DIR".into()); }
+            let src = &a.pos[0];
             let out = PathBuf::from(a.req("out")?);
             let (meta, samples, sampler) = store::read_run(&PathBuf::from(src))?;
             store::create_new_dir(&out)?;
             store::write_meta(&out, &meta)?;
-            std::fs::copy(PathBuf::from(src).join("samples.jsonl"), out.join("samples.jsonl")).map_err(|e| e.to_string())?;
+            let mut from = std::fs::File::open(PathBuf::from(src).join("samples.jsonl")).map_err(|e| e.to_string())?;
+            let mut to = std::fs::OpenOptions::new().write(true).create_new(true).open(out.join("samples.jsonl")).map_err(|e| e.to_string())?;
+            std::io::copy(&mut from, &mut to).map_err(|e| e.to_string())?;
             let s = store::write_reports(&out, meta, &samples, sampler)?;
             print!("{}", fob_perf::analyze::render(&s));
             Ok(())
         }
         Some("smoke") => {
             let a = parse(&v[1..], &["pid"])?;
+            if !a.pos.is_empty() { return Err("smoke accepts no positional arguments".into()); }
             platform::smoke(a.one("pid").map(|p| p.parse::<u32>().map_err(|_| "--pid must be a number".to_string())).transpose()?)
         }
         Some("sample") => {
             let a = parse(&v[1..], &["out", "label", "app-version", "mode", "refresh-ms", "helper", "settle-s", "steady-s", "interval-ms", "setting", "pid"])?;
+            if !a.pos.is_empty() { return Err("sample accepts no positional arguments".into()); }
             let mode = a.req("mode")?;
             if !MODES.contains(&mode) {
                 return Err(format!("--mode must be one of {}", MODES.join(", ")));
@@ -101,9 +111,14 @@ fn run(v: Vec<String>) -> Result<(), String> {
                 return Err("--interval-ms must be 250–10000".into());
             }
             let refresh: u32 = a.req("refresh-ms")?.parse().map_err(|_| "--refresh-ms must be a whole number")?;
+            if refresh == 0 { return Err("--refresh-ms must be positive".into()); }
             let settings = a.flags.get("setting").cloned().unwrap_or_default();
-            if settings.iter().any(|s| !s.contains('=')) {
-                return Err("--setting must look like KEY=VALUE".into());
+            let mut setting_keys = std::collections::HashSet::new();
+            for s in &settings {
+                let (k, value) = s.split_once('=').ok_or("--setting must look like KEY=VALUE")?;
+                if k.trim().is_empty() || value.trim().is_empty() || !setting_keys.insert(k) {
+                    return Err("--setting needs nonempty unique KEY=VALUE".into());
+                }
             }
             let cfg = platform::Config {
                 out: PathBuf::from(a.req("out")?),
@@ -118,6 +133,8 @@ fn run(v: Vec<String>) -> Result<(), String> {
                 settings,
                 pid: a.one("pid").map(|p| p.parse::<u32>().map_err(|_| "--pid must be a number".to_string())).transpose()?,
             };
+            if cfg.app_version.trim().is_empty() || cfg.helper.trim().is_empty() { return Err("version and helper state must not be empty".into()); }
+            if cfg.settle_s.checked_add(cfg.steady_s).is_none_or(|s| s > 604800) { return Err("total duration must not exceed 7 days".into()); }
             if cfg.steady_s < 10 {
                 return Err("--steady-s must be at least 10".into());
             }
@@ -184,13 +201,13 @@ mod winrun {
     use std::io::Write;
     use std::time::{Duration, Instant};
 
-    struct R<'a>(&'a mut win::Handles);
+    struct R<'a>(&'a mut win::Handles, &'a Instant);
     impl Reader for R<'_> {
         fn create_time(&mut self, pid: u32) -> Result<u64, String> {
             self.0.create_time(pid)
         }
         fn read(&mut self, pid: u32) -> Result<Read, String> {
-            self.0.metrics(pid).map(|m| Read { create: m.create, cpu: m.cpu, private_bytes: m.private_bytes, working_set: m.working_set })
+            self.0.metrics(pid, self.1).map(|m| Read { create: m.create, cpu: m.cpu, cpu_t_ns: Some(m.cpu_t_ns), private_bytes: m.private_bytes, working_set: m.working_set, memory_error: m.memory_error })
         }
     }
 
@@ -204,14 +221,20 @@ mod winrun {
             (None, []) => return Err("no running fob.exe found; start Fob first".into()),
             (None, many) => return Err(format!("several fob.exe running {many:?}; close extra ones or pass --pid")),
         };
-        Ok(Identity { pid, create: h.create_time(pid)? })
+        let create = h.create_time(pid)?;
+        let path = h.image_path(pid).ok_or("cannot read Fob executable path")?;
+        if !path.rsplit('\\').next().is_some_and(|n| n.eq_ignore_ascii_case("fob.exe")) {
+            return Err("selected PID image is not fob.exe".into());
+        }
+        Ok(Identity { pid, create })
     }
 
     pub fn smoke(pid: Option<u32>) -> Result<(), String> {
         let mut h = win::Handles::default();
         let root = pick_root(pid, &mut h)?;
-        let (cores, groups) = win::cores();
-        let (s, _) = collect::sample(0, 0, win::now_filetime(), root, win::list(), &mut R(&mut h));
+        let (cores, groups) = win::cores()?;
+        let clock = Instant::now();
+        let (s, _) = collect::sample(0, 0, win::now_filetime(), root, win::list(), &mut R(&mut h, &clock));
         println!("Fob pid {}，逻辑处理器 {cores}（{groups} 组）", root.pid);
         println!("范围：{SCOPE}");
         for o in &s.procs {
@@ -221,30 +244,45 @@ mod winrun {
         for x in &s.excluded {
             println!("  排除 {} pid {}（{}）", x.name, x.pid, x.reason);
         }
-        let bad = s.procs.iter().filter(|o| o.error.is_some()).count();
-        println!("{}", if bad == 0 { "可以开始采样" } else { "有进程读不到，先解决再采样" });
-        if bad == 0 { Ok(()) } else { Err(format!("{bad} processes unreadable")) }
+        let ready = collect::smoke_ready(&s);
+        if let Some(e) = &s.discovery_error { eprintln!("发现失败：{e}"); }
+        println!("根进程状态：{:?}", s.root);
+        println!("{}", if ready { "可以开始采样" } else { "有进程读不到，先解决再采样" });
+        if ready { Ok(()) } else { Err("discovery, root or process metrics are incomplete".into()) }
     }
 
     fn sha(path: &str) -> Option<(String, u64)> {
-        let data = std::fs::read(path).ok()?;
-        Some((format!("{:x}", Sha256::digest(&data)), data.len() as u64))
+        use std::io::Read;
+        let mut file = std::fs::File::open(path).ok()?;
+        let mut digest = Sha256::new();
+        let mut buf = [0u8; 65536];
+        let mut size = 0;
+        loop {
+            let n = file.read(&mut buf).ok()?;
+            if n == 0 { break; }
+            digest.update(&buf[..n]);
+            size += n as u64;
+        }
+        Some((format!("{:x}", digest.finalize()), size))
     }
 
     pub fn sample(c: Config) -> Result<(), String> {
         let mut h = win::Handles::default();
         let root = pick_root(c.pid, &mut h)?;
-        let (cores, groups) = win::cores();
+        let (cores, groups) = win::cores()?;
         let path = h.image_path(root.pid);
         let hash = path.as_deref().and_then(sha);
         let wall = win::now_filetime();
         let machine = {
-            let raw = format!("{}|{}|{cores}", std::env::var("COMPUTERNAME").unwrap_or_default(), std::env::var("PROCESSOR_IDENTIFIER").unwrap_or_default());
+            let computer = std::env::var("COMPUTERNAME").map_err(|_| "machine name unavailable for fingerprint")?;
+            let processor = std::env::var("PROCESSOR_IDENTIFIER").map_err(|_| "CPU identifier unavailable for fingerprint")?;
+            if computer.is_empty() || processor.is_empty() { return Err("machine fingerprint source is empty".into()); }
+            let raw = format!("{computer}|{processor}|{cores}");
             format!("{:x}", Sha256::digest(raw.as_bytes()))[..16].to_string()
         };
         // FILETIME -> unix seconds for a sortable UTC stamp.
         let unix = (wall / 10_000_000).saturating_sub(11_644_473_600);
-        let meta = RunMeta {
+        let mut meta = RunMeta {
             schema: SCHEMA,
             run_id: format!("{}-{}-{unix}", c.label, c.mode),
             tool_version: env!("CARGO_PKG_VERSION").into(),
@@ -264,12 +302,11 @@ mod winrun {
             root,
             root_exe_name: path.as_deref().and_then(|p| p.rsplit('\\').next()).unwrap_or("fob.exe").into(),
             root_exe_sha256: hash.as_ref().map(|h| h.0.clone()),
-            root_exe_bytes: hash.map(|h| h.1),
+            root_exe_bytes: hash.as_ref().map(|h| h.1),
             root_age_at_attach_s: wall.saturating_sub(root.create) as f64 / 1e7,
             scope: SCOPE.into(),
         };
         store::create_new_dir(&c.out)?;
-        store::write_meta(&c.out, &meta)?;
         let mut raw = std::fs::OpenOptions::new().write(true).create_new(true).open(c.out.join("samples.jsonl")).map_err(|e| e.to_string())?;
         let total = Duration::from_secs(meta.settle_s + meta.steady_s);
         let step = Duration::from_millis(meta.interval_ms);
@@ -279,7 +316,7 @@ mod winrun {
         eprintln!("采样 {} 秒（等待 {} 秒 + 稳定段 {} 秒），按 Ctrl+C 会中止且结果无效", total.as_secs(), meta.settle_s, meta.steady_s);
         loop {
             let t = t0.elapsed();
-            let (s, keep) = collect::sample(seq, t.as_nanos() as u64, win::now_filetime(), root, win::list(), &mut R(&mut h));
+            let (s, keep) = collect::sample(seq, t.as_nanos() as u64, win::now_filetime(), root, win::list(), &mut R(&mut h, &t0));
             h.retain(&keep);
             writeln!(raw, "{}", serde_json::to_string(&s).unwrap()).map_err(|e| e.to_string())?;
             let stop = s.root != RootState::Alive;
@@ -292,18 +329,24 @@ mod winrun {
                 break;
             }
             seq += 1;
-            let next = step * seq as u32;
+            let elapsed = t0.elapsed();
+            let grid = step * ((elapsed.as_millis() / meta.interval_ms as u128 + 1) as u32);
+            let settle = Duration::from_secs(meta.settle_s);
+            let next = if elapsed < settle { grid.min(settle).min(total) } else { grid.min(total) };
             if let Some(d) = next.checked_sub(t0.elapsed()) {
                 std::thread::sleep(d);
             }
         }
-        raw.flush().ok();
-        let usage = win::self_usage();
-        if let Some(u) = usage {
-            std::fs::write(c.out.join("sampler.json"), serde_json::to_string(&u).unwrap()).ok();
+        raw.flush().map_err(|e| format!("samples.jsonl flush: {e}"))?;
+        if path.as_deref().and_then(sha) != hash {
+            meta.root_exe_sha256 = None;
+            meta.root_exe_bytes = None;
         }
+        store::write_meta(&c.out, &meta)?;
+        let usage = win::self_usage();
         let s = store::write_reports(&c.out, meta, &samples, usage)?;
         print!("{}", fob_perf::analyze::render(&s));
+        if s.quality != "complete" { return Err(format!("sampling {}: reports saved, not eligible for A/B comparison", s.quality)); }
         Ok(())
     }
 }

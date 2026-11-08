@@ -9,10 +9,10 @@ fn runrec(label: &str, mode: &str, order: u32, cpu_ms: u64) -> Summary {
     let s = run(&mut os, 11, |i, os| if i > 0 { os.burn(100, cpu_ms * 10_000) });
     let mut m = meta(label, mode, 0, 10, 8);
     m.run_id = format!("{label}{order}-{mode}");
-    m.started_utc = format!("unix:{order:012}");
+    m.started_utc = format!("unix:{:012}", order as u64 * 20);
     if label == "B" {
         m.app_version = "0.8.2".into();
-        m.root_exe_sha256 = Some("bb".into());
+        m.root_exe_sha256 = Some("bb".repeat(32));
     } else {
         m.app_version = "0.8.1".into();
     }
@@ -101,7 +101,7 @@ fn modes_are_compared_separately() {
 #[test]
 fn mixed_builds_within_one_label_are_rejected() {
     let mut v = interleaved(&[80; 5], &[10; 5]);
-    v[2].meta.root_exe_sha256 = Some("cc".into());
+    v[2].meta.root_exe_sha256 = Some("cc".repeat(32));
     assert!(compare(&v, "A", "B").is_err());
 }
 
@@ -109,4 +109,29 @@ fn mixed_builds_within_one_label_are_rejected() {
 fn equal_labels_are_rejected() {
     let v = interleaved(&[80; 1], &[10; 1]);
     assert!(compare(&v[..1], "A", "A").is_err());
+}
+
+#[test]
+fn timestamps_must_be_nonoverlapping_and_strictly_alternating() {
+    let mut v = interleaved(&[80; 5], &[10; 5]);
+    v[1].meta.started_utc = v[0].meta.started_utc.clone();
+    let r = compare(&v, "A", "B").unwrap();
+    assert!(!r.modes[0].interleaved);
+    assert!(r.modes[0].metrics[0].verdict.starts_with("inconclusive"));
+    let mut v = interleaved(&[80; 6], &[10; 5]);
+    v[10].meta.started_utc = "unix:000000000001".into();
+    assert!(!compare(&v, "A", "B").unwrap().modes[0].interleaved);
+}
+
+#[test]
+fn invalid_metrics_and_root_metadata_are_rejected() {
+    let mut v = interleaved(&[80; 5], &[10; 5]);
+    v[0].cpu_interval_p95_pct = None;
+    assert!(compare(&v, "A", "B").is_err());
+    let mut v = interleaved(&[80; 5], &[10; 5]);
+    v[0].meta.root.pid = 42;
+    assert!(compare(&v, "A", "B").is_err());
+    let mut v = interleaved(&[80; 5], &[10; 5]);
+    v[0].meta.processor_groups = 2;
+    assert!(compare(&v, "A", "B").is_err());
 }
