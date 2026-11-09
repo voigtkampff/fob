@@ -12,6 +12,14 @@ pub const OVERLAY_CHART_METRICS: [&str; 7] =
 pub const OVERLAY_METRICS: [&str; 9] = [
     "cpu", "cpuTemp", "gpu", "gpuTemp", "ram", "vram", "disk", "net", "power",
 ];
+/// Process column layout of this version. Settings saved before 0.8.3 have
+/// none and stored GPU % as hidden, its old default, so it shows once.
+const PROCESS_COLUMNS: u64 = 2;
+fn migrate_columns(config: &mut Value, saved: &Value) {
+    if saved["behavior"]["processColumns"].as_u64() != Some(PROCESS_COLUMNS) {
+        config["appearance"]["columnVisibility"]["gpu_usage"] = Value::Bool(true);
+    }
+}
 fn defaults() -> Value {
     serde_json::from_str(include_str!(
         "../../src/lib/definitions/default-config.json"
@@ -85,6 +93,8 @@ fn merge(config: &mut Value, patch: &Value) {
                 // Fob: mini window opacity in percent (Settings and the mini window).
                 "miniOpacity" => value.as_u64().is_some_and(|n| (0..=100).contains(&n)),
                 "processView" => matches!(value.as_str(), Some("flat" | "tree")),
+                // 0.8.3 process columns; a newer number is not ours to keep.
+                "processColumns" => value.as_u64() == Some(PROCESS_COLUMNS),
                 // Fob: "" (off) or a canonical combo; set via set_hotkey.
                 "miniHotkey" | "overlayHotkey" | "mainHotkey" => value.as_str().is_some_and(|s| {
                     s.is_empty() || crate::hotkey::parse(s).is_ok_and(|c| c.canonical() == s)
@@ -136,6 +146,7 @@ fn load(path: &Path, legacy: Option<&Value>) -> Result<Option<Value>, String> {
     };
     let mut config = defaults();
     merge(&mut config, source);
+    migrate_columns(&mut config, source);
     if existing.is_none() {
         persist(path, &config)?;
     }
@@ -316,6 +327,30 @@ mod tests {
         assert!(config["appearance"]["columnVisibility"]
             .get("unknown")
             .is_none());
+    }
+    #[test]
+    fn gpu_column_shows_once_for_settings_from_before_0_8_3() {
+        let saved = json!({"behavior":{"refreshRate":3000},"appearance":{"columnVisibility":{"gpu_usage":false,"disk_usage":true,"virtual_memory":false}}});
+        let mut config = defaults();
+        merge(&mut config, &saved);
+        migrate_columns(&mut config, &saved);
+        let columns = &config["appearance"]["columnVisibility"];
+        assert_eq!(columns["gpu_usage"], true);
+        assert_eq!(columns["disk_read"], true);
+        assert_eq!(columns["disk_write"], true);
+        assert_eq!(columns["gpu_memory"], false);
+        assert_eq!(columns["virtual_memory"], false);
+        assert!(columns.get("disk_usage").is_none());
+        assert_eq!(config["behavior"]["processColumns"], 2);
+        // Hidden again after 0.8.3: the choice sticks across restarts.
+        let saved = json!({"behavior":{"processColumns":2},"appearance":{"columnVisibility":{"gpu_usage":false}}});
+        let mut config = defaults();
+        merge(&mut config, &saved);
+        migrate_columns(&mut config, &saved);
+        assert_eq!(config["appearance"]["columnVisibility"]["gpu_usage"], false);
+        // A later patch never re-applies the migration.
+        merge(&mut config, &json!({"behavior":{"language":"zh"}}));
+        assert_eq!(config["appearance"]["columnVisibility"]["gpu_usage"], false);
     }
     #[test]
     fn status_bar_settings_default_off_and_reject_bad_values() {

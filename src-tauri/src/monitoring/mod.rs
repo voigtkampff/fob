@@ -5,6 +5,7 @@
 //! and data structures for representing system state.
 
 mod gpu_process_monitor;
+mod io_rates;
 mod port_monitor;
 pub use port_monitor::collect_ports_by_pid;
 mod process_monitor;

@@ -9,20 +9,12 @@
   export let sortConfig: { field: keyof Process; direction: "asc" | "desc" };
   export let onToggleSort: (field: keyof Process) => void;
   export let treeView = false;
-
-  const numeric = [
-    "cpu_usage",
-    "memory_usage",
-    "virtual_memory",
-    "disk_usage",
-    "run_time",
-  ];
 </script>
 
 <Table.Header
   ><Table.Row class="hover:bg-transparent"
     >{#each columns.filter((c) => c.visible) as column}<Table.Head
-        class={`${numeric.includes(column.id) ? "text-right" : ""} ${treeView && column.id === "name" ? "tree-name" : ""} ${column.id === "name" ? "pl-4" : ""}`}
+        class={`${column.numeric ? "text-right" : ""} ${treeView && column.id === "name" ? "tree-name" : ""} ${column.id === "name" ? "pl-4" : ""}`}
         style={`width:${columnWidth(column.id, treeView)}px`}
         aria-sort={sortConfig.field === column.id
           ? sortConfig.direction === "asc"

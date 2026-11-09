@@ -97,6 +97,8 @@ pub struct EngineCounters(Option<Query>);
 struct Query {
     query: PDH_HQUERY,
     counter: PDH_HCOUNTER,
+    /// `\GPU Process Memory(*)\Dedicated Usage`; None if Windows lacks it.
+    memory: Option<PDH_HCOUNTER>,
 }
 // PDH handles are plain handles; access is serialized by the GpuMonitor mutex.
 unsafe impl Send for Query {}
@@ -119,8 +121,22 @@ impl Query {
                 PdhCloseQuery(query);
                 return None;
             }
+            // Same query, so memory and engine readings come from one
+            // collection; no extra process walk.
+            let mut memory = PDH_HCOUNTER::default();
+            let memory = (PdhAddEnglishCounterW(
+                query,
+                w!(r"\GPU Process Memory(*)\Dedicated Usage"),
+                0,
+                &mut memory,
+            ) == 0)
+                .then_some(memory);
             PdhCollectQueryData(query); // first sample; rates need two
-            Some(Self { query, counter })
+            Some(Self {
+                query,
+                counter,
+                memory,
+            })
         }
     }
     fn sample(&mut self) -> Option<engine_counters::EngineSnapshot> {
@@ -128,40 +144,49 @@ impl Query {
             if PdhCollectQueryData(self.query) != 0 {
                 return None;
             }
-            let (mut size, mut count) = (0u32, 0u32);
-            PdhGetFormattedCounterArrayW(self.counter, PDH_FMT_DOUBLE, &mut size, &mut count, None);
-            if size == 0 {
-                return Some(Default::default());
-            }
-            // u64 buffer keeps the item array 8-byte aligned.
-            let mut buf = vec![0u64; (size as usize).div_ceil(8)];
-            let items = buf.as_mut_ptr() as *mut PDH_FMT_COUNTERVALUE_ITEM_W;
-            if PdhGetFormattedCounterArrayW(
-                self.counter,
-                PDH_FMT_DOUBLE,
-                &mut size,
-                &mut count,
-                Some(items),
-            ) != 0
-            {
-                return None;
-            }
-            let items = std::slice::from_raw_parts(items, count as usize);
-            let pairs: Vec<(String, f64)> = items
-                .iter()
-                .filter(|i| i.FmtValue.CStatus == 0)
-                .map(|i| {
-                    (
-                        i.szName.to_string().unwrap_or_default(),
-                        i.FmtValue.Anonymous.doubleValue,
-                    )
-                })
-                .collect();
-            Some(engine_counters::engine_snapshot(
-                pairs.iter().map(|(n, v)| (n.as_str(), *v)),
-            ))
+            let engines = counter_values(self.counter)?;
+            let mut snapshot =
+                engine_counters::engine_snapshot(engines.iter().map(|(n, v)| (n.as_str(), *v)));
+            snapshot.process_memory = self
+                .memory
+                .and_then(|memory| counter_values(memory))
+                .filter(|values| !values.is_empty())
+                .map(|values| {
+                    engine_counters::process_memory(values.iter().map(|(n, v)| (n.as_str(), *v)))
+                });
+            Some(snapshot)
         }
     }
+}
+
+/// Every instance of one counter with a valid value; None if PDH fails.
+unsafe fn counter_values(counter: PDH_HCOUNTER) -> Option<Vec<(String, f64)>> {
+    let (mut size, mut count) = (0u32, 0u32);
+    PdhGetFormattedCounterArrayW(counter, PDH_FMT_DOUBLE, &mut size, &mut count, None);
+    if size == 0 {
+        return Some(Vec::new());
+    }
+    // u64 buffer keeps the item array 8-byte aligned.
+    let mut buf = vec![0u64; (size as usize).div_ceil(8)];
+    let items = buf.as_mut_ptr() as *mut PDH_FMT_COUNTERVALUE_ITEM_W;
+    if PdhGetFormattedCounterArrayW(counter, PDH_FMT_DOUBLE, &mut size, &mut count, Some(items))
+        != 0
+    {
+        return None;
+    }
+    let items = std::slice::from_raw_parts(items, count as usize);
+    Some(
+        items
+            .iter()
+            .filter(|i| i.FmtValue.CStatus == 0)
+            .map(|i| {
+                (
+                    i.szName.to_string().unwrap_or_default(),
+                    i.FmtValue.Anonymous.doubleValue,
+                )
+            })
+            .collect(),
+    )
 }
 
 impl Drop for Query {
@@ -173,19 +198,18 @@ impl Drop for Query {
 }
 
 impl EngineCounters {
-    /// Empty map when PDH is unavailable; the query is reopened on the next call.
-    pub fn sample(&mut self) -> engine_counters::EngineSnapshot {
+    /// None on the first call and when PDH is unavailable; a failed query is
+    /// reopened on the next call.
+    pub fn sample(&mut self) -> Option<engine_counters::EngineSnapshot> {
         if self.0.is_none() {
             self.0 = Query::open();
             // Fresh query: first rate sample comes on the next collection.
-            return Default::default();
+            return None;
         }
-        match self.0.as_mut().and_then(Query::sample) {
-            Some(map) => map,
-            None => {
-                self.0 = None;
-                Default::default()
-            }
+        let snapshot = self.0.as_mut().and_then(Query::sample);
+        if snapshot.is_none() {
+            self.0 = None;
         }
+        snapshot
     }
 }

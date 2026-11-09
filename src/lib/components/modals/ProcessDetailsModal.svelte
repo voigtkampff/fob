@@ -2,6 +2,7 @@
   import { tick } from "svelte";
   import type { Process } from "$lib/types";
   import { formatBytes, formatDate } from "$lib/utils";
+  import { rate } from "$lib/definitions/columns";
   import ProcessIcon from "../process/ProcessIcon.svelte";
   import { Button } from "$lib/components/ui/button/index.js";
   import { Badge } from "$lib/components/ui/badge/index.js";
@@ -132,8 +133,8 @@
             <p class="text-xs text-muted-foreground">{$t("pd.disk")}</p>
             <p class="mt-1 text-xs" data-selectable>
               {$t("pd.diskRw", {
-                r: formatBytes(process.disk_usage[0]),
-                w: formatBytes(process.disk_usage[1]),
+                r: rate(process.disk_read),
+                w: rate(process.disk_write),
               })}
             </p>
           </div></Card.Content

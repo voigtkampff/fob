@@ -17,25 +17,20 @@
   export let onTogglePin: (command: string) => void;
   export let onShowDetails: (process: Process) => void;
   export let onKillProcess: (process: Process) => void;
-  const numeric = [
-    "cpu_usage",
-    "memory_usage",
-    "virtual_memory",
-    "disk_usage",
-    "run_time",
-  ];
 </script>
 
 <Table.Row data-pinned={isPinned} data-high-usage={isHighUsage}
   >{#each columns.filter((c) => c.visible) as column}<Table.Cell
-      class={`${numeric.includes(column.id) ? "text-right font-mono text-xs" : ""} ${column.id === "name" ? "pl-4" : ""} ${tree && column.id === "name" ? "tree-name" : ""}`}
+      class={`${column.numeric ? "text-right font-mono text-xs" : ""} ${column.id === "name" ? "pl-4" : ""} ${tree && column.id === "name" ? "tree-name" : ""}`}
       ><div
         class={column.id === "name" ? "" : "max-w-72 truncate"}
         title={column.id === "name"
           ? undefined
-          : column.format
-            ? column.format(process[column.id], $t)
-            : String(process[column.id] ?? "")}
+          : column.nullable && process[column.id] == null
+            ? $t("proc.noReading")
+            : column.format
+              ? column.format(process[column.id], $t)
+              : String(process[column.id] ?? "")}
       >
         {#if column.id === "name"}<div
             class="flex min-w-0 items-center gap-2"
@@ -98,6 +93,9 @@
                   ? "var(--status-stopped)"
                   : "var(--status-idle)"}
             ></span>{statusLabel(process.status, $t)}</span
+          >
+        {:else if column.nullable && process[column.id] == null}<span
+            class="text-muted-foreground">—</span
           >
         {:else if column.format}{column.format(process[column.id], $t)}
         {:else}<span

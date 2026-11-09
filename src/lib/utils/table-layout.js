@@ -10,7 +10,10 @@ const widths = {
   cpu_usage: 95,
   memory_usage: 110,
   virtual_memory: 105,
-  disk_usage: 145,
+  gpu_usage: 80,
+  disk_read: 92,
+  disk_write: 92,
+  gpu_memory: 125,
   run_time: 130,
   start_time: 180,
 };

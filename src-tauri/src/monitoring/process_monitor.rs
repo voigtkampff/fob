@@ -3,11 +3,12 @@
 //! This module handles monitoring and managing system processes, including
 //! collecting process information and managing process lifecycle.
 
+use super::io_rates::{IoRates, IoTotals};
 use super::{ProcessData, ProcessInfo, ProcessStaticInfo};
 use std::collections::HashMap;
 use std::ffi::OsString;
 use std::fmt::Debug;
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use sysinfo::ProcessStatus;
 
 fn os_string_vec_to_string_vec(v: &[OsString]) -> Vec<String> {
@@ -23,6 +24,8 @@ pub struct ProcessMonitor {
     /// reused pid never shows the old process's name or command. Entries for
     /// processes that are gone are dropped every collection.
     process_cache: HashMap<(u32, u64), ProcessStaticInfo>,
+    /// Previous I/O counters, for disk speed per process.
+    io: IoRates,
 }
 
 impl ProcessMonitor {
@@ -30,6 +33,7 @@ impl ProcessMonitor {
     pub fn new() -> Self {
         Self {
             process_cache: HashMap::new(),
+            io: IoRates::default(),
         }
     }
 
@@ -42,10 +46,17 @@ impl ProcessMonitor {
     /// # Returns
     ///
     /// A vector of process information, or an error string if collection failed
-    pub fn collect_processes(&mut self, sys: &sysinfo::System) -> Result<Vec<ProcessInfo>, String> {
+    ///
+    /// Call right after refreshing `sys`. Disk speeds cover the time since the
+    /// previous call; a gap longer than `max_window` reports no speed.
+    pub fn collect_processes(
+        &mut self,
+        sys: &sysinfo::System,
+        max_window: Duration,
+    ) -> Result<Vec<ProcessInfo>, String> {
         let current_time = Self::get_current_time()?;
         let processes_data = self.collect_process_data(sys, current_time);
-        Ok(self.build_process_info(processes_data))
+        Ok(self.build_process_info(processes_data, Instant::now(), max_window))
     }
 
     /// Attempts to kill a process
@@ -113,7 +124,23 @@ impl ProcessMonitor {
     }
 
     /// Builds process information from raw process data
-    fn build_process_info(&mut self, processes: Vec<ProcessData>) -> Vec<ProcessInfo> {
+    fn build_process_info(
+        &mut self,
+        processes: Vec<ProcessData>,
+        now: Instant,
+        max_window: Duration,
+    ) -> Vec<ProcessInfo> {
+        let rates = self.io.advance(
+            now,
+            max_window,
+            processes.iter().map(|data| {
+                let usage = &data.disk_usage;
+                (
+                    (data.pid, data.start_time),
+                    IoTotals::readable(usage.total_read_bytes, usage.total_written_bytes),
+                )
+            }),
+        );
         let infos: Vec<ProcessInfo> = processes
             .into_iter()
             .map(|data| {
@@ -138,8 +165,10 @@ impl ProcessMonitor {
                     }
                 }
 
+                let rate = rates.get(&(data.pid, data.start_time));
                 ProcessInfo {
                     gpu_usage: None,
+                    gpu_memory: None,
                     ports: vec![],
                     pid: data.pid,
                     ppid: data.ppid.unwrap_or(0),
@@ -155,7 +184,8 @@ impl ProcessMonitor {
                     virtual_memory: data.virtual_memory,
                     start_time: data.start_time,
                     run_time: data.run_time,
-                    disk_usage: (data.disk_usage.read_bytes, data.disk_usage.written_bytes),
+                    disk_read: rate.map(|r| r.read),
+                    disk_write: rate.map(|r| r.written),
                     session_id: data.session_id,
                 }
             })
@@ -199,7 +229,22 @@ fn normalize_cpu(per_core: f32, logical: usize) -> f32 {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use sysinfo::System;
+    use sysinfo::{DiskUsage, System};
+
+    const WINDOW: Duration = Duration::from_millis(7500);
+
+    fn build(monitor: &mut ProcessMonitor, live: Vec<ProcessData>) -> Vec<ProcessInfo> {
+        monitor.build_process_info(live, Instant::now(), WINDOW)
+    }
+
+    fn with_io(mut process: ProcessData, read: u64, written: u64) -> ProcessData {
+        process.disk_usage = DiskUsage {
+            total_read_bytes: read,
+            total_written_bytes: written,
+            ..Default::default()
+        };
+        process
+    }
 
     fn data(pid: u32, start_time: u64, name: &str, cmd: Option<&[&str]>) -> ProcessData {
         let strings = |v: &[&str]| v.iter().map(|s| s.to_string()).collect::<Vec<_>>();
@@ -225,8 +270,14 @@ mod tests {
     #[test]
     fn a_reused_pid_shows_the_new_process() {
         let mut monitor = ProcessMonitor::new();
-        monitor.build_process_info(vec![data(7, 100, "old.exe", Some(&["old.exe", "-x"]))]);
-        let now = monitor.build_process_info(vec![data(7, 200, "new.exe", Some(&["new.exe"]))]);
+        build(
+            &mut monitor,
+            vec![data(7, 100, "old.exe", Some(&["old.exe", "-x"]))],
+        );
+        let now = build(
+            &mut monitor,
+            vec![data(7, 200, "new.exe", Some(&["new.exe"]))],
+        );
         assert_eq!(now[0].name, "new.exe");
         assert_eq!(now[0].command, "new.exe");
     }
@@ -238,7 +289,7 @@ mod tests {
             let live = (0..10)
                 .map(|i| data(tick * 10 + i, 1, "p", Some(&["p"])))
                 .collect();
-            monitor.build_process_info(live);
+            build(&mut monitor, live);
         }
         assert_eq!(monitor.process_cache.len(), 10);
     }
@@ -246,9 +297,9 @@ mod tests {
     #[test]
     fn later_frames_keep_command_and_environment_without_copying() {
         let mut monitor = ProcessMonitor::new();
-        let first = monitor.build_process_info(vec![data(5, 1, "a", Some(&["a", "--b"]))]);
+        let first = build(&mut monitor, vec![data(5, 1, "a", Some(&["a", "--b"]))]);
         // Cached: the collector skips cmd/environ (None).
-        let second = monitor.build_process_info(vec![data(5, 1, "a", None)]);
+        let second = build(&mut monitor, vec![data(5, 1, "a", None)]);
         assert_eq!(second[0].command, "a --b");
         assert_eq!(&*second[0].environ, &["A=1".to_string(), "B=2".to_string()]);
         assert!(std::sync::Arc::ptr_eq(
@@ -264,8 +315,8 @@ mod tests {
     #[test]
     fn a_command_read_late_still_arrives() {
         let mut monitor = ProcessMonitor::new();
-        monitor.build_process_info(vec![data(5, 1, "a", Some(&[]))]);
-        let later = monitor.build_process_info(vec![data(5, 1, "a", Some(&["a", "-v"]))]);
+        build(&mut monitor, vec![data(5, 1, "a", Some(&[]))]);
+        let later = build(&mut monitor, vec![data(5, 1, "a", Some(&["a", "-v"]))]);
         assert_eq!(later[0].command, "a -v");
     }
 
@@ -273,10 +324,13 @@ mod tests {
     #[test]
     fn an_empty_reading_keeps_no_stale_process() {
         let mut monitor = ProcessMonitor::new();
-        monitor.build_process_info(vec![data(9, 1, "gone.exe", Some(&["gone.exe"]))]);
-        assert!(monitor.build_process_info(vec![]).is_empty());
+        build(
+            &mut monitor,
+            vec![data(9, 1, "gone.exe", Some(&["gone.exe"]))],
+        );
+        assert!(build(&mut monitor, vec![]).is_empty());
         assert!(monitor.process_cache.is_empty());
-        let back = monitor.build_process_info(vec![data(9, 1, "next.exe", None)]);
+        let back = build(&mut monitor, vec![data(9, 1, "next.exe", None)]);
         assert_eq!(back[0].name, "next.exe");
         assert_eq!(back[0].command, "");
         assert!(back[0].environ.is_empty());
@@ -287,19 +341,72 @@ mod tests {
         let mut monitor = ProcessMonitor::new();
         let mut first = data(3, 1, "a", Some(&["a"]));
         first.user_id = None;
-        assert_eq!(monitor.build_process_info(vec![first])[0].user, "-");
-        let later = monitor.build_process_info(vec![data(3, 1, "a", None)]);
+        assert_eq!(build(&mut monitor, vec![first])[0].user, "-");
+        let later = build(&mut monitor, vec![data(3, 1, "a", None)]);
         assert_eq!(later[0].user, "-");
     }
 
     #[test]
     fn shared_environment_serialises_like_a_list() {
         let mut monitor = ProcessMonitor::new();
-        let info = monitor.build_process_info(vec![data(5, 1, "a", Some(&["a"]))]);
+        let info = build(&mut monitor, vec![data(5, 1, "a", Some(&["a"]))]);
         let json = serde_json::to_value(&info[0]).unwrap();
         assert_eq!(json["environ"], serde_json::json!(["A=1", "B=2"]));
         assert_eq!(json["command"], "a");
         assert_eq!(json["user"], "1000");
+    }
+
+    #[test]
+    fn disk_speed_is_unknown_until_two_readings_then_bytes_per_second() {
+        let mut monitor = ProcessMonitor::new();
+        let t0 = Instant::now();
+        let p = |r, w| with_io(data(4, 1, "copy.exe", Some(&["copy.exe"])), r, w);
+        let first = monitor.build_process_info(vec![p(50_000_000, 0)], t0, WINDOW);
+        let json = serde_json::to_value(&first[0]).unwrap();
+        // A lifetime total is never shown as the current speed.
+        assert!(json["disk_read"].is_null() && json["disk_write"].is_null());
+        let busy = monitor.build_process_info(
+            vec![p(50_000_000 + 6_000_000, 30_000)],
+            t0 + Duration::from_secs(3),
+            WINDOW,
+        );
+        let json = serde_json::to_value(&busy[0]).unwrap();
+        assert_eq!(json["disk_read"], 2_000_000);
+        assert_eq!(json["disk_write"], 10_000);
+        let idle = monitor.build_process_info(
+            vec![p(56_000_000, 30_000)],
+            t0 + Duration::from_secs(6),
+            WINDOW,
+        );
+        assert_eq!((idle[0].disk_read, idle[0].disk_write), (Some(0), Some(0)));
+        assert!(json.get("disk_usage").is_none());
+    }
+
+    #[test]
+    fn unreadable_io_counters_stay_unknown_not_idle() {
+        let mut monitor = ProcessMonitor::new();
+        let t0 = Instant::now();
+        let p = || with_io(data(4, 1, "protected.exe", None), 0, 0);
+        monitor.build_process_info(vec![p()], t0, WINDOW);
+        let later = monitor.build_process_info(vec![p()], t0 + Duration::from_secs(3), WINDOW);
+        assert_eq!((later[0].disk_read, later[0].disk_write), (None, None));
+    }
+
+    #[test]
+    fn a_reused_pid_never_inherits_disk_speed() {
+        let mut monitor = ProcessMonitor::new();
+        let t0 = Instant::now();
+        monitor.build_process_info(
+            vec![with_io(data(7, 100, "old.exe", None), 1_000, 1_000)],
+            t0,
+            WINDOW,
+        );
+        let now = monitor.build_process_info(
+            vec![with_io(data(7, 200, "new.exe", None), 90_000_000, 1)],
+            t0 + Duration::from_secs(3),
+            WINDOW,
+        );
+        assert_eq!(now[0].disk_read, None);
     }
 
     #[test]
@@ -328,7 +435,7 @@ mod tests {
         let mut sys = System::new();
         sys.refresh_all();
 
-        let result = monitor.collect_processes(&sys);
+        let result = monitor.collect_processes(&sys, WINDOW);
         assert!(result.is_ok());
     }
 }

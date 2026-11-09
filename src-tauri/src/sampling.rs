@@ -352,7 +352,9 @@ impl Hub {
                 .process_monitor
                 .lock()
                 .map_err(|e| e.to_string())?
-                .collect_processes(&sys)?;
+                // Same gap rule as the history charts: a longer wait (paused,
+                // stalled) is not reported as a current disk speed.
+                .collect_processes(&sys, Duration::from_millis(self.interval * 5 / 2))?;
             let stats = state
                 .system_monitor
                 .lock()
@@ -371,10 +373,12 @@ impl Hub {
         let gpus = {
             let mut gpu = state.gpu.lock().map_err(|e| e.to_string())?;
             let gpus = gpu.collect();
-            // winperf: Windows PDH per-process GPU % (Linux uses DRM fdinfo above).
-            for process in &mut processes {
-                if process.gpu_usage.is_none() {
-                    process.gpu_usage = gpu.process_usage.get(&process.pid).map(|v| *v as f32);
+            // Windows PDH per-process GPU (Linux uses DRM fdinfo above).
+            if let Some(usage) = &gpu.process_usage {
+                for process in &mut processes {
+                    let (busy, dedicated) = usage.of(process.pid);
+                    process.gpu_usage.get_or_insert(busy);
+                    process.gpu_memory = dedicated;
                 }
             }
             gpus

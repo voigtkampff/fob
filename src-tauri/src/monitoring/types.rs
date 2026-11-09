@@ -32,7 +32,7 @@ pub(crate) struct ProcessData {
     pub start_time: u64,
     /// Process running time in seconds
     pub run_time: u64,
-    /// Disk I/O statistics
+    /// Cumulative I/O counters (the totals are used, not sysinfo's deltas)
     pub disk_usage: DiskUsage,
     /// Session ID of the process
     pub session_id: Option<u32>,
@@ -56,8 +56,13 @@ pub struct ProcessStaticInfo {
 /// Contains formatted and filtered process data for UI consumption
 #[derive(Clone, Serialize, Debug)]
 pub struct ProcessInfo {
-    /// Driver-reported DRM engine activity; unknown and unsupported stay None.
+    /// Busiest GPU engine this process used over the last interval, percent.
+    /// Windows: PDH GPU Engine counters, 0 when the process used no engine.
+    /// Linux: DRM fdinfo. None: no reading (first sample, unsupported).
     pub gpu_usage: Option<f32>,
+    /// Windows: dedicated GPU memory in bytes (PDH GPU Process Memory).
+    /// None when the counter is unavailable and on other platforms.
+    pub gpu_memory: Option<u64>,
     /// Process ID
     pub pid: u32,
     /// Parent process ID
@@ -86,8 +91,11 @@ pub struct ProcessInfo {
     pub start_time: u64,
     /// Process running time in seconds
     pub run_time: u64,
-    /// Disk I/O statistics (read bytes, written bytes)
-    pub disk_usage: (u64, u64),
+    /// Disk read and write speed in bytes per second over the last capture
+    /// interval. Both are None together: first reading, unreadable counters,
+    /// or a counter gap.
+    pub disk_read: Option<u64>,
+    pub disk_write: Option<u64>,
     /// Session ID of the process
     pub session_id: Option<u32>,
     /// Local bound ports (TCP LISTEN + UDP). Empty when port collection is skipped.

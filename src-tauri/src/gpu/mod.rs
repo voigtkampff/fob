@@ -15,6 +15,7 @@ mod windows;
 // winperf: PDH GPU engine counter parsing (used on Windows, tested everywhere).
 #[cfg_attr(not(target_os = "windows"), allow(dead_code))]
 mod engine_counters;
+pub use engine_counters::ProcessGpu;
 
 #[derive(Clone, Debug, Serialize)]
 pub struct GpuDevice {
@@ -46,8 +47,9 @@ pub struct GpuMonitor {
     nvidia: nvidia::Nvidia,
     #[cfg(target_os = "windows")]
     engines: windows::EngineCounters,
-    /// winperf: pid -> GPU % from the last sample (Windows PDH only).
-    pub process_usage: std::collections::BTreeMap<u32, f64>,
+    /// Per-process GPU % and dedicated memory from the last sample (Windows
+    /// PDH only). None: no reading this sample, so every process is unknown.
+    pub process_usage: Option<ProcessGpu>,
 }
 
 impl GpuMonitor {
@@ -65,8 +67,8 @@ impl GpuMonitor {
                     .iter()
                     .map(|d| d.name.trim_start_matches("NVIDIA ").to_lowercase())
                     .collect::<Vec<_>>();
-                let busy = self.engines.sample();
-                self.process_usage = busy.processes.clone();
+                let busy = self.engines.sample().unwrap_or_default();
+                self.process_usage = ProcessGpu::from_sample(&busy);
                 for device in windows::collect(&busy) {
                     if device.vendor == "NVIDIA" {
                         let name = device.name.trim_start_matches("NVIDIA ").to_lowercase();

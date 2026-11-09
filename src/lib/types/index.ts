@@ -15,7 +15,11 @@ export interface Process {
   virtual_memory: number;
   start_time: number;
   run_time: number;
-  disk_usage: [number, number]; // [read_bytes, written_bytes]
+  /** Disk speed in bytes/s over the last refresh; null: no reading. */
+  disk_read: number | null;
+  disk_write: number | null;
+  /** Windows: dedicated GPU memory in bytes; null: no reading. */
+  gpu_memory: number | null;
   session_id?: number;
   /** Local bound ports (TCP LISTEN + UDP). Empty unless a port search is active. */
   ports: number[];
@@ -107,6 +111,10 @@ export interface Column {
   label: string;
   visible: boolean;
   required?: boolean;
+  /** Right-aligned monospace numbers. */
+  numeric?: boolean;
+  /** null means no reading, never 0. */
+  nullable?: boolean;
   format?: (
     value: any,
     t?: (key: string, vars?: Record<string, string | number>) => string,
@@ -150,6 +158,8 @@ export interface AppConfig {
     refreshRate: number;
     defaultStatusFilter: string;
     processView?: "flat" | "tree";
+    /** Process column layout version (preferences.rs migrate_columns). */
+    processColumns?: number;
     menuBarEnabled: boolean;
     launchAtLogin: boolean;
     keepRunning: boolean;

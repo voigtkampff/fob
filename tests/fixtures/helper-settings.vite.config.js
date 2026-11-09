@@ -35,6 +35,12 @@ const styles = new Map(
   ]),
 );
 
+// Fixture pages that receive the production stylesheets.
+const panels = new Set([
+  "/helper-settings-panel.html",
+  "/process-table-panel.html",
+]);
+
 export default defineConfig({
   root: fileURLToPath(new URL(".", import.meta.url)),
   plugins: [
@@ -42,7 +48,7 @@ export default defineConfig({
     {
       name: "fixture-production-css",
       transformIndexHtml(html, context) {
-        if (context.path !== "/helper-settings-panel.html") return html;
+        if (!panels.has(context.path)) return html;
         return [...styles.keys()].map((href) => ({
           tag: "link",
           attrs: { rel: "stylesheet", href },

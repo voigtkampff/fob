@@ -119,6 +119,27 @@ try {
   ).text();
   assert.match(viewportModule, /frame.width = String\(viewport.width\)/);
   assert.match(viewportModule, /frame.height = String\(viewport.height\)/);
+  const tablePanel = await (
+    await get("/process-table-panel.html?lang=zh")
+  ).text();
+  assert.deepEqual(
+    [
+      ...tablePanel.matchAll(
+        /<link rel="stylesheet" href="(\/fixture-production\/[^"]+)">/g,
+      ),
+    ].map((match) => match[1]),
+    links,
+    "process table preview links the same production CSS",
+  );
+  const tableFixture = readFileSync(
+    new URL("fixtures/ProcessTablePreview.svelte", import.meta.url),
+    "utf8",
+  );
+  assert.match(
+    tableFixture,
+    /src\/lib\/components\/process\/ProcessTable\.svelte/,
+  );
+  assert.match(tableFixture, /src\/lib\/definitions\/columns/);
   console.log(
     `helper Settings preview passes. ${links.length} production CSS files are byte-identical, ${utilities.length} utility declaration checks pass, real component and isolated panel return HTTP 200`,
   );
