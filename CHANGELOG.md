@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.8.4
+
+- On hybrid CPUs the CPU views split the load into performance and efficiency cores, read from the efficiency class Windows reports for each core. Intel shows P 核 / E 核 (P-cores / E-cores); AMD and other vendors show 性能核 / 能效核 (Performance cores / Efficiency cores)
+- Each group is the average of its own threads, like the total CPU %, so a P-core's two threads count once each and no group goes past 100%
+- The dashboard CPU card groups its bars and lists each group's load; the Processes CPU card, the CPU detail and the CPU details sheet show every group with its load and its cores and threads
+- CPUs with one kind of core, and machines where the layout cannot be read, look as before. A group without a reading shows a dash, not 0%
+- The mini window card is unchanged; its CPU detail shows the split
+- The bundled sensor helper is unchanged at 0.8.2
+
 ## 0.8.3
 
 - Processes shows each process's disk read and write speed in bytes per second over the last refresh, in two sortable columns (硬盘读取 / 硬盘写入). A process without two readings, or whose counters cannot be read, shows a dash instead of 0 B/s
