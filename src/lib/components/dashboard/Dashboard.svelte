@@ -32,6 +32,7 @@
   } from "$lib/utils/dashboard.js";
   import { MINI, fixedRows } from "$lib/utils/mini-layout.js";
   import { onMount } from "svelte";
+  import { cpuGroups, groupPercent } from "$lib/utils/cpu-groups.js";
   import { t } from "$lib/i18n";
   import ChartCursor from "$lib/components/charts/ChartCursor.svelte";
   import { percentText as pct1 } from "$lib/utils/chart-cursor.js";
@@ -119,6 +120,9 @@
   $: identity = systemStats.details.identity;
   $: cores = systemStats.cpu_usage;
   $: cpu = averageCpu(cores);
+  // The mini window's card has one short footer line, too narrow for
+  // "Performance cores 75% · Efficiency cores 8%"; its CPU detail shows the split.
+  $: coreGroups = compact ? null : cpuGroups(systemStats.cpu_topology, cores);
   $: memPct =
     systemStats.memory_total > 0
       ? (systemStats.memory_used / systemStats.memory_total) * 100
@@ -222,20 +226,42 @@
           <span class="chip">{$t("dash.threads", { n: cores.length })}</span>
         </div>
         <div class="big">{formatPercent(cpu, $t)}<small>%</small></div>
-        <div class="bars" aria-label={$t("dash.perCore")}>
-          {#each cores as core}
-            <span
-              class="bar"
-              style={`height:${Math.max(6, Math.min(100, core))}%`}
-              title={`${core.toFixed(0)}%`}
-            ></span>
-          {/each}
-        </div>
-        <div class="foot">
-          {level(cpu)} · {$t("dash.cores", {
-            n: identity.physical_cores ?? "?",
-          })}
-        </div>
+        {#if coreGroups}
+          <div class="bars" aria-label={$t("dash.perCore")}>
+            {#each coreGroups as g (g.kind)}
+              <div class="bar-group" style={`flex:${g.threads.length}`}>
+                {#each g.threads as i (i)}
+                  <span
+                    class="bar"
+                    style={`height:${Math.max(6, Math.min(100, cores[i]))}%`}
+                    title={`${$t(g.label)} · ${$t("cpu.threadTip", { i, v: cores[i].toFixed(0) })}`}
+                  ></span>
+                {/each}
+              </div>
+            {/each}
+          </div>
+          <div class="foot">
+            {#each coreGroups as g, k (g.kind)}{k ? " · " : ""}{$t(g.label)}
+              <span class="tabular-nums" class:muted={g.usage == null}
+                >{groupPercent(g.usage)}{g.usage == null ? "" : "%"}</span
+              >{/each}
+          </div>
+        {:else}
+          <div class="bars" aria-label={$t("dash.perCore")}>
+            {#each cores as core}
+              <span
+                class="bar"
+                style={`height:${Math.max(6, Math.min(100, core))}%`}
+                title={`${core.toFixed(0)}%`}
+              ></span>
+            {/each}
+          </div>
+          <div class="foot">
+            {level(cpu)} · {$t("dash.cores", {
+              n: identity.physical_cores ?? "?",
+            })}
+          </div>
+        {/if}
       </div>
 
       <div
@@ -637,6 +663,17 @@
     align-items: flex-end;
     gap: 2px;
     height: 36px;
+  }
+  /* Hybrid CPUs: one block per core group, a wider gap between groups. */
+  .bars:has(.bar-group) {
+    gap: 6px;
+  }
+  .bar-group {
+    display: flex;
+    align-items: flex-end;
+    gap: 2px;
+    height: 100%;
+    min-width: 0;
   }
   .bar {
     flex: 1;

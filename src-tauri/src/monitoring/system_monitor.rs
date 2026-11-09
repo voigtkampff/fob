@@ -3,7 +3,10 @@
 //! This module handles collection and monitoring of system-wide statistics
 //! including CPU, memory, network, and disk usage.
 
-use super::{InterfaceDetails, ResourceDetails, SystemIdentity, SystemStats, VolumeDetails};
+use super::{
+    CpuTopology, CpuVendor, InterfaceDetails, ResourceDetails, SystemIdentity, SystemStats,
+    VolumeDetails,
+};
 use std::collections::BTreeMap;
 use std::fmt::Debug;
 use std::time::Instant;
@@ -19,6 +22,7 @@ pub struct SystemMonitor {
     last_disk_update: Instant,
     last_disks: BTreeMap<String, (u64, u64)>,
     identity: Option<SystemIdentity>,
+    topology: Option<CpuTopology>,
 }
 
 impl SystemMonitor {
@@ -42,6 +46,7 @@ impl SystemMonitor {
             last_disk_update: Instant::now(),
             last_disks: BTreeMap::new(),
             identity: None,
+            topology: None,
         }
     }
 
@@ -127,6 +132,7 @@ impl SystemMonitor {
                 interfaces,
             },
             cpu_usage: fake_threads(sys.cpus().iter().map(|cpu| cpu.cpu_usage()).collect()),
+            cpu_topology: self.topology(sys),
             memory_total: sys.total_memory(),
             memory_used: sys.used_memory(),
             memory_free: sys.total_memory() - sys.used_memory(),
@@ -142,6 +148,28 @@ impl SystemMonitor {
             disk_read_bytes: disk_read,
             disk_write_bytes: disk_write,
         }
+    }
+
+    /// Fob: read once the CPUs are listed; the core layout does not change
+    /// while Fob runs.
+    fn topology(&mut self, sys: &System) -> CpuTopology {
+        if let Some(t) = &self.topology {
+            return t.clone();
+        }
+        let Some(first) = sys.cpus().first() else {
+            return CpuTopology::Unknown;
+        };
+        let topology = super::read_cpu_sets()
+            .map(|sets| {
+                super::classify(
+                    &sets,
+                    sys.cpus().len(),
+                    CpuVendor::from_id(first.vendor_id()),
+                )
+            })
+            .unwrap_or(CpuTopology::Unknown);
+        self.topology = Some(topology.clone());
+        topology
     }
 
     /// Fob: read/write rates per mount from the I/O totals sysinfo reports

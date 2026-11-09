@@ -14,7 +14,8 @@ the old name `winperf`; everything shipped is called Fob (`fob.exe`,
 
 ## What Fob adds
 
-- **Dashboard tab (default):** card panel with CPU (% + per-core bars), GPU
+- **Dashboard tab (default):** card panel with CPU (% + per-core bars, split into P-cores and E-cores on
+  hybrid CPUs from the Windows efficiency class), GPU
   (% from the Windows PDH counter `\GPU Engine(*)\Utilization Percentage`,
   per adapter, busiest engine like Task Manager; NVIDIA also via NVML), memory,
   free space on the system drive, network down/up with a 2-minute graph, and the

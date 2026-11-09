@@ -109,6 +109,8 @@ pub struct SystemStats {
     pub details: ResourceDetails,
     /// CPU usage per core as percentage (0-100)
     pub cpu_usage: Vec<f32>,
+    /// Fob: performance / efficiency groups of `cpu_usage`, read once.
+    pub cpu_topology: super::CpuTopology,
     /// Total physical memory in bytes
     pub memory_total: u64,
     /// Used physical memory in bytes

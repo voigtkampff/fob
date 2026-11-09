@@ -39,6 +39,7 @@ const styles = new Map(
 const panels = new Set([
   "/helper-settings-panel.html",
   "/process-table-panel.html",
+  "/cpu-views-panel.html",
 ]);
 
 export default defineConfig({

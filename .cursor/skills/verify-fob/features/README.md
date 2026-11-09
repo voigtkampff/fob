@@ -7,3 +7,4 @@
 | Status bar overlay | overlay.md |
 | First launch | first-launch.md |
 | Process disk speed and GPU columns | process-columns.md |
+| CPU core groups (P-cores / E-cores) | cpu-groups.md |

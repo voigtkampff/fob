@@ -24,6 +24,7 @@
   import { sensorSetup } from "$lib/stores/sensorSetup";
   import SensorSetup from "$lib/components/dashboard/SensorSetup.svelte";
   import CoreGrid from "./CoreGrid.svelte";
+  import { cpuGroups } from "$lib/utils/cpu-groups.js";
   import DetailLayout from "./DetailLayout.svelte";
   import DetailSection from "./DetailSection.svelte";
   import ResourceTrend from "./ResourceTrend.svelte";
@@ -81,6 +82,7 @@
       ? stats.cpu_usage.reduce((a, b) => a + b, 0) / stats.cpu_usage.length
       : null,
   );
+  const coreGroups = $derived(cpuGroups(stats.cpu_topology, stats.cpu_usage));
   // Memory
   const memory = $derived(
     stats.memory_total > 0
@@ -215,6 +217,10 @@
     })}
     facts={[
       [$t("stats.avgUtil"), percent(cpu)],
+      ...(coreGroups ?? []).map((g): [string, string] => [
+        $t(g.label),
+        percent(g.usage),
+      ]),
       [
         $t("details.physicalCores"),
         identity.physical_cores === null ? na : String(identity.physical_cores),
@@ -227,8 +233,12 @@
     {#snippet chart()}{@render trend("cpu", $t("stats.cpuUtil"))}{/snippet}
     {#snippet detail()}<DetailSection
         title={$t("details.perCore")}
-        description={$t("details.perCoreNote")}
-        ><CoreGrid usage={stats.cpu_usage} where="detail" /></DetailSection
+        description={$t(coreGroups ? "cpu.groupsNote" : "details.perCoreNote")}
+        ><CoreGrid
+          usage={stats.cpu_usage}
+          where="detail"
+          groups={coreGroups}
+        /></DetailSection
       >{/snippet}
   </DetailLayout>
 {:else if kind === "memory"}

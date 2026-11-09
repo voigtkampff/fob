@@ -57,9 +57,24 @@ export interface ResourceDetailsData {
   }[];
 }
 
+export type CpuTopology =
+  | { state: "unknown" }
+  | { state: "uniform" }
+  | {
+      state: "hybrid";
+      vendor: "intel" | "amd" | "other";
+      groups: {
+        kind: "performance" | "efficiency";
+        cores: number;
+        threads: number[];
+      }[];
+    };
+
 export interface SystemStats {
   details: ResourceDetailsData;
   cpu_usage: number[];
+  /** Fob: which `cpu_usage` threads are performance / efficiency cores. */
+  cpu_topology?: CpuTopology;
   memory_total: number;
   memory_used: number;
   memory_free: number;

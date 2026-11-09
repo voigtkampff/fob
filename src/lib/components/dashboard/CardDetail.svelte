@@ -2,6 +2,7 @@
   import Spark from "$lib/components/charts/Spark.svelte";
   import { SERIES_COLOR } from "$lib/utils/chart-style.js";
   import CoreGrid from "$lib/components/stats/CoreGrid.svelte";
+  import { cpuGroups } from "$lib/utils/cpu-groups.js";
   // winperf: one detail view for any card (back button / Esc returns).
   import type {
     GpuDevice,
@@ -74,6 +75,7 @@
   const H = 70;
   $: n = compact ? 8 : 10;
   $: cores = systemStats.cpu_usage;
+  $: coreGroups = cpuGroups(systemStats.cpu_topology, cores);
   $: memoryKind = (kind: string) =>
     kind === "shared"
       ? $t("gpu.kindShared")
@@ -156,7 +158,7 @@
           lines={[{ key: "cpu", pick: (s) => s.cpu }]}
         />
       </ChartCursor>
-      <CoreGrid usage={cores} where="detail" />
+      <CoreGrid usage={cores} where="detail" groups={coreGroups} />
     </div>
     <div class="panel">
       <div class="list-head">

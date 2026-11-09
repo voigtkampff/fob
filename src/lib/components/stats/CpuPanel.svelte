@@ -6,12 +6,14 @@
   import type { SystemStats, ResourceSample } from "$lib/types";
   import { Cpu } from "@lucide/svelte";
   import { t } from "$lib/i18n";
+  import { cpuGroups } from "$lib/utils/cpu-groups.js";
   export let stats: SystemStats;
   export let capturedAt = 0;
   export let history: ResourceSample[] = [];
   export let isFrozen = false;
   export let unavailable = false;
   export let cpuUsage: number[];
+  $: groups = cpuGroups(stats.cpu_topology, cpuUsage);
   $: average =
     cpuUsage.length && cpuUsage.every(Number.isFinite)
       ? cpuUsage.reduce((a, b) => a + b, 0) / cpuUsage.length
@@ -41,7 +43,7 @@
     </div>
     <p class="text-xs leading-4 text-muted-foreground">{$t("stats.avgUtil")}</p>
   {/snippet}
-  {#snippet middle()}<CoreGrid usage={cpuUsage} />{/snippet}
+  {#snippet middle()}<CoreGrid usage={cpuUsage} {groups} />{/snippet}
   {#snippet band()}<ResourceTrend
       {history}
       metric="cpu"
