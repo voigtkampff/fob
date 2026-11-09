@@ -97,3 +97,16 @@ test("column labels say 硬盘 and Disk in both languages", () => {
   for (const [key, text] of Object.entries(zh))
     assert.ok(!text.includes("磁盘"), `zh ${key}: say 硬盘, not 磁盘`);
 });
+
+test("PawnIO is uninstalled in Windows settings, not in Fob", () => {
+  assert.match(
+    zh["setup.disableNote"],
+    /PawnIO 驱动会保留.*Windows 系统设置中卸载/,
+  );
+  assert.match(
+    en["setup.disableNote"],
+    /PawnIO driver stays.*Windows Settings/,
+  );
+  assert.ok(!zh["setup.disableNote"].includes("设置 › 应用"));
+  assert.ok(!en["setup.disableNote"].includes("Settings › Apps"));
+});

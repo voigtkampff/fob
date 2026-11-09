@@ -136,7 +136,7 @@ export const en = {
   "setup.cancel": "Cancel",
   "setup.disableTitle": "Disable sensor helper",
   "setup.disableNote":
-    "Stops the helper and removes it from C:\\Program Files\\Fob\\sensors after one permission prompt; the PawnIO driver stays, uninstall it in Settings › Apps if nothing else needs it",
+    "Stops the helper and removes it from C:\\Program Files\\Fob\\sensors after one permission prompt; the PawnIO driver stays, and you can uninstall it in Windows Settings if nothing else needs it",
   "setup.disableMore": "Disable…",
   "app.name": "Fob",
   "mini.paused": "Paused",
@@ -782,7 +782,7 @@ export const zh = {
   "setup.cancel": "取消",
   "setup.disableTitle": "停用传感器助手",
   "setup.disableNote":
-    "停止并移除 C:\\Program Files\\Fob\\sensors 中的助手，需确认一次权限；PawnIO 驱动会保留，若不再需要可在“设置 › 应用”中卸载",
+    "停止并移除 C:\\Program Files\\Fob\\sensors 中的助手，需确认一次权限；PawnIO 驱动会保留，若不再需要可在 Windows 系统设置中卸载",
   "setup.disableMore": "停用…",
   "app.name": "Fob",
   "mini.paused": "已暂停",
