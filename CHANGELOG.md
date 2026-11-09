@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.8.3
+
+- Processes shows each process's disk read and write speed in bytes per second over the last refresh, in two sortable columns (硬盘读取 / 硬盘写入). A process without two readings, or whose counters cannot be read, shows a dash instead of 0 B/s
+- GPU % is visible by default, once, for settings saved by earlier versions. On Windows it is the busiest GPU engine the process used, like Task Manager; a process with no GPU engine reads 0.0%, and a dash means Windows gave no GPU reading
+- Optional Dedicated VRAM column (专用显存) on Windows from the same GPU counters
+- No reading sorts after every real value in both directions
+- The sensor helper's Disable note says PawnIO is uninstalled in Windows Settings, not in Fob
+- The bundled sensor helper is unchanged at 0.8.2, so an installed 0.8.2 helper needs no update
+
 ## 0.8.2
 
 - Cache command and environment details by process identity, share environment lists between frames, and discard exited-process cache entries without changing JSON shape

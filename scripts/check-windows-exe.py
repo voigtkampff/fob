@@ -1,7 +1,11 @@
 #!/usr/bin/env python3
 """Check the Windows executables Fob ships before they are zipped.
 
-usage: check-windows-exe.py <version> <company> <fob.exe> <fob-sensors.exe> [icon.ico]
+usage: check-windows-exe.py <version> <helper-version> <company> <fob.exe> <fob-sensors.exe> [icon.ico]
+
+The helper keeps its own version (sensors-helper/src/winperf-sensors.csproj)
+so an app-only release ships the same helper bundle and installed helpers stay
+current without another UAC update.
 
 fob.exe must embed exactly one application manifest that depends on
 Microsoft.Windows.Common-Controls 6.0 (otherwise Windows loads comctl32 v5,
@@ -129,12 +133,12 @@ def check(path, version, company, need_cc6, icon=None):
 
 
 def main(argv):
-    if len(argv) not in (5, 6):
+    if len(argv) not in (6, 7):
         sys.exit(__doc__)
-    version, company, fob, sensors = argv[1:5]
-    icon = argv[5] if len(argv) == 6 else None
+    version, helper_version, company, fob, sensors = argv[1:6]
+    icon = argv[6] if len(argv) == 7 else None
     ok = check(fob, version, company, need_cc6=True, icon=icon)
-    ok &= check(sensors, version, company, need_cc6=False)
+    ok &= check(sensors, helper_version, company, need_cc6=False)
     sys.exit(0 if ok else 1)
 
 

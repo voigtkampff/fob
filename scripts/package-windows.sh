@@ -12,6 +12,7 @@ export PATH=/workspace/tools/xbin:$LLVM_MINGW/bin:$HOME/.cargo/bin:$PATH
 command -v llvm-rc >/dev/null || { echo "llvm-rc not found (set LLVM_MINGW)" >&2; exit 1; }
 python3 -c 'import pefile' 2>/dev/null || { echo "python3 pefile missing (pip install pefile)" >&2; exit 1; }
 VER=$(node -p "require('./package.json').version")
+HELPER_VER=$(sed -n 's|.*<Version>\(.*\)</Version>.*|\1|p' sensors-helper/src/winperf-sensors.csproj)
 NAME=fob-v$VER
 sensors-helper/build.sh              # stages sensors-helper/dist + manifest (embedded by build.rs)
 npm run build
@@ -39,7 +40,8 @@ The helper provides temperatures, fans, per-app network counters and MFT scans
 without elevating Fob. Programs in the same Windows user session can query
 names, sizes and structure across whole fixed NTFS Disks, including otherwise
 inaccessible folders. No file contents or writes. It never changes fan speeds.
-Disable removes the task and helper after permission. PawnIO stays installed.
+Disable removes the task and helper after permission. PawnIO stays installed;
+uninstall it in Windows Settings if nothing else needs it.
 Scanning itself never asks for permission. Old, absent or incompatible helpers
 fall back to direct MFT when allowed, otherwise the existing folder scan.
 
@@ -49,8 +51,8 @@ Licenses and sources: licenses\NOTICE.txt
 TXT
 # Fail before zipping if an exe lacks its manifest (Common-Controls 6), VERSIONINFO or icon.
 COMPANY=$(sed -n 's/^CompanyName = "\(.*\)"$/\1/p' src-tauri/Cargo.toml)
-python3 scripts/check-windows-exe.py "$VER" "$COMPANY" "$OUT/fob.exe" "$OUT/sensors/fob-sensors.exe" src-tauri/icons/icon.ico
-python3 - "$OUT/sensors/fob-mft.exe" "$VER" "$COMPANY" <<'PY'
+python3 scripts/check-windows-exe.py "$VER" "$HELPER_VER" "$COMPANY" "$OUT/fob.exe" "$OUT/sensors/fob-sensors.exe" src-tauri/icons/icon.ico
+python3 - "$OUT/sensors/fob-mft.exe" "$HELPER_VER" "$COMPANY" <<'PY'
 import sys
 sys.dont_write_bytecode = True
 sys.path.insert(0, "scripts")

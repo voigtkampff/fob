@@ -18,6 +18,8 @@ def digest(data):
 
 def main():
     version = json.loads((ROOT / "package.json").read_text())["version"]
+    csproj = (ROOT / "sensors-helper/src/winperf-sensors.csproj").read_text()
+    helper_version = csproj.split("<Version>", 1)[1].split("</Version>", 1)[0]
     archive = ROOT / "dist" / f"fob-v{version}-x86_64-windows.zip"
     prefix = f"fob-v{version}/"
     spec = importlib.util.spec_from_file_location("exe_check", ROOT / "scripts/check-windows-exe.py")
@@ -36,7 +38,8 @@ def main():
             assert contents[name] == compiled.read_bytes(), f"packaged {name} differs from compiled output"
             path = Path(temporary) / Path(name).name
             path.write_bytes(contents[name])
-            assert exe_check.check(str(path), version, "HCB", name == "fob.exe")
+            expected = version if name == "fob.exe" else helper_version
+            assert exe_check.check(str(path), expected, "HCB", name == "fob.exe")
         manifest = (ROOT / "sensors-helper/dist/manifest.sha256").read_bytes()
         assert manifest in contents["fob.exe"], "main executable embeds a different helper manifest"
         for line in manifest.decode().splitlines():
@@ -49,6 +52,7 @@ def main():
         assert worker_hash.encode("utf-16le") in contents["sensors/fob-sensors.exe"], "helper's worker pin differs from packaged worker"
         assert b"Settings > General > Sensor helper" in contents["README.txt"]
         assert b"No file contents or writes" in contents["README.txt"]
+        assert b"uninstall it in Windows Settings" in contents["README.txt"]
         print("PASS: zip CRC, compiled program equality, HCB versions/asInvoker, embedded manifest, all program hashes and worker pin")
     checksum = digest(archive.read_bytes())
     archive.with_suffix(archive.suffix + ".sha256").write_text(f"{checksum}  {archive.name}\n")
