@@ -11,6 +11,7 @@
     BUS_NAMES,
     diskAlert,
     driveWarnings,
+    headline,
     operationalBad,
     watchDiskHealth,
     type DiskHealthView,
@@ -41,14 +42,14 @@
       ? `${health} · ${$t(`dh.op.${bad.kind}`)}`
       : health;
   }
-  /** Only what the drive reported; nothing for SATA or a failed query. */
+  /** Only what the drive reported: its NVMe log or ATA statistics. */
   function facts(d: PhysicalDisk) {
-    if (d.nvme.kind !== "ok") return [];
-    const log = d.nvme.log;
+    const h = headline(d);
     const out: string[] = [];
-    if (log.temperature_c != null)
-      out.push(`${$t("dh.temp")} ${log.temperature_c} °C`);
-    out.push(`${$t("dh.usedShort")} ${log.percent_used}%`);
+    if (h.temperature_c != null)
+      out.push(`${$t("dh.temp")} ${h.temperature_c} °C`);
+    if (h.percent_used != null)
+      out.push(`${$t("dh.usedShort")} ${h.percent_used}%`);
     return out;
   }
 </script>

@@ -380,6 +380,23 @@ export type NvmeState =
   | { kind: "denied" }
   | { kind: "bad_reply" }
   | { kind: "error"; code: number };
+/** ATA Device Statistics; null when the drive did not report the item. */
+export interface AtaStats {
+  temperature_c: number | null;
+  percent_used: number | null;
+  power_on_hours: number | null;
+  power_cycles: number | null;
+  data_read_bytes: number | null;
+  data_written_bytes: number | null;
+}
+export type AtaState =
+  | { kind: "ok"; stats: AtaStats }
+  | { kind: "not_asked" }
+  | { kind: "sleeping" }
+  | { kind: "unsupported" }
+  | { kind: "denied" }
+  | { kind: "bad_reply" }
+  | { kind: "error"; code: number };
 export type DiskOperational =
   | {
       kind:
@@ -409,6 +426,7 @@ export interface PhysicalDisk {
   volumes: string[];
   windows: WindowsDiskStatus;
   nvme: NvmeState;
+  ata: AtaState;
 }
 export type DiskHealthReport =
   | { kind: "ok"; checked_at_ms: number; disks: PhysicalDisk[] }

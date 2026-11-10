@@ -131,11 +131,16 @@ fn device_descriptor_reads_model_and_bus_never_the_serial() {
 
 #[test]
 fn errors_say_denied_unsupported_or_the_code() {
-    assert_eq!(parse::query_error(5), NvmeState::Denied);
-    assert_eq!(parse::query_error(1), NvmeState::Unsupported);
-    assert_eq!(parse::query_error(50), NvmeState::Unsupported);
-    assert_eq!(parse::query_error(87), NvmeState::Error { code: 87 });
-    assert_eq!(parse::query_error(1117), NvmeState::Error { code: 1117 });
+    let nvme = |c| NvmeState::from(parse::refusal(c));
+    assert_eq!(nvme(5), NvmeState::Denied);
+    assert_eq!(nvme(1), NvmeState::Unsupported);
+    assert_eq!(nvme(50), NvmeState::Unsupported);
+    assert_eq!(nvme(87), NvmeState::Error { code: 87 });
+    assert_eq!(nvme(1117), NvmeState::Error { code: 1117 });
+    let ata = |c| AtaState::from(parse::refusal(c));
+    assert_eq!(ata(5), AtaState::Denied);
+    assert_eq!(ata(50), AtaState::Unsupported);
+    assert_eq!(ata(1117), AtaState::Error { code: 1117 });
 }
 
 #[test]
@@ -155,6 +160,28 @@ fn only_buses_that_cannot_carry_nvme_skip_the_query() {
     }
 }
 
+#[test]
+fn only_sata_and_ata_disks_are_asked_for_ata_statistics() {
+    for bus in [Bus::Sata, Bus::Ata] {
+        assert!(bus.asks_ata(), "{bus:?}");
+        assert!(bus.skips_nvme_query(), "{bus:?}");
+    }
+    for bus in [
+        Bus::Nvme,
+        Bus::Usb,
+        Bus::Raid,
+        Bus::Scsi,
+        Bus::Sas,
+        Bus::Atapi,
+        Bus::Virtual,
+        Bus::Spaces,
+        Bus::Unknown,
+        Bus::Other,
+    ] {
+        assert!(!bus.asks_ata(), "{bus:?}");
+    }
+}
+
 fn raw(number: Option<u32>, bus: Bus, nvme: NvmeState) -> RawDisk {
     RawDisk {
         number,
@@ -164,6 +191,7 @@ fn raw(number: Option<u32>, bus: Bus, nvme: NvmeState) -> RawDisk {
             removable: false,
         }),
         nvme,
+        ata: AtaState::NotAsked,
     }
 }
 fn wmi(id: &str, health: u32, ops: &[u32], bus: u32) -> WmiDisk {
@@ -293,6 +321,7 @@ fn a_disk_whose_probe_failed_stays_in_the_list() {
         number: Some(1),
         info: None,
         nvme: NvmeState::Error { code: 21 },
+        ata: AtaState::NotAsked,
     };
     let d = disks(assemble(
         vec![failed, raw(Some(0), Bus::Nvme, NvmeState::NotAsked)],
@@ -389,4 +418,188 @@ fn a_slow_scan_returns_pending_and_is_not_started_twice() {
     });
     assert_eq!(second, report(7));
     assert_eq!(scans.load(Ordering::SeqCst), 1);
+}
+
+const SUPPORTED: u64 = 1 << 63;
+const VALID: u64 = 1 << 62;
+
+/// A Device Statistics page with its header and QWORD statistics.
+fn page(number: u8, stats: &[(usize, u64)]) -> Vec<u8> {
+    let mut p = vec![0u8; parse::ATA_PAGE];
+    p[..8].copy_from_slice(&(1u64 | u64::from(number) << 16).to_le_bytes());
+    for &(at, q) in stats {
+        p[at..at + 8].copy_from_slice(&q.to_le_bytes());
+    }
+    p
+}
+fn ok(v: u64) -> u64 {
+    SUPPORTED | VALID | v
+}
+
+#[test]
+fn ata_page_request_asks_for_one_device_statistics_page() {
+    let r = parse::ata_page_request(parse::PAGE_TEMPERATURE);
+    let u = |at: usize| u32::from_le_bytes(r[at..at + 4].try_into().unwrap());
+    assert_eq!(
+        r.len(),
+        parse::QUERY_HEADER + parse::PROTOCOL_DATA + parse::ATA_PAGE
+    );
+    assert_eq!((u(0), u(4)), (50, 0));
+    assert_eq!((u(8), u(12), u(16), u(20)), (2, 2, 0x04, 5));
+    assert_eq!((u(24), u(28)), (parse::PROTOCOL_DATA as u32, 512));
+}
+
+#[test]
+fn ata_statistics_decode_with_units() {
+    let general = page(
+        1,
+        &[
+            (8, ok(1234)),
+            (16, ok(0xFFFF_0000_5678)),
+            (24, ok(2_000_000)),
+            (40, ok(1_000_000)),
+        ],
+    );
+    let temperature = page(5, &[(8, ok(41))]);
+    let solid = page(7, &[(8, ok(3))]);
+    let s = parse::ata_stats(Some(&general), Some(&temperature), Some(&solid), Some(4096));
+    assert_eq!(s.power_cycles, Some(1234));
+    // Power-on hours are bits 31:0 of the value.
+    assert_eq!(s.power_on_hours, Some(0x5678));
+    assert_eq!(s.data_written_bytes, Some(2_000_000.0 * 4096.0));
+    assert_eq!(s.data_read_bytes, Some(1_000_000.0 * 4096.0));
+    assert_eq!(s.temperature_c, Some(41));
+    assert_eq!(s.percent_used, Some(3));
+}
+
+#[test]
+fn ata_statistics_need_supported_and_valid_bits() {
+    let general = page(
+        1,
+        &[(8, SUPPORTED | 7), (16, VALID | 7), (24, 7), (40, ok(9))],
+    );
+    let s = parse::ata_stats(Some(&general), None, None, Some(512));
+    assert_eq!(s.power_cycles, None);
+    assert_eq!(s.power_on_hours, None);
+    assert_eq!(s.data_written_bytes, None);
+    assert_eq!(s.data_read_bytes, Some(9.0 * 512.0));
+    assert_eq!(s.temperature_c, None);
+    assert_eq!(s.percent_used, None);
+}
+
+#[test]
+fn ata_temperature_is_signed_and_80h_is_no_value() {
+    let t = |q| parse::ata_stats(None, Some(&page(5, &[(8, q)])), None, None).temperature_c;
+    assert_eq!(t(ok(0xF6)), Some(-10));
+    assert_eq!(t(ok(0x80)), None);
+    assert_eq!(t(ok(0)), Some(0));
+    // Bits above the byte are reserved.
+    assert_eq!(t(ok(0xAB00_0000_0028)), Some(40));
+}
+
+#[test]
+fn ata_life_used_can_pass_100_and_zero_is_a_reading() {
+    let u = |v| parse::ata_stats(None, None, Some(&page(7, &[(8, ok(v))])), None).percent_used;
+    assert_eq!(u(0), Some(0));
+    assert_eq!(u(255), Some(255));
+}
+
+#[test]
+fn ata_byte_counts_need_a_sector_size_and_must_not_overflow() {
+    let general = page(1, &[(24, ok(0xFFFF_FFFF_FFFF)), (40, ok(10))]);
+    let s = parse::ata_stats(Some(&general), None, None, None);
+    assert_eq!((s.data_written_bytes, s.data_read_bytes), (None, None));
+    let s = parse::ata_stats(Some(&general), None, None, Some(65536));
+    // 2^48 - 1 sectors of 64 KiB still fit in u64.
+    assert_eq!(
+        s.data_written_bytes,
+        Some(((1u64 << 48) - 1) as f64 * 65536.0)
+    );
+    assert!(parse::ata_stats(None, None, None, Some(512)).is_empty());
+}
+
+#[test]
+fn ata_short_pages_leave_fields_out() {
+    let s = parse::ata_stats(Some(&[0u8; 20]), Some(&[0u8; 4]), Some(&[]), Some(512));
+    assert!(s.is_empty());
+}
+
+#[test]
+fn ata_page_replies_are_checked_before_use() {
+    let good = page(5, &[(8, ok(30))]);
+    let r = reply(&good, parse::PROTOCOL_DATA as u32, 512);
+    assert_eq!(parse::ata_page_reply(&r, 5).unwrap(), &good[..]);
+    // Another page than the one asked for.
+    assert_eq!(parse::ata_page_reply(&r, 7), Err(BadReply::Header));
+    // Revision 0.
+    let mut zero = good.clone();
+    zero[0] = 0;
+    let r0 = reply(&zero, parse::PROTOCOL_DATA as u32, 512);
+    assert_eq!(parse::ata_page_reply(&r0, 5), Err(BadReply::Header));
+    // Truncated data, short length, offset inside the header, huge offset.
+    assert_eq!(
+        parse::ata_page_reply(&r[..r.len() - 1], 5),
+        Err(BadReply::Short)
+    );
+    let short = reply(&good, parse::PROTOCOL_DATA as u32, 511);
+    assert_eq!(parse::ata_page_reply(&short, 5), Err(BadReply::Header));
+    let inside = reply(&good, 8, 512);
+    assert_eq!(parse::ata_page_reply(&inside, 5), Err(BadReply::Header));
+    let far = reply(&good, u32::MAX, 512);
+    assert!(parse::ata_page_reply(&far, 5).is_err());
+    assert_eq!(parse::ata_page_reply(&[0u8; 10], 5), Err(BadReply::Short));
+}
+
+#[test]
+fn the_page_list_is_bounded_by_its_count() {
+    let mut list = page(0, &[]);
+    list[8] = 4;
+    list[9..13].copy_from_slice(&[0, 1, 5, 7]);
+    assert_eq!(parse::supported_pages(&list).unwrap(), vec![0, 1, 5, 7]);
+    let mut list = vec![0u8; 12];
+    list[8] = 200;
+    assert_eq!(parse::supported_pages(&list), Err(BadReply::Short));
+    assert_eq!(parse::supported_pages(&[0u8; 4]), Err(BadReply::Short));
+}
+
+#[test]
+fn logical_sector_size_comes_only_from_a_sane_descriptor() {
+    let desc = |size: u32, bytes: u32| {
+        let mut b = vec![0u8; 28];
+        b[0..4].copy_from_slice(&28u32.to_le_bytes());
+        b[4..8].copy_from_slice(&size.to_le_bytes());
+        b[16..20].copy_from_slice(&bytes.to_le_bytes());
+        b
+    };
+    assert_eq!(parse::logical_sector_bytes(&desc(28, 512)), Some(512));
+    assert_eq!(parse::logical_sector_bytes(&desc(28, 4096)), Some(4096));
+    for bad in [0, 256, 520, 131072] {
+        assert_eq!(parse::logical_sector_bytes(&desc(28, bad)), None, "{bad}");
+    }
+    assert_eq!(parse::logical_sector_bytes(&desc(16, 512)), None);
+    assert_eq!(parse::logical_sector_bytes(&desc(28, 512)[..18]), None);
+}
+
+#[test]
+fn ata_states_serialize_tagged_and_absent_fields_are_null() {
+    let mut d = raw(Some(1), Bus::Sata, NvmeState::NotAsked);
+    d.ata = AtaState::Ok {
+        stats: AtaStats {
+            temperature_c: Some(35),
+            ..AtaStats::default()
+        },
+    };
+    let mut asleep = raw(Some(2), Bus::Sata, NvmeState::NotAsked);
+    asleep.ata = AtaState::Sleeping;
+    let json = serde_json::to_value(assemble(vec![d, asleep], &[], &Ok(vec![]), 1)).unwrap();
+    let ata = &json["disks"][0]["ata"];
+    assert_eq!(ata["kind"], "ok");
+    assert_eq!(ata["stats"]["temperature_c"], 35);
+    assert!(ata["stats"]["percent_used"].is_null());
+    assert!(ata["stats"]["data_written_bytes"].is_null());
+    assert_eq!(json["disks"][1]["ata"]["kind"], "sleeping");
+    assert_eq!(
+        serde_json::to_value(AtaState::Error { code: 87 }).unwrap(),
+        serde_json::json!({"kind": "error", "code": 87})
+    );
 }

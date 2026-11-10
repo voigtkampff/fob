@@ -108,7 +108,7 @@ try {
   const SHEET = '[data-slot="sheet-content"]';
   const summary = `[...document.querySelectorAll('${SHEET} [data-slot="card"]')].find((c) => c.querySelector('[data-slot="card-title"]')?.textContent.trim() === TITLE)`;
   const expect = {
-    ok: { disks: 3, facts: 1, alerts: 0 },
+    ok: { disks: 4, facts: 3, alerts: 0 },
     warning: { disks: 2, facts: 1, alerts: 2 },
     long: { disks: 3, facts: 1, alerts: 1 },
     unavailable: { disks: 0 },
@@ -227,7 +227,7 @@ try {
         if (
           state === "ok" &&
           m.factsText.join("|") !==
-            `${s["dh.temp"]} 41 °C · ${s["dh.usedShort"]} 3%||`
+            `${s["dh.temp"]} 41 °C · ${s["dh.usedShort"]} 3%|${s["dh.temp"]} 36 °C · ${s["dh.usedShort"]} 7%|${s["dh.temp"]} 33 °C|`
         )
           problems.push(`${at}: facts ${JSON.stringify(m.factsText)}`);
         if (scale !== 1 || !["ok", "loading"].includes(state)) continue;

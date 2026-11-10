@@ -1,5 +1,6 @@
 //! Physical disk health for the Disk detail: NVMe SMART / Health log fields
-//! through IOCTL_STORAGE_QUERY_PROPERTY and the Windows health status from
+//! and, for SATA disks, the ATA Device Statistics log, both through
+//! IOCTL_STORAGE_QUERY_PROPERTY, and the Windows health status from
 //! MSFT_PhysicalDisk. Read only, no elevation, read on demand and cached.
 
 mod parse;
@@ -60,6 +61,13 @@ impl Bus {
             self,
             Bus::Sata | Bus::Ata | Bus::Atapi | Bus::Sd | Bus::Mmc | Bus::Virtual | Bus::Spaces
         )
+    }
+    /// Buses whose disks Windows drives as ATA, so the ATA statistics query
+    /// can reach the drive. USB bridges and RAID controllers are never
+    /// asked: what answers there may be the bridge or the array, not the
+    /// drive.
+    pub fn asks_ata(self) -> bool {
+        matches!(self, Bus::Sata | Bus::Ata)
     }
 }
 
@@ -126,6 +134,74 @@ pub enum NvmeState {
     Error {
         code: u32,
     },
+}
+
+/// What an ATA drive's Device Statistics log reported. Each field is there
+/// only when the drive marks it supported and valid.
+#[derive(Debug, Clone, PartialEq, Default, Serialize)]
+pub struct AtaStats {
+    pub temperature_c: Option<i32>,
+    /// Percentage Used Endurance Indicator; can pass 100.
+    pub percent_used: Option<u8>,
+    pub power_on_hours: Option<u32>,
+    /// Lifetime Power-On Resets.
+    pub power_cycles: Option<u32>,
+    pub data_read_bytes: Option<f64>,
+    pub data_written_bytes: Option<f64>,
+}
+
+impl AtaStats {
+    pub fn is_empty(&self) -> bool {
+        *self == AtaStats::default()
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum AtaState {
+    Ok {
+        stats: AtaStats,
+    },
+    /// Not a SATA/ATA disk (NVMe, USB, RAID, virtual).
+    NotAsked,
+    /// Windows reports the disk in a low-power state, so it was not asked.
+    Sleeping,
+    /// The driver or the drive has no Device Statistics, or none of the
+    /// statistics shown here.
+    Unsupported,
+    Denied,
+    BadReply,
+    Error {
+        code: u32,
+    },
+}
+
+/// A refused DeviceIoControl, classified once for every query.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Refusal {
+    Unsupported,
+    Denied,
+    Error(u32),
+}
+
+impl From<Refusal> for NvmeState {
+    fn from(r: Refusal) -> Self {
+        match r {
+            Refusal::Unsupported => NvmeState::Unsupported,
+            Refusal::Denied => NvmeState::Denied,
+            Refusal::Error(code) => NvmeState::Error { code },
+        }
+    }
+}
+
+impl From<Refusal> for AtaState {
+    fn from(r: Refusal) -> Self {
+        match r {
+            Refusal::Unsupported => AtaState::Unsupported,
+            Refusal::Denied => AtaState::Denied,
+            Refusal::Error(code) => AtaState::Error { code },
+        }
+    }
 }
 
 /// MSFT_PhysicalDisk.HealthStatus.
@@ -215,6 +291,7 @@ pub struct PhysicalDisk {
     pub volumes: Vec<String>,
     pub windows: WindowsStatus,
     pub nvme: NvmeState,
+    pub ata: AtaState,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
@@ -237,6 +314,7 @@ pub struct RawDisk {
     pub number: Option<u32>,
     pub info: Option<DeviceInfo>,
     pub nvme: NvmeState,
+    pub ata: AtaState,
 }
 
 /// A volume and the disk numbers its extents live on.
@@ -312,6 +390,7 @@ pub fn assemble(
                 volumes,
                 windows,
                 nvme: r.nvme,
+                ata: r.ata,
             }
         })
         .collect();

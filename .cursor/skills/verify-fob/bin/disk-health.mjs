@@ -91,9 +91,9 @@ try {
     "failed",
   ];
   const expect = {
-    ok: { disks: 3, alerts: 0, warnings: 0 },
+    ok: { disks: 4, alerts: 0, warnings: 0 },
     warning: { disks: 2, alerts: 2, warnings: 1 },
-    errors: { disks: 3, alerts: 0, warnings: 0 },
+    errors: { disks: 7, alerts: 0, warnings: 0 },
     empty: { disks: 0 },
     unavailable: { disks: 0 },
     pending: { disks: 0 },
@@ -197,13 +197,35 @@ try {
           problems.push(
             `${at}: placeholder text leaked: ${m.text.match(/undefined|NaN|null|\[object/)[0]}`,
           );
-        if (
-          state === "errors" &&
-          !m.text.includes(
-            lang === "zh" ? zh["dh.nvme.denied"] : en["dh.nvme.denied"],
-          )
-        )
-          problems.push(`${at}: denied state not explained`);
+        const s = lang === "zh" ? zh : en;
+        const must = {
+          ok: [
+            // SATA SSD statistics with ATA units, then the partial HDD.
+            "36 °C",
+            "7%",
+            "18.4 TB",
+            "22.1 TB",
+            s["dh.hours"].replace("{n}", "15,234"),
+            "2,210",
+            "33 °C",
+            s["dh.hours"].replace("{n}", "30,411"),
+            s["dh.ata.partial"],
+            s["dh.nvme.unsupported"],
+          ],
+          warning: [s["dh.ata.sleeping"]],
+          errors: [
+            s["dh.nvme.denied"],
+            s["dh.ata.denied"],
+            s["dh.ata.unsupported"],
+            s["dh.ata.bad_reply"],
+            s["dh.ata.error"].replace("{v}", "1117"),
+          ],
+        };
+        for (const text of must[state] ?? [])
+          if (!m.text.includes(text))
+            problems.push(`${at}: missing ${JSON.stringify(text)}`);
+        if (m.text.includes(s["dh.nvme.not_asked"]))
+          problems.push(`${at}: a SATA disk still says Windows status only`);
         if (m.clipped.length) problems.push(`${at}: clipped ${m.clipped[0]}`);
         if (m.overlap.length)
           problems.push(`${at}: label and value overlap at ${m.overlap[0]}`);

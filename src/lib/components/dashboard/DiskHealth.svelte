@@ -10,6 +10,7 @@
     formatCount,
     formatDecimalBytes,
     operationalBad,
+    queryNote,
     watchDiskHealth,
     type DiskHealthView,
   } from "$lib/utils/disk-health.js";
@@ -50,6 +51,7 @@
     <p class="note">{$t("dh.windowsOnly")}</p>
   {:else if view.kind === "ok"}
     {#each view.disks as d}
+      {@const note = queryNote(d)}
       <div class="disk" class:alert={diskAlert(d)}>
         <div class="row">
           <span class="name strong">{diskName(d)}</span>
@@ -128,6 +130,33 @@
               </dd>
             {/if}
           {/if}
+          {#if d.ata.kind === "ok"}
+            {@const s = d.ata.stats}
+            {#if s.temperature_c != null}
+              <dt>{$t("dh.temp")}</dt>
+              <dd>{s.temperature_c} °C</dd>
+            {/if}
+            {#if s.percent_used != null}
+              <dt title={$t("dh.usedNote")}>{$t("dh.used")}</dt>
+              <dd title={$t("dh.usedNote")}>{s.percent_used}%</dd>
+            {/if}
+            {#if s.data_written_bytes != null}
+              <dt>{$t("dh.written")}</dt>
+              <dd>{formatDecimalBytes(s.data_written_bytes)}</dd>
+            {/if}
+            {#if s.data_read_bytes != null}
+              <dt>{$t("dh.read")}</dt>
+              <dd>{formatDecimalBytes(s.data_read_bytes)}</dd>
+            {/if}
+            {#if s.power_on_hours != null}
+              <dt>{$t("dh.powerOn")}</dt>
+              <dd>{$t("dh.hours", { n: formatCount(s.power_on_hours) })}</dd>
+            {/if}
+            {#if s.power_cycles != null}
+              <dt>{$t("dh.cycles")}</dt>
+              <dd>{formatCount(s.power_cycles)}</dd>
+            {/if}
+          {/if}
         </dl>
         {#if driveWarnings(d).length}
           <div class="warnings" role="status">
@@ -137,10 +166,8 @@
               >{/each}
           </div>
         {/if}
-        {#if d.nvme.kind === "error"}
-          <p class="note">{$t("dh.nvme.error", { v: d.nvme.code })}</p>
-        {:else if d.nvme.kind !== "ok"}
-          <p class="note">{$t(`dh.nvme.${d.nvme.kind}`)}</p>
+        {#if note}
+          <p class="note">{$t(note.key, note.vars)}</p>
         {/if}
       </div>
     {:else}

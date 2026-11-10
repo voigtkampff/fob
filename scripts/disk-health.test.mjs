@@ -6,7 +6,9 @@ import {
   driveWarnings,
   formatCount,
   formatDecimalBytes,
+  headline,
   operationalBad,
+  queryNote,
   PENDING_RETRY_MS,
   REFRESH_MS,
   watchDiskHealth,
@@ -38,6 +40,18 @@ const typeBody = (name) =>
 test("the TS types name every variant the Rust report can send", () => {
   assert.deepEqual(literals(typeBody("DiskBus")), variants("Bus"));
   assert.deepEqual(literals(typeBody("NvmeState")), variants("NvmeState"));
+  assert.deepEqual(literals(typeBody("AtaState")), variants("AtaState"));
+  const fields = (src, re) => [...src.matchAll(re)].map((m) => m[1]).sort();
+  assert.deepEqual(
+    fields(
+      types.match(/export interface AtaStats \{([\s\S]*?)\n\}/)[1],
+      /^ {2}(\w+):/gm,
+    ),
+    fields(
+      rust.match(/pub struct AtaStats \{([\s\S]*?)\n\}/)[1],
+      /^ {4}pub (\w+):/gm,
+    ),
+  );
   assert.deepEqual(
     literals(typeBody("DiskOperational")),
     variants("Operational"),
@@ -72,7 +86,11 @@ const log = (critical = 0) => ({
     raw: critical,
   },
 });
-const disk = (nvme, windows) => ({ nvme, windows });
+const disk = (nvme, windows, ata = { kind: "not_asked" }) => ({
+  nvme,
+  windows,
+  ata,
+});
 
 test("warnings come only from what the drive or Windows reported", () => {
   const healthy = {
@@ -209,4 +227,79 @@ test("a failed request is shown as failed, not as no disks", async () => {
     kind: "failed",
     message: "WMI unavailable",
   });
+});
+
+const stats = (over = {}) => ({
+  temperature_c: null,
+  percent_used: null,
+  power_on_hours: null,
+  power_cycles: null,
+  data_read_bytes: null,
+  data_written_bytes: null,
+  ...over,
+});
+const sata = (ata) =>
+  disk({ kind: "not_asked" }, { kind: "not_reported" }, ata);
+
+test("temperature and life used come from whichever log the drive answered", () => {
+  assert.deepEqual(
+    headline(
+      disk(
+        { kind: "ok", log: { ...log(0), temperature_c: 41, percent_used: 3 } },
+        { kind: "not_reported" },
+      ),
+    ),
+    { temperature_c: 41, percent_used: 3 },
+  );
+  assert.deepEqual(
+    headline(sata({ kind: "ok", stats: stats({ temperature_c: 35 }) })),
+    { temperature_c: 35, percent_used: null },
+  );
+  assert.deepEqual(
+    headline(sata({ kind: "ok", stats: stats({ percent_used: 0 }) })),
+    { temperature_c: null, percent_used: 0 },
+    "0% is a reading, not missing",
+  );
+  for (const kind of ["sleeping", "denied", "unsupported", "bad_reply"])
+    assert.deepEqual(headline(sata({ kind })), {
+      temperature_c: null,
+      percent_used: null,
+    });
+});
+
+test("the note names the query the disk's bus was asked", () => {
+  assert.deepEqual(queryNote(sata({ kind: "sleeping" })), {
+    key: "dh.ata.sleeping",
+  });
+  assert.deepEqual(queryNote(sata({ kind: "error", code: 1117 })), {
+    key: "dh.ata.error",
+    vars: { v: 1117 },
+  });
+  assert.deepEqual(
+    queryNote(sata({ kind: "ok", stats: stats({ temperature_c: 30 }) })),
+    { key: "dh.ata.partial" },
+  );
+  const full = stats({
+    temperature_c: 30,
+    percent_used: 1,
+    power_on_hours: 2,
+    power_cycles: 3,
+    data_read_bytes: 4,
+    data_written_bytes: 5,
+  });
+  assert.equal(queryNote(sata({ kind: "ok", stats: full })), null);
+  // USB and RAID keep the NVMe note; SATA no longer says "Windows status only".
+  assert.deepEqual(queryNote(disk({ kind: "unsupported" }, {})), {
+    key: "dh.nvme.unsupported",
+  });
+  assert.deepEqual(queryNote(disk({ kind: "error", code: 21 }, {})), {
+    key: "dh.nvme.error",
+    vars: { v: 21 },
+  });
+  assert.equal(queryNote(disk({ kind: "ok", log: log(0) }, {})), null);
+  // ATA statistics never raise an alert by themselves.
+  assert.equal(
+    diskAlert(sata({ kind: "ok", stats: stats({ temperature_c: 70 }) })),
+    false,
+  );
 });
