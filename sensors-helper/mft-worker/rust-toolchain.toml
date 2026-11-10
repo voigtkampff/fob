@@ -1,0 +1,6 @@
+# The released 0.8.2 worker was built with this compiler. Changing it changes
+# the worker bytes, so change it only together with the helper version.
+[toolchain]
+channel = "1.90.0"
+targets = ["x86_64-pc-windows-msvc"]
+profile = "minimal"

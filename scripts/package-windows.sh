@@ -16,7 +16,7 @@ HELPER_VER=$(sed -n 's|.*<Version>\(.*\)</Version>.*|\1|p' sensors-helper/src/wi
 NAME=fob-v$VER
 sensors-helper/build.sh              # stages sensors-helper/dist + manifest (embedded by build.rs)
 npm run build
-(cd src-tauri && cargo xwin build --target x86_64-pc-windows-msvc --release)
+(cd src-tauri && cargo xwin build --locked --target x86_64-pc-windows-msvc --release)
 STAGE=$(mktemp -d)
 OUT=$STAGE/$NAME
 mkdir -p "$OUT"

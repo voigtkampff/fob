@@ -6,29 +6,29 @@ import {
   mkdtemp,
   readFile,
   rm,
-  symlink,
   writeFile,
 } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 import {
+  changelogSection,
   checkVersion,
   createManifest,
-  expectedAssets,
-  forbiddenDisplayLibraries,
+  packageName,
   projectRoot,
-  stagePackages,
+  stagePackage,
 } from "./release.mjs";
 import { uploadDraft } from "./upload-draft.mjs";
 
 async function fixture(t) {
-  const root = await mkdtemp(join(tmpdir(), "neohtop-release-test-"));
+  const root = await mkdtemp(join(tmpdir(), "fob-release-test-"));
   t.after(() => rm(root, { recursive: true, force: true }));
   await mkdir(join(root, "src-tauri"));
   for (const file of [
     "package.json",
     "package-lock.json",
+    "CHANGELOG.md",
     "src-tauri/tauri.conf.json",
     "src-tauri/Cargo.toml",
     "src-tauri/Cargo.lock",
@@ -38,8 +38,7 @@ async function fixture(t) {
   const version = await checkVersion(root);
   const artifacts = join(root, "artifacts");
   await mkdir(artifacts);
-  for (const name of expectedAssets(version))
-    await writeFile(join(artifacts, name), `test package: ${name}`);
+  await writeFile(join(artifacts, packageName(version)), "test zip");
   return { root, artifacts, version };
 }
 
@@ -56,7 +55,7 @@ test("release versions must agree across both lockfiles and app manifests", asyn
   await assert.rejects(checkVersion(root), /Versions differ/);
 });
 
-test("the manifest requires every platform and independently verifiable hashes", async (t) => {
+test("the manifest hashes the one Windows zip", async (t) => {
   const { root, artifacts, version } = await fixture(t);
   const manifest = await createManifest(
     artifacts,
@@ -64,88 +63,60 @@ test("the manifest requires every platform and independently verifiable hashes",
     root,
     "abc123",
   );
-  assert.equal(manifest.assets.length, 9);
-  assert.equal(manifest.commit, "abc123");
-  const sums = await readFile(join(artifacts, "SHA256SUMS"), "utf8");
-  for (const asset of manifest.assets) {
-    const data = await readFile(join(artifacts, asset.name));
-    const digest = createHash("sha256").update(data).digest("hex");
-    assert.equal(asset.size, data.length);
-    assert.equal(asset.sha256, digest);
-    assert.ok(sums.includes(`${digest}  ${asset.name}\n`));
-  }
-  // Rerunning a draft must accept the previously generated metadata.
-  assert.deepEqual(
-    await createManifest(artifacts, `v${version}`, root, "abc123"),
-    manifest,
-  );
+  const digest = createHash("sha256").update("test zip").digest("hex");
+  assert.deepEqual(manifest, {
+    version,
+    commit: "abc123",
+    asset: {
+      name: `fob-v${version}-x86_64-windows.zip`,
+      size: 8,
+      sha256: digest,
+    },
+  });
 });
 
-test("a missing, empty, or stale platform package blocks the release", async (t) => {
+test("a missing, empty, or extra package blocks the release", async (t) => {
   const { root, artifacts, version } = await fixture(t);
-  const name = expectedAssets(version)[0];
-  const path = join(artifacts, name);
+  const path = join(artifacts, packageName(version));
+  await writeFile(path, "");
+  await assert.rejects(createManifest(artifacts, `v${version}`, root), /empty/);
   await rm(path);
   await assert.rejects(
     createManifest(artifacts, `v${version}`, root),
-    /Missing:/,
+    /Missing/,
   );
-  await writeFile(path, "");
-  await assert.rejects(createManifest(artifacts, `v${version}`, root), /empty/);
   await writeFile(path, "restored");
-  await writeFile(join(artifacts, "NeoHtop_old_version.exe"), "stale");
+  await writeFile(join(artifacts, "fob-v0.0.1-x86_64-windows.zip"), "stale");
   await assert.rejects(
     createManifest(artifacts, `v${version}`, root),
-    /Unexpected: NeoHtop_old_version/,
+    /Unexpected release files: fob-v0.0.1/,
   );
 });
 
-test("Windows staging selects an installer instead of a portable executable", async (t) => {
+test("staging copies the zip for the current version only", async (t) => {
   const { root, version } = await fixture(t);
-  const source = join(root, "bundle");
-  await mkdir(join(source, "nsis"), { recursive: true });
-  await writeFile(join(source, "nsis/NeoHtop_setup.exe"), "installer");
-  await writeFile(join(source, "NeoHtop.exe"), "portable");
+  const source = join(root, "dist");
+  await mkdir(source);
+  await writeFile(join(source, "fob-v0.0.1-x86_64-windows.zip"), "old");
   const destination = join(root, "staged");
-  const names = await stagePackages(
-    "windows-x86_64",
-    source,
-    destination,
-    root,
-  );
-  assert.deepEqual(names, [`NeoHtop_${version}_x64-setup.exe`]);
+  await assert.rejects(stagePackage(source, destination, root), /Missing/);
+  await writeFile(join(source, packageName(version)), "zip");
   assert.equal(
-    await readFile(join(destination, names[0]), "utf8"),
-    "installer",
+    await stagePackage(source, destination, root),
+    packageName(version),
   );
-  await writeFile(join(source, "nsis/stale_setup.exe"), "stale");
-  await assert.rejects(
-    stagePackages("windows-x86_64", source, destination, root),
-    /found 2/,
+  assert.equal(
+    await readFile(join(destination, packageName(version)), "utf8"),
+    "zip",
   );
 });
 
-test("AppImage inspection detects bundled Wayland libraries, including symlinks", async (t) => {
-  const { root } = await fixture(t);
-  const libraries = join(root, "usr/lib");
-  await mkdir(libraries, { recursive: true });
-  await writeFile(join(libraries, "libwebkit2gtk-4.1.so"), "allowed");
-  assert.deepEqual(await forbiddenDisplayLibraries(libraries), []);
-  await writeFile(
-    join(libraries, "libwayland-client.so.0.24.0"),
-    "host library",
-  );
-  // File symlinks are supported on Windows without Developer Mode only when
-  // elevated, so the symlink case runs on Unix CI runners.
-  if (process.platform !== "win32")
-    await symlink(
-      "libwayland-client.so.0.24.0",
-      join(libraries, "libwayland-client.so.0"),
-    );
-  assert.equal(
-    (await forbiddenDisplayLibraries(libraries)).length,
-    process.platform === "win32" ? 1 : 2,
-  );
+test("release notes come from the CHANGELOG entry for the version", async (t) => {
+  const { root, version } = await fixture(t);
+  const section = await changelogSection(version, root);
+  assert.ok(section.startsWith("- "));
+  assert.ok(!section.includes(`## ${version}`));
+  await assert.rejects(changelogSection("99.0.0", root), /no entry for 99.0.0/);
 });
 
 function githubFixture(tag, state = {}) {
@@ -153,7 +124,7 @@ function githubFixture(tag, state = {}) {
   const context = {
     ref: `refs/tags/${tag}`,
     sha: "abc123",
-    repo: { owner: "test", repo: "neohtop" },
+    repo: { owner: "test", repo: "fob" },
   };
   const github = {
     rest: {
@@ -167,6 +138,10 @@ function githubFixture(tag, state = {}) {
         createRelease: async (data) => {
           writes.push(["create", data]);
           return { data: { id: 1, draft: true } };
+        },
+        updateRelease: async (data) => {
+          writes.push(["update", data]);
+          return { data: { id: data.release_id, draft: true } };
         },
         deleteReleaseAsset: async (data) => {
           writes.push(["delete", data]);
@@ -196,36 +171,54 @@ test("draft upload refuses published releases and moved tags before any writes",
   }
 });
 
-test("a new release stays draft and uploads all nine packages plus metadata", async (t) => {
+test("a new release is a Fob draft with the changelog and zip hash", async (t) => {
   const { root, artifacts, version } = await fixture(t);
   const { github, context, writes } = githubFixture(`v${version}`);
   await uploadDraft({ github, context, directory: artifacts, root });
   const create = writes.find(([kind]) => kind === "create")[1];
   assert.equal(create.draft, true);
+  assert.equal(create.name, `Fob v${version}`);
   assert.equal(create.target_commitish, context.sha);
-  assert.equal(writes.filter(([kind]) => kind === "upload").length, 11);
-  assert.equal(writes.filter(([kind]) => kind === "delete").length, 0);
+  assert.ok(create.body.includes(await changelogSection(version, root)));
+  const digest = createHash("sha256").update("test zip").digest("hex");
+  assert.ok(create.body.includes(`SHA256: \`${digest}\``));
+  assert.ok(!/neohtop/i.test(create.body));
+  const uploads = writes.filter(([kind]) => kind === "upload");
+  assert.deepEqual(
+    uploads.map(([, data]) => data.name),
+    [packageName(version)],
+  );
 });
 
 test("an interrupted draft upload can be retried without creating a second release", async (t) => {
   const { root, artifacts, version } = await fixture(t);
   const { github, context, writes } = githubFixture(`v${version}`, {
     release: { id: 5, draft: true },
-    assets: [{ id: 7, name: expectedAssets(version)[0] }],
+    assets: [{ id: 7, name: packageName(version) }],
   });
   await uploadDraft({ github, context, directory: artifacts, root });
   assert.equal(writes.filter(([kind]) => kind === "create").length, 0);
+  assert.equal(writes.find(([kind]) => kind === "update")[1].draft, true);
   assert.equal(writes.filter(([kind]) => kind === "delete").length, 1);
-  assert.equal(writes.filter(([kind]) => kind === "upload").length, 11);
+  assert.equal(writes.filter(([kind]) => kind === "upload").length, 1);
 });
 
-test("incomplete artifacts and non-tag runs cannot create a draft", async (t) => {
+test("a draft with foreign assets, incomplete artifacts and non-tag runs cannot be written", async (t) => {
   const { root, artifacts, version } = await fixture(t);
+  const foreign = githubFixture(`v${version}`, {
+    release: { id: 5, draft: true },
+    assets: [{ id: 8, name: "NeoHtop_setup.exe" }],
+  });
+  await assert.rejects(
+    uploadDraft({ ...foreign, directory: artifacts, root }),
+    /unexpected assets/,
+  );
+  assert.deepEqual(foreign.writes, []);
   const { github, context, writes } = githubFixture(`v${version}`);
-  await rm(join(artifacts, expectedAssets(version)[0]));
+  await rm(join(artifacts, packageName(version)));
   await assert.rejects(
     uploadDraft({ github, context, directory: artifacts, root }),
-    /incomplete/,
+    /Missing/,
   );
   context.ref = "refs/heads/main";
   await assert.rejects(
