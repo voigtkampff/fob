@@ -5,8 +5,9 @@
 - The 硬盘 (Disk) detail has a Physical disks section with one entry per physical disk: its number, bus, model and the volumes on it, including disks and partitions without a drive letter
 - NVMe disks show the drive's own health log, read without administrator rights: temperature, life used (the drive's estimate, which can pass 100%), available spare and its threshold, data written and read, power-on time, power cycles, unsafe shutdowns, media errors, error log entries and time spent above the drive's temperature thresholds
 - SATA and other disks show the health and operational status Windows reports; Fob does not read ATA SMART attributes
+- The 存储 (Storage) side panel on the Processes tab lists each physical disk once, however many volumes it has, with its status and, when the drive reports them, temperature and life used. 查看健康详情 (View health details) closes the panel and opens the full Disk detail at its health section
 - A warning appears only when the drive sets a critical warning flag or Windows reports a warning or failure. A value the disk does not report shows a dash, and a disk that refuses or does not answer the query says so instead of looking healthy
-- Fob reads the disks when the Disk detail opens and at most every 5 minutes while it stays open, never in the background, and asks for no extra permission. The mini window does not show this section
+- Fob reads the disks when the Disk detail or the Storage panel opens and at most every 5 minutes while one stays open, never in the background; both share one cached reading, and asks for no extra permission. The mini window does not show this section
 - Checked with mocked readings in a browser preview in Chinese and English; readings on real Windows disks are still pending
 - The bundled sensor helper is unchanged at 0.8.2
 

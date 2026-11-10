@@ -26,6 +26,7 @@
   export let started: [number, string] | null = null;
   export let sources: string[] = [];
   export let onOpenSpace: () => void = () => {};
+  export let onOpenDiskHealth: () => void = () => {};
 </script>
 
 {#if systemStats}<Tooltip.Provider delayDuration={150}
@@ -63,6 +64,7 @@
         diskUsedBytes={systemStats.disk_used_bytes}
         diskFreeBytes={systemStats.disk_free_bytes}
         onSpace={onOpenSpace}
+        onDiskHealth={onOpenDiskHealth}
       /><SystemPanel
         stats={systemStats}
         {capturedAt}

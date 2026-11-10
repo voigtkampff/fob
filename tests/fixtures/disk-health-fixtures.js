@@ -135,7 +135,88 @@ export const REPLIES = {
       },
     ],
   },
+  long: {
+    kind: "ok",
+    checked_at_ms,
+    disks: [
+      {
+        ...nvme(10, ["C:\\", "D:\\", "E:\\", "F:\\", "G:\\", "H:\\", "I:\\"]),
+        model:
+          "Example Very Long Enterprise NVMe Solid State Drive Model 7680GB",
+      },
+      {
+        number: 11,
+        model: "Example External Enclosure With A Long Product Name",
+        bus: "usb",
+        removable: true,
+        volumes: [],
+        windows: { kind: "failed", code: -2147217405 },
+        nvme: { kind: "unsupported" },
+      },
+      {
+        number: null,
+        model: null,
+        bus: "spaces",
+        removable: false,
+        volumes: ["J:\\"],
+        windows: {
+          kind: "ok",
+          health: "unhealthy",
+          operational: [{ kind: "non_recoverable" }],
+        },
+        nvme: { kind: "not_asked" },
+      },
+    ],
+  },
   empty: { kind: "ok", checked_at_ms, disks: [] },
   unavailable: { kind: "unavailable" },
   pending: { kind: "pending" },
+};
+
+// The capacity side the Disk detail and storage panel show next to health.
+const GB = 1024 ** 3;
+/** @param {string} mount @param {string} name @param {number} total @param {number} available */
+const volume = (mount, name, total, available) => ({
+  name,
+  mount,
+  file_system: "NTFS",
+  total: total * GB,
+  available: available * GB,
+  read_only: false,
+  read: 0,
+  written: 0,
+});
+/** @type {import("../../src/lib/types").SystemStats} */
+export const stats = {
+  details: {
+    identity: {
+      cpu_model: "Example CPU",
+      physical_cores: 8,
+      architecture: "x86_64",
+      platform: "windows",
+      os_version: "Windows 11",
+      kernel_version: "26100",
+    },
+    memory_unallocated: 0,
+    swap_total: 0,
+    swap_used: 0,
+    volumes: [
+      volume("C:\\", "Windows", 1000, 420),
+      volume("D:\\", "Data", 860, 610),
+      volume("E:\\", "Games", 930, 200),
+    ],
+    interfaces: [],
+  },
+  cpu_usage: [10, 20],
+  memory_total: 32 * GB,
+  memory_used: 14 * GB,
+  memory_free: 18 * GB,
+  memory_cached: 0,
+  uptime: 3600,
+  load_avg: [0, 0, 0],
+  network_rx_bytes: 0,
+  network_tx_bytes: 0,
+  disk_total_bytes: 2790 * GB,
+  disk_used_bytes: 1560 * GB,
+  disk_free_bytes: 1230 * GB,
 };

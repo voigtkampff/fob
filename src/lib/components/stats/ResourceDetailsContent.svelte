@@ -28,6 +28,7 @@
   import DetailLayout from "./DetailLayout.svelte";
   import DetailSection from "./DetailSection.svelte";
   import ResourceTrend from "./ResourceTrend.svelte";
+  import DiskHealthSummary from "./DiskHealthSummary.svelte";
   import { t } from "$lib/i18n";
   import type { PanelKind } from "./panel";
   import type {
@@ -49,6 +50,7 @@
     sensors = [],
     sources = [],
     onSpace = () => {},
+    onDiskHealth = () => {},
   }: {
     kind: PanelKind;
     stats: SystemStats;
@@ -63,6 +65,8 @@
     sensors?: Sensor[];
     sources?: string[];
     onSpace?: () => void;
+    /** Opens the full Disk detail (the storage panel's health link). */
+    onDiskHealth?: () => void;
   } = $props();
   const details = $derived(stats.details);
   const identity = $derived(details.identity);
@@ -431,7 +435,8 @@
           </div>{:else}<p class="text-sm text-muted-foreground">
             {$t("detail.noDrives")}
           </p>{/each}
-      </DetailSection>{/snippet}
+      </DetailSection>
+      <DiskHealthSummary onDetails={onDiskHealth} />{/snippet}
   </DetailLayout>
 {:else if kind === "system"}
   <DetailLayout

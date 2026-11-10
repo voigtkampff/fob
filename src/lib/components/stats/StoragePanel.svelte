@@ -17,6 +17,8 @@
   export let diskFreeBytes: number;
   /** The panel's space map button. */
   export let onSpace: () => void = () => {};
+  /** The health link: opens the full Disk detail. */
+  export let onDiskHealth: () => void = () => {};
   $: ready = Number.isFinite(diskTotalBytes) && diskTotalBytes > 0;
   $: sub = ready
     ? $t("stats.freeOf", { v: formatBytes(diskTotalBytes) })
@@ -36,6 +38,7 @@
       {unavailable}
       {history}
       {onSpace}
+      {onDiskHealth}
     />{/snippet}
   {#snippet value()}
     <div class="text-2xl font-semibold tracking-tight tabular-nums">

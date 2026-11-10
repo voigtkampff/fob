@@ -30,6 +30,7 @@
     sensors = [],
     sources = [],
     onSpace = () => {},
+    onDiskHealth = () => {},
     open = $bindable(false),
   }: {
     kind: PanelKind;
@@ -45,6 +46,7 @@
     sensors?: Sensor[];
     sources?: string[];
     onSpace?: () => void;
+    onDiskHealth?: () => void;
     open?: boolean;
   } = $props();
   // Literal keys so the i18n check can see every one.
@@ -88,6 +90,9 @@
   const panel = $derived(texts[kind]);
   const headingId = $derived(`resource-details-${kind}`);
   const triggerId = $derived(`resource-trigger-${kind}`);
+  // A link that leaves the panel runs after the panel has closed, so focus
+  // and the page's pointer lock are released before the page changes.
+  let afterClose: (() => void) | null = null;
 </script>
 
 <Sheet.Root bind:open>
@@ -104,7 +109,10 @@
     class="gap-0 data-[side=right]:sm:max-w-md"
     onCloseAutoFocus={(event) => {
       event.preventDefault();
-      document.getElementById(triggerId)?.focus();
+      const next = afterClose;
+      afterClose = null;
+      if (next) next();
+      else document.getElementById(triggerId)?.focus();
     }}
     onOpenAutoFocus={(event) => {
       event.preventDefault();
@@ -151,6 +159,10 @@
         onSpace={() => {
           open = false;
           onSpace();
+        }}
+        onDiskHealth={() => {
+          afterClose = onDiskHealth;
+          open = false;
         }}
       />
     </div>

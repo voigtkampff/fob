@@ -7,6 +7,9 @@ import {
   formatCount,
   formatDecimalBytes,
   operationalBad,
+  PENDING_RETRY_MS,
+  REFRESH_MS,
+  watchDiskHealth,
 } from "../src/lib/utils/disk-health.js";
 
 const rust = await readFile(
@@ -121,4 +124,89 @@ test("warnings come only from what the drive or Windows reported", () => {
   );
   assert.equal(operationalBad({ kind: "predictive_failure" }), true);
   assert.equal(operationalBad({ kind: "other", code: 1 }), false);
+});
+
+test("the watcher asks once on open, every 5 minutes, and never after stop", async (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout", "setInterval"] });
+  const replies = [{ kind: "ok", checked_at_ms: 1, disks: [] }];
+  let calls = 0;
+  const views = [];
+  const stop = watchDiskHealth(
+    async () => {
+      calls++;
+      return replies[0];
+    },
+    (view, pending) => views.push([view.kind, pending]),
+  );
+  await Promise.resolve();
+  assert.equal(calls, 1, "one request when the view opens");
+  t.mock.timers.tick(REFRESH_MS - 1);
+  assert.equal(calls, 1, "no request before 5 minutes");
+  t.mock.timers.tick(1);
+  assert.equal(calls, 2, "a refresh at 5 minutes");
+  stop();
+  t.mock.timers.tick(REFRESH_MS * 10);
+  assert.equal(calls, 2, "nothing after the view closes");
+  assert.deepEqual(views[0], ["loading", false]);
+});
+
+test("a pending reply keeps the last report and retries once after 10 s", async (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout", "setInterval"] });
+  const ok = { kind: "ok", checked_at_ms: 1, disks: [] };
+  const queue = [ok, { kind: "pending" }, ok];
+  let calls = 0;
+  const views = [];
+  const stop = watchDiskHealth(
+    async () => queue[calls++],
+    (view, pending) => views.push([view.kind, pending]),
+  );
+  await Promise.resolve();
+  await Promise.resolve();
+  t.mock.timers.tick(REFRESH_MS);
+  await Promise.resolve();
+  await Promise.resolve();
+  assert.deepEqual(
+    views.at(-1),
+    ["ok", true],
+    "old report shown while pending",
+  );
+  t.mock.timers.tick(PENDING_RETRY_MS);
+  await Promise.resolve();
+  await Promise.resolve();
+  assert.equal(calls, 3);
+  assert.deepEqual(views.at(-1), ["ok", false]);
+  stop();
+});
+
+test("overlapping ticks never send a second request while one is out", async (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout", "setInterval"] });
+  let calls = 0;
+  let resolve;
+  const stop = watchDiskHealth(
+    () => {
+      calls++;
+      return new Promise((r) => (resolve = r));
+    },
+    () => {},
+  );
+  t.mock.timers.tick(REFRESH_MS * 3);
+  assert.equal(calls, 1);
+  stop();
+  resolve({ kind: "ok", checked_at_ms: 1, disks: [] });
+});
+
+test("a failed request is shown as failed, not as no disks", async () => {
+  const views = [];
+  const stop = watchDiskHealth(
+    async () => {
+      throw "WMI unavailable";
+    },
+    (view) => views.push(view),
+  );
+  await new Promise((r) => setTimeout(r, 0));
+  stop();
+  assert.deepEqual(views.at(-1), {
+    kind: "failed",
+    message: "WMI unavailable",
+  });
 });
