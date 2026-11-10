@@ -8,6 +8,8 @@ const [fobDir, out] = process.argv.slice(2);
 const PORT = 9222;
 const WIN32 = join(import.meta.dirname, "win32.ps1");
 const configDir = join(process.env.APPDATA, "com.hcb.fob");
+// WebView2 keeps page storage (the last tab, theme) here between runs.
+const webviewDir = join(process.env.LOCALAPPDATA, "com.hcb.fob");
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const checks = [];
 const report = { fobDir, checks, runs: [] };
@@ -131,7 +133,13 @@ async function cdp() {
 }
 
 async function launch(tag, behavior) {
-  rmSync(configDir, { recursive: true, force: true });
+  for (const dir of [configDir, webviewDir])
+    rmSync(dir, {
+      recursive: true,
+      force: true,
+      maxRetries: 20,
+      retryDelay: 500,
+    });
   mkdirSync(configDir, { recursive: true });
   writeFileSync(join(configDir, "settings.json"), JSON.stringify({ behavior }));
   const child = spawn(join(fobDir, "fob.exe"), [], {
@@ -180,10 +188,10 @@ async function launch(tag, behavior) {
   return { run, child, exit };
 }
 
-async function waitExit(tag, child, exit, ms) {
+async function waitExit(tag, how, child, exit, ms) {
   const done = await Promise.race([exit, sleep(ms).then(() => null)]);
   check(
-    `${tag}: Fob exited by itself with code 0 within ${ms / 1000} s`,
+    `${tag}: ${how} ends Fob with code 0 within ${ms / 1000} s`,
     done && done.code === 0,
     done,
   );
@@ -308,7 +316,13 @@ try {
       .catch(() => {});
     page.close();
   }
-  await waitExit("en", first.child, first.exit, 20000);
+  await waitExit(
+    "en",
+    "the app's quit command, sent to the hidden window,",
+    first.child,
+    first.exit,
+    20000,
+  );
 
   const second = await launch("zh", {
     language: "zh",
@@ -336,7 +350,13 @@ try {
     check("zh: Quit Fob is clicked", await page.click('[data-smoke="quit"]'));
     page.close();
   }
-  await waitExit("zh", second.child, second.exit, 20000);
+  await waitExit(
+    "zh",
+    "clicking Quit Fob in the title bar menu",
+    second.child,
+    second.exit,
+    20000,
+  );
 } catch (error) {
   check("smoke completed", false, String(error?.stack ?? error));
 }
