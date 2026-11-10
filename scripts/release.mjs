@@ -1,39 +1,13 @@
 import { createHash } from "node:crypto";
 import { createReadStream } from "node:fs";
-import {
-  copyFile,
-  lstat,
-  mkdir,
-  mkdtemp,
-  readFile,
-  readdir,
-  rm,
-  writeFile,
-} from "node:fs/promises";
-import { tmpdir } from "node:os";
-import { basename, join, resolve } from "node:path";
-import { spawnSync } from "node:child_process";
+import { copyFile, lstat, mkdir, readFile, readdir } from "node:fs/promises";
+import { join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
 export const projectRoot = fileURLToPath(new URL("../", import.meta.url));
 
-// Keep existing macOS/Linux download names stable for package managers.
-const platforms = {
-  "linux-x86_64": [
-    ["appimage", ".AppImage", "NeoHtop_VERSION_x86_64.AppImage"],
-    ["deb", ".deb", "NeoHtop_VERSION_x86_64.deb"],
-    ["rpm", ".rpm", "NeoHtop_VERSION_x86_64.rpm"],
-  ],
-  "linux-aarch64": [
-    ["appimage", ".AppImage", "NeoHtop_VERSION_aarch64.AppImage"],
-    ["deb", ".deb", "NeoHtop_VERSION_aarch64.deb"],
-    ["rpm", ".rpm", "NeoHtop_VERSION_aarch64.rpm"],
-  ],
-  "macos-x86_64": [["dmg", ".dmg", "intel-NeoHtop_VERSION_x64.dmg"]],
-  "macos-aarch64": [["dmg", ".dmg", "silicon-NeoHtop_VERSION_aarch64.dmg"]],
-  // The old Windows .exe was a portable binary. Label the new installer.
-  "windows-x86_64": [["nsis", ".exe", "NeoHtop_VERSION_x64-setup.exe"]],
-};
+// scripts/package-windows.sh writes this zip into dist/.
+export const packageName = (version) => `fob-v${version}-x86_64-windows.zip`;
 
 export async function checkVersion(root = projectRoot, tag = "") {
   const pkg = JSON.parse(await readFile(join(root, "package.json"), "utf8"));
@@ -84,48 +58,19 @@ export async function checkVersion(root = projectRoot, tag = "") {
   return pkg.version;
 }
 
-export function expectedAssets(version) {
-  return Object.values(platforms)
-    .flatMap((bundles) =>
-      bundles.map(([, , name]) => name.replace("VERSION", version)),
-    )
-    .sort();
-}
-
 async function requirePackage(path) {
-  const info = await lstat(path);
-  if (!info.isFile() || info.size === 0)
+  const info = await lstat(path).catch(() => null);
+  if (!info?.isFile() || info.size === 0)
     throw new Error(`Missing, empty, or non-file package: ${path}`);
   return info.size;
 }
 
-export async function stagePackages(
-  platform,
-  source,
-  destination,
-  root = projectRoot,
-) {
-  const bundles = platforms[platform];
-  if (!bundles) throw new Error(`Unknown platform: ${platform}`);
-  const version = await checkVersion(root);
-  const packages = [];
-  for (const [folder, extension, name] of bundles) {
-    const directory = join(source, folder);
-    const candidates = (await readdir(directory)).filter((file) =>
-      file.endsWith(extension),
-    );
-    if (candidates.length !== 1)
-      throw new Error(
-        `Expected one ${extension} package in ${directory}, found ${candidates.length}`,
-      );
-    const path = join(directory, candidates[0]);
-    await requirePackage(path);
-    packages.push([path, name.replace("VERSION", version)]);
-  }
+export async function stagePackage(source, destination, root = projectRoot) {
+  const name = packageName(await checkVersion(root));
+  await requirePackage(join(source, name));
   await mkdir(destination, { recursive: true });
-  for (const [path, name] of packages)
-    await copyFile(path, join(destination, name));
-  return packages.map(([, name]) => name);
+  await copyFile(join(source, name), join(destination, name));
+  return name;
 }
 
 async function sha256(path) {
@@ -141,73 +86,42 @@ export async function createManifest(
   commit = process.env.GITHUB_SHA || null,
 ) {
   const version = await checkVersion(root, tag);
-  const expected = expectedAssets(version);
-  const actual = (await readdir(directory))
-    .filter((file) => !["SHA256SUMS", "release-manifest.json"].includes(file))
-    .sort();
-  if (JSON.stringify(actual) !== JSON.stringify(expected)) {
-    throw new Error(
-      `Release packages are incomplete or unexpected.\nMissing: ${expected.filter((file) => !actual.includes(file)).join(", ")}\nUnexpected: ${actual.filter((file) => !expected.includes(file)).join(", ")}`,
-    );
-  }
-  const assets = [];
-  for (const name of expected) {
-    const path = join(directory, name);
-    const size = await requirePackage(path);
-    assets.push({ name, size, sha256: await sha256(path) });
-  }
-  const manifest = { schemaVersion: 1, version, commit, assets };
-  await writeFile(
-    join(directory, "SHA256SUMS"),
-    assets.map((asset) => `${asset.sha256}  ${asset.name}\n`).join(""),
-  );
-  await writeFile(
-    join(directory, "release-manifest.json"),
-    `${JSON.stringify(manifest, null, 2)}\n`,
-  );
-  return manifest;
+  const name = packageName(version);
+  const unexpected = (await readdir(directory)).filter((file) => file !== name);
+  if (unexpected.length)
+    throw new Error(`Unexpected release files: ${unexpected.join(", ")}`);
+  const path = join(directory, name);
+  const size = await requirePackage(path);
+  return { version, commit, asset: { name, size, sha256: await sha256(path) } };
 }
 
-export async function forbiddenDisplayLibraries(directory) {
-  const found = [];
-  for (const entry of await readdir(directory, { withFileTypes: true })) {
-    const path = join(directory, entry.name);
-    if (/^libwayland-client\.so(?:\.|$)/.test(entry.name)) found.push(path);
-    // Do not follow symlinks into the build host's library directories.
-    if (entry.isDirectory())
-      found.push(...(await forbiddenDisplayLibraries(path)));
-  }
-  return found;
+/** The CHANGELOG.md section for this version, without its heading. */
+export async function changelogSection(version, root = projectRoot) {
+  const changelog = await readFile(join(root, "CHANGELOG.md"), "utf8");
+  const sections = changelog.split(/^## /m).slice(1);
+  const section = sections.find(
+    (text) => text.slice(0, text.indexOf("\n")).trim() === version,
+  );
+  const body = section?.slice(section.indexOf("\n")).trim();
+  if (!body) throw new Error(`CHANGELOG.md has no entry for ${version}.`);
+  return body;
 }
 
-async function checkAppImage(directory) {
-  const images = (await readdir(directory)).filter((name) =>
-    name.endsWith(".AppImage"),
-  );
-  if (images.length !== 1)
-    throw new Error(`Expected one AppImage, found ${images.length}`);
-  const temporary = await mkdtemp(join(tmpdir(), "neohtop-appimage-"));
-  try {
-    const image = resolve(directory, images[0]);
-    const extracted = spawnSync(image, ["--appimage-extract"], {
-      cwd: temporary,
-      stdio: ["ignore", "ignore", "pipe"],
-      encoding: "utf8",
-    });
-    if (extracted.error || extracted.status !== 0)
-      throw new Error(
-        `Cannot inspect AppImage: ${extracted.error || extracted.stderr}`,
-      );
-    const forbidden = await forbiddenDisplayLibraries(
-      join(temporary, "squashfs-root"),
-    );
-    if (forbidden.length)
-      throw new Error(
-        `AppImage bundles host Wayland libraries (see #203): ${forbidden.map((path) => basename(path)).join(", ")}`,
-      );
-  } finally {
-    await rm(temporary, { recursive: true, force: true });
-  }
+export async function releaseNotes(manifest, root = projectRoot) {
+  const { version, commit, asset } = manifest;
+  return [
+    `## ${version}`,
+    "",
+    await changelogSection(version, root),
+    "",
+    "## Verify the download",
+    "",
+    `- File: \`${asset.name}\``,
+    `- SHA256: \`${asset.sha256}\``,
+    "",
+    `Built from commit ${commit}.`,
+    "",
+  ].join("\n");
 }
 
 if (
@@ -223,18 +137,17 @@ if (
         );
         break;
       case "stage":
-        console.log((await stagePackages(...args)).join("\n"));
+        console.log(await stagePackage(...args));
         break;
       case "manifest":
         console.log(JSON.stringify(await createManifest(...args), null, 2));
         break;
-      case "check-appimage":
-        await checkAppImage(args[0]);
-        console.log("AppImage uses the host Wayland client library.");
+      case "notes":
+        console.log(await releaseNotes(await createManifest(...args)));
         break;
       default:
         throw new Error(
-          "Usage: release.mjs check-version [tag] | stage <platform> <bundle-dir> <output-dir> | manifest <artifact-dir> <tag> | check-appimage <bundle-dir>",
+          "Usage: release.mjs check-version [tag] | stage <package-dir> <output-dir> | manifest <artifact-dir> <tag> | notes <artifact-dir> [tag]",
         );
     }
   } catch (error) {

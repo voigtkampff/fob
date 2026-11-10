@@ -1,6 +1,6 @@
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
-import { checkVersion, createManifest, projectRoot } from "./release.mjs";
+import { createManifest, projectRoot, releaseNotes } from "./release.mjs";
 
 export async function uploadDraft({
   github,
@@ -11,9 +11,9 @@ export async function uploadDraft({
   if (!context.ref.startsWith("refs/tags/"))
     throw new Error("Draft releases require a version tag.");
   const tag = context.ref.slice("refs/tags/".length);
-  const version = await checkVersion(root, tag);
   // Validate everything before making any GitHub writes.
   const manifest = await createManifest(directory, tag, root, context.sha);
+  const body = await releaseNotes(manifest, root);
   const { data: commit } = await github.rest.repos.getCommit({
     ...context.repo,
     ref: tag,
@@ -35,11 +35,7 @@ export async function uploadDraft({
   if (release && !release.draft)
     throw new Error("Refusing to modify an already published release.");
 
-  const names = [
-    ...manifest.assets.map((asset) => asset.name),
-    "SHA256SUMS",
-    "release-manifest.json",
-  ];
+  const { name } = manifest.asset;
   const existing = release
     ? await github.paginate(github.rest.repos.listReleaseAssets, {
         ...context.repo,
@@ -47,40 +43,46 @@ export async function uploadDraft({
         per_page: 100,
       })
     : [];
-  if (existing.some((asset) => !names.includes(asset.name))) {
+  if (existing.some((asset) => asset.name !== name)) {
     throw new Error(
       "The existing draft has unexpected assets. Review them before retrying this release.",
     );
   }
-  if (!release) {
+  const fields = {
+    name: `Fob v${manifest.version}`,
+    body,
+    draft: true,
+    prerelease: manifest.version.includes("-"),
+  };
+  if (release) {
+    ({ data: release } = await github.rest.repos.updateRelease({
+      ...context.repo,
+      release_id: release.id,
+      ...fields,
+    }));
+  } else {
     ({ data: release } = await github.rest.repos.createRelease({
       ...context.repo,
       tag_name: tag,
       target_commitish: context.sha,
-      name: `NeoHtop v${version}`,
-      body: `Built from ${context.sha}.\n\nAll five platform builds passed. Checksums and a build manifest are attached.\n\nReview the packages and release notes before publishing.`,
-      draft: true,
-      prerelease: version.includes("-"),
+      ...fields,
     }));
   }
-  for (const name of names) {
-    const previous = existing.find((asset) => asset.name === name);
-    if (previous)
-      await github.rest.repos.deleteReleaseAsset({
-        ...context.repo,
-        asset_id: previous.id,
-      });
-    const data = await readFile(join(directory, name));
-    await github.rest.repos.uploadReleaseAsset({
+  for (const previous of existing)
+    await github.rest.repos.deleteReleaseAsset({
       ...context.repo,
-      release_id: release.id,
-      name,
-      data,
-      headers: {
-        "content-type": "application/octet-stream",
-        "content-length": data.length,
-      },
+      asset_id: previous.id,
     });
-  }
+  const data = await readFile(join(directory, name));
+  await github.rest.repos.uploadReleaseAsset({
+    ...context.repo,
+    release_id: release.id,
+    name,
+    data,
+    headers: {
+      "content-type": "application/zip",
+      "content-length": data.length,
+    },
+  });
   return release.html_url;
 }

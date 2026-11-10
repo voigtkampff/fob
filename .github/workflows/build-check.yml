@@ -6,22 +6,6 @@ on:
     branches: [main]
   workflow_dispatch:
   workflow_call:
-    inputs:
-      release:
-        description: Require signed and notarized macOS release builds
-        type: boolean
-        default: false
-    secrets:
-      MACOS_CERTIFICATE:
-        required: false
-      MACOS_CERTIFICATE_PASSWORD:
-        required: false
-      APPLE_ID:
-        required: false
-      APPLE_PASSWORD:
-        required: false
-      APPLE_TEAM_ID:
-        required: false
 
 permissions:
   contents: read
@@ -33,7 +17,6 @@ concurrency:
 env:
   CARGO_TERM_COLOR: always
   CARGO_INCREMENTAL: 0
-  NEOHTOP_ANALYTICS_ENDPOINT: ${{ vars.NEOHTOP_ANALYTICS_ENDPOINT }}
 
 jobs:
   quality:
@@ -56,38 +39,13 @@ jobs:
       - run: npm run release:check
       - run: npm run build
 
-  build:
-    name: Package (${{ matrix.platform }})
+  windows-tests:
+    name: Windows tests
     needs: quality
-    # Packages build only for manual runs and for release.yml, which calls
-    # this workflow on v* tags with release: true.
-    if: inputs.release || github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/tags/v')
-    runs-on: ${{ matrix.runner }}
+    # Windows jobs run only for manual runs and for release.yml on v* tags.
+    if: github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/tags/v')
+    runs-on: windows-2022
     timeout-minutes: 60
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - platform: linux-x86_64
-            runner: ubuntu-22.04
-            target: x86_64-unknown-linux-gnu
-            bundles: deb,rpm,appimage
-          - platform: linux-aarch64
-            runner: ubuntu-22.04-arm
-            target: aarch64-unknown-linux-gnu
-            bundles: deb,rpm,appimage
-          - platform: macos-x86_64
-            runner: macos-15
-            target: x86_64-apple-darwin
-            bundles: app,dmg
-          - platform: macos-aarch64
-            runner: macos-15
-            target: aarch64-apple-darwin
-            bundles: app,dmg
-          - platform: windows-x86_64
-            runner: windows-2022
-            target: x86_64-pc-windows-msvc
-            bundles: nsis
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -95,101 +53,54 @@ jobs:
           node-version-file: .nvmrc
           cache: npm
       - uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: ${{ matrix.target }}
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: src-tauri -> target
-          key: ${{ matrix.target }}-${{ inputs.release && 'release' || 'check' }}
-          cache-on-failure: true
-
-      - name: Install Linux packaging dependencies
-        if: runner.os == 'Linux'
-        run: |
-          sudo apt-get update
-          sudo apt-get install --no-install-recommends -y \
-            build-essential pkg-config libwebkit2gtk-4.1-dev \
-            libayatana-appindicator3-dev librsvg2-dev patchelf \
-            libfuse2 file rpm xdg-utils
-
       - run: npm ci
-
-      - name: Require macOS release credentials
-        if: runner.os == 'macOS' && inputs.release
-        shell: bash
-        env:
-          APPLE_CERTIFICATE: ${{ secrets.MACOS_CERTIFICATE }}
-          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
-          APPLE_ID: ${{ secrets.APPLE_ID }}
-          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
-          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
-        run: |
-          for name in APPLE_CERTIFICATE APPLE_CERTIFICATE_PASSWORD APPLE_ID APPLE_PASSWORD APPLE_TEAM_ID; do
-            if [ -z "${!name}" ]; then
-              echo "::error::Missing required release credential: $name"
-              exit 1
-            fi
-          done
-
       - name: Prepare frontend assets for native tests
         # generate_context! embeds frontendDist even in cargo test builds.
         run: npm run build
+      - run: cargo test --locked --manifest-path src-tauri/Cargo.toml
 
-      - name: Test Rust code
-        # Intel macOS is cross-compiled on ARM; tests run in the ARM job.
-        if: matrix.platform != 'macos-x86_64'
-        run: cargo test --locked --manifest-path src-tauri/Cargo.toml --target ${{ matrix.target }}
-
-      - name: Remove cached package outputs
-        # Keep compiler caches, but never mix installers from different versions.
-        shell: bash
-        run: rm -rf "src-tauri/target/${{ matrix.target }}/release/bundle"
-
-      - name: Build packages without Apple credentials
-        if: runner.os != 'macOS' || !inputs.release
-        uses: tauri-apps/tauri-action@v1
-        env:
-          APPIMAGE_EXTRACT_AND_RUN: 1
-          # Empty APPLE_CERTIFICATE still triggers Tauri's certificate import;
-          # preview builds must omit that variable entirely.
-          APPLE_SIGNING_IDENTITY: "-"
+  package:
+    name: Package (windows-x86_64)
+    needs: windows-tests
+    # Cross-built like every released zip: the 0.8.2 helper only reproduces
+    # with cargo-xwin and lld, not with the MSVC linker on a Windows runner.
+    runs-on: ubuntu-22.04
+    timeout-minutes: 60
+    env:
+      XWIN_CRT_VERSION: 14.44.17.14
+      XWIN_SDK_VERSION: 10.0.26100
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
         with:
-          args: --ci --target ${{ matrix.target }} --bundles ${{ matrix.bundles }} -- --locked
-
-      - name: Build signed macOS release packages
-        if: runner.os == 'macOS' && inputs.release
-        uses: tauri-apps/tauri-action@v1
-        env:
-          APPLE_CERTIFICATE: ${{ secrets.MACOS_CERTIFICATE }}
-          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
-          APPLE_SIGNING_IDENTITY: >-
-            ${{ vars.APPLE_SIGNING_IDENTITY || 'Developer ID Application: Abdenasser Elidrissi (785JV74B9Y)' }}
-          APPLE_ID: ${{ secrets.APPLE_ID }}
-          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
-          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          node-version-file: .nvmrc
+          cache: npm
+      - uses: actions/setup-dotnet@v4
         with:
-          # Build only: release assets upload after every platform passes.
-          args: --ci --target ${{ matrix.target }} --bundles ${{ matrix.bundles }} -- --locked
-
-      - name: Check AppImage display libraries
-        if: runner.os == 'Linux'
-        run: node scripts/release.mjs check-appimage src-tauri/target/${{ matrix.target }}/release/bundle/appimage
-
-      - name: Verify macOS release signature and notarization
-        if: runner.os == 'macOS' && inputs.release
-        shell: bash
-        env:
-          BUNDLE_ROOT: src-tauri/target/${{ matrix.target }}/release/bundle
+          dotnet-version: 8.0.427
+      - name: Install the cross toolchain
+        working-directory: ${{ runner.temp }}
         run: |
-          codesign --verify --deep --strict --verbose=2 "$BUNDLE_ROOT/macos/NeoHtop.app"
-          xcrun stapler validate "$BUNDLE_ROOT/macos/NeoHtop.app"
-
-      - name: Stage and validate platform packages
-        run: node scripts/release.mjs stage ${{ matrix.platform }} src-tauri/target/${{ matrix.target }}/release/bundle artifacts
-
+          rustup toolchain install stable --profile minimal --target x86_64-pc-windows-msvc
+          rustup default stable
+          curl -fsSLO https://github.com/mstorsjo/llvm-mingw/releases/download/20261020/llvm-mingw-20261020-ucrt-ubuntu-22.04-x86_64.tar.xz
+          echo "55064b60b991a1e1e8090b8c2f84e82b22cfe5903d12c159d65064cf5e8ae335  llvm-mingw-20261020-ucrt-ubuntu-22.04-x86_64.tar.xz" | sha256sum -c -
+          tar xJf llvm-mingw-20261020-ucrt-ubuntu-22.04-x86_64.tar.xz
+          echo "LLVM_MINGW=$RUNNER_TEMP/llvm-mingw-20261020-ucrt-ubuntu-22.04-x86_64" >> "$GITHUB_ENV"
+          cargo install cargo-xwin --version 0.23.1 --locked
+          pip install pefile==2024.8.26
+      - run: npm ci
+      - run: scripts/package-windows.sh
+      - name: Stage the zip
+        run: node scripts/release.mjs stage dist artifacts
+      - name: Preview the release notes
+        run: node scripts/release.mjs notes artifacts
       - uses: actions/upload-artifact@v4
         with:
-          name: packages-${{ matrix.platform }}
+          name: fob-windows-x86_64
           path: artifacts/*
           if-no-files-found: error
           retention-days: 14
