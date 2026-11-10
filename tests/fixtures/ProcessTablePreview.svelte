@@ -126,7 +126,9 @@
     ...base,
     command: p.name,
     start_time: now - 600 * (i + 1),
-    run_time: 600 * (i + 1),
+    // Run times from short to over a year: 0h 37m 45s, 7h 6m 32s,
+    // 9999h 59m 59s, 0h 0m 45s and 8760h 59m 59s.
+    run_time: [2265, 25592, 9999 * 3600 + 3599, 45, 8760 * 3600 + 3599][i % 5],
     ...p,
   }));
   /** @type {import("../../src/lib/types").SortConfig} */

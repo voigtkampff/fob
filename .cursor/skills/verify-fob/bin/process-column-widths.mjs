@@ -1,8 +1,14 @@
 // process-column-widths.mjs <evidence-dir> [tag]: renders the mocked process
 // table (real ProcessTable, column widths, i18n and production CSS) with every
 // column from the user's tree view and the longest value each column can show,
-// in zh and en, flat and tree, at 1024 and 1600 px. It measures each column
-// and writes columns-<tag>-<lang>-<view>-<width>[-right].png plus
+// in zh and en, flat and tree, default and wide column sets, at 1024 and
+// 1600 px, at 1400 and 1480 px (just under the old default flat and tree
+// table widths), and at 1920 px shown at 100%, 125% and 150% scaling (1920,
+// 1536, 1280 CSS px). It measures each column, checks that no value runs under the
+// sticky actions column (at rest when the table fits, scrolled to the end
+// when it does not) and that the table only scrolls sideways when the window
+// is narrower than its minimum width, and writes
+// columns-<tag>-<lang>-<view>-<set>-<width>[-right].png plus
 // columns-<tag>.json. Mocked readings only; this is not Windows evidence.
 import { spawn } from "node:child_process";
 import { mkdirSync, writeFileSync } from "node:fs";
@@ -89,25 +95,27 @@ try {
     );
   for (const lang of ["zh", "en"])
     for (const view of ["flat", "tree"])
-      for (const width of [1024, 1600]) {
-        await send("Emulation.setDeviceMetricsOverride", {
-          width,
-          height: 420,
-          deviceScaleFactor: 1,
-          mobile: false,
-        });
-        await send("Page.navigate", {
-          url: `${base}/process-table-panel.html?lang=${lang}&view=${view}&wide`,
-        });
-        for (
-          let i = 0;
-          i < 100 &&
-          (await evaluate("document.querySelectorAll('tbody tr').length")) < 8;
-          i++
-        )
-          await new Promise((r) => setTimeout(r, 100));
-        await new Promise((r) => setTimeout(r, 300));
-        const columns = await evaluate(`(() => {
+      for (const set of ["default", "wide"])
+        for (const width of [1024, 1280, 1400, 1480, 1536, 1600, 1920]) {
+          await send("Emulation.setDeviceMetricsOverride", {
+            width,
+            height: 420,
+            deviceScaleFactor: 1,
+            mobile: false,
+          });
+          await send("Page.navigate", {
+            url: `${base}/process-table-panel.html?lang=${lang}&view=${view}${set === "wide" ? "&wide" : ""}`,
+          });
+          for (
+            let i = 0;
+            i < 100 &&
+            (await evaluate("document.querySelectorAll('tbody tr').length")) <
+              8;
+            i++
+          )
+            await new Promise((r) => setTimeout(r, 100));
+          await new Promise((r) => setTimeout(r, 300));
+          const columns = await evaluate(`(() => {
           const natural = (el) => { const old = el.style.cssText; el.style.maxWidth = 'none'; el.style.width = 'max-content'; const w = el.getBoundingClientRect().width; el.style.cssText = old; return w; };
           const px = (el, prop) => parseFloat(getComputedStyle(el)[prop]) || 0;
           const textWidth = (el) => { const w = document.createTreeWalker(el, NodeFilter.SHOW_TEXT); let l = Infinity, r = -Infinity; for (let n; (n = w.nextNode());) { if (!n.textContent.trim()) continue; const g = document.createRange(); g.selectNodeContents(n); const b = g.getBoundingClientRect(); l = Math.min(l, b.left); r = Math.max(r, b.right); } return r > l ? r - l : 0; };
@@ -139,38 +147,76 @@ try {
             };
           });
         })()`);
-        const strings = lang === "zh" ? zh : en;
-        for (const c of columns) c.id = idOf(strings, c.label);
-        const region = await evaluate(
-          `(() => { const r = document.querySelector('.process-table-region'); return { scrollWidth: r.scrollWidth, clientWidth: r.clientWidth }; })()`,
-        );
-        report.push({ lang, view, width, region, columns });
-        const name = `columns-${tag}-${lang}-${view}-${width}`;
-        await shot(`${name}.png`);
-        if (region.scrollWidth > region.clientWidth) {
-          await evaluate(
-            "(() => { const r = document.querySelector('.process-table-region'); r.scrollLeft = r.scrollWidth; })()",
+          const strings = lang === "zh" ? zh : en;
+          for (const c of columns) c.id = idOf(strings, c.label);
+          const region = await evaluate(
+            `(() => { const r = document.querySelector('.process-table-region'); return { scrollWidth: r.scrollWidth, clientWidth: r.clientWidth, minWidth: parseFloat(r.querySelector('table').style.width.match(/,\\s*([\\d.]+)px/)[1]) }; })()`,
           );
-          await new Promise((r) => setTimeout(r, 200));
-          await shot(`${name}-right.png`);
-        }
-        for (const c of columns) {
-          const where = `${lang}/${view}/${width} ${c.id}`;
-          if (c.headClipped) problems.push(`${where}: header clipped`);
-          else if (c.headNeed > c.width - 5)
-            problems.push(`${where}: header has under 5 px to spare`);
-          if (!["name", "user", "command"].includes(c.id) && c.truncated.length)
-            problems.push(`${where}: value truncated ${c.truncated[0]}`);
-          if (c.headEdgeOffset)
-            problems.push(
-              `${where}: header text ${c.headEdgeOffset}px off the cell text edge`,
+          // Gap between the last data column's text and the sticky actions
+          // column in every row and the header; negative means it runs under.
+          const actionsGap = () =>
+            evaluate(
+              `(() => { const rows = [...document.querySelectorAll('tbody tr, thead tr')]; return Math.round(Math.min(...rows.map((tr) => { const last = tr.children[tr.children.length - 2]; const ink = [...last.querySelectorAll('svg')].map((e) => e.getBoundingClientRect().right); const w = document.createTreeWalker(last, NodeFilter.SHOW_TEXT); for (let n; (n = w.nextNode());) if (n.textContent.trim()) { const g = document.createRange(); g.selectNodeContents(n); ink.push(g.getBoundingClientRect().right); } return tr.lastElementChild.getBoundingClientRect().left - Math.max(...ink); }))); })()`,
             );
-          if (c.headAlign !== c.cellAlign && c.id !== "actions")
-            problems.push(
-              `${where}: header ${c.headAlign}, cells ${c.cellAlign}`,
+          const fits = region.scrollWidth <= region.clientWidth;
+          const restGap = await actionsGap();
+          const name = `columns-${tag}-${lang}-${view}-${set}-${width}`;
+          await shot(`${name}.png`);
+          let endGap = restGap;
+          if (!fits) {
+            await evaluate(
+              "(() => { const r = document.querySelector('.process-table-region'); r.scrollLeft = r.scrollWidth; })()",
             );
+            await new Promise((r) => setTimeout(r, 200));
+            endGap = await actionsGap();
+            await shot(`${name}-right.png`);
+          }
+          report.push({
+            lang,
+            view,
+            set,
+            width,
+            region,
+            restGap,
+            endGap,
+            columns,
+          });
+          const at = `${lang}/${view}/${set}/${width}`;
+          if (endGap < 8)
+            problems.push(
+              `${at}: last column text ${endGap}px from the actions column`,
+            );
+          if (!fits && region.clientWidth >= region.minWidth)
+            problems.push(
+              `${at}: scrolls sideways though ${region.clientWidth}px fits the ${region.minWidth}px minimum`,
+            );
+          for (const c of columns) {
+            const where = `${at} ${c.id}`;
+            if (c.headClipped) problems.push(`${where}: header clipped`);
+            else if (c.headNeed > c.width - 5)
+              problems.push(`${where}: header has under 5 px to spare`);
+            if (
+              !["name", "user", "command", "actions"].includes(c.id) &&
+              c.valueNeed > c.width - 5
+            )
+              problems.push(
+                `${where}: longest value ${c.longest} needs ${c.valueNeed}px of ${c.width}`,
+              );
+            if (
+              !["name", "user", "command"].includes(c.id) &&
+              c.truncated.length
+            )
+              problems.push(`${where}: value truncated ${c.truncated[0]}`);
+            if (c.headEdgeOffset)
+              problems.push(
+                `${where}: header text ${c.headEdgeOffset}px off the cell text edge`,
+              );
+            if (c.headAlign !== c.cellAlign && c.id !== "actions")
+              problems.push(
+                `${where}: header ${c.headAlign}, cells ${c.cellAlign}`,
+              );
+          }
         }
-      }
   writeFileSync(`${out}/columns-${tag}.json`, JSON.stringify(report, null, 2));
   ws.close();
 } finally {
@@ -192,7 +238,11 @@ for (const r of report)
   }
 console.table(Object.values(need));
 const flat = report.find(
-  (r) => r.lang === "en" && r.view === "flat" && r.width === 1024,
+  (r) =>
+    r.lang === "en" &&
+    r.view === "flat" &&
+    r.set === "wide" &&
+    r.width === 1024,
 );
 console.table(
   flat.columns.map(({ id, width, headAlign, cellAlign, longest }) => ({
@@ -205,11 +255,11 @@ console.table(
 );
 for (const r of report)
   console.log(
-    `${r.lang}/${r.view}/${r.width}: scroll ${r.region.scrollWidth}/${r.region.clientWidth}, need ${r.columns.map((c) => `${c.id}=${c.width}/${Math.max(c.headNeed ?? 0, c.valueNeed)}`).join(" ")}`,
+    `${r.lang}/${r.view}/${r.set}/${r.width}: scroll ${r.region.scrollWidth}/${r.region.clientWidth} (min ${r.region.minWidth}), actions gap ${r.restGap} at rest, ${r.endGap} at the end, need ${r.columns.map((c) => `${c.id}=${c.width}/${Math.max(c.headNeed ?? 0, c.valueNeed)}`).join(" ")}`,
   );
 console.log(
   problems.length
     ? `FAIL\n${problems.join("\n")}`
-    : "PASS: no clipped header, no truncated value, header and cells share alignment",
+    : "PASS: no clipped header, no truncated value, header and cells share alignment, nothing runs under the actions column",
 );
 process.exitCode = problems.length ? 1 : 0;

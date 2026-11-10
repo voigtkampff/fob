@@ -86,6 +86,8 @@ export let column_definitions: Column[] = [
     label: "Run Time",
     visible: true,
     numeric: true,
-    format: (v, t) => formatHms(v, t), // v: seconds the process has run
+    // v: seconds the process has run. Both languages show "4h 18m 25s":
+    // shorter than 时分秒 and the same width, so one column width fits both.
+    format: (v) => formatHms(v),
   },
 ];

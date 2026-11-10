@@ -4,6 +4,7 @@
 
 - Processes columns that show the same kind of value now have the same width: IDs, percentages, speeds, sizes and times each share one width
 - Column headers fit with their sort arrow and line up with the values below them, including GPU %, 硬盘读取 / 硬盘写入 (Disk read / Disk write), 专用显存 (Dedicated VRAM), 父进程 PID (Parent PID), 用户 (User) and 进程族 CPU (Family CPU) in tree view
+- Run time no longer runs into the actions buttons: when the window is a little narrower than the table, the process name column narrows instead of the table scrolling the end of 运行时长 (Run Time) under the buttons, and 运行时长 now reads like 0h 37m 45s in Chinese too, the same as in English
 - Checked in a browser preview at 1024 and 1600 px wide in Chinese and English; a check on Windows at 125% and 150% display scaling is still pending
 - The bundled sensor helper is unchanged at 0.8.2
 

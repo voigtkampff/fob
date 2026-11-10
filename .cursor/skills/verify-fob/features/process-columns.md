@@ -30,11 +30,23 @@ parsing. None of this shows Windows PDH or GetProcessIoCounters at runtime.
 node .cursor/skills/verify-fob/bin/process-column-widths.mjs /workspace/scratch/verify/evidence after
 ```
 
-Renders every column from a full tree view plus a row with the longest value
-each column shows (`100.0%`, `24575.9 MB`, `1024 KB/s`, `1023.9 GB`,
-`9999h 59m 59s`, a 7-digit PID), in zh and en, flat and tree, at 1024 and
-1600 px. It fails when a header is clipped or has under 5 px to spare, a
-number is truncated, or a header's text edge is off its cells' text edge.
-It writes `columns-<tag>-*.png` and `columns-<tag>.json` with each column's
-width, header need and value need. `scripts/process-columns.test.mjs` pins
-one width per value kind (id, percent, rate, bytes, duration).
+Renders the default columns and every column from a full tree view, with a
+row of the longest value each column shows (`100.0%`, `24575.9 MB`,
+`1024 KB/s`, `1023.9 GB`, a 7-digit PID) and run times from `0h 37m 45s` to
+`9999h 59m 59s`, in zh and en, flat and tree, at 1024, 1280, 1400, 1480,
+1536, 1600 and 1920 px (1920, 1536 and 1280 are a 1920 px screen at 100%,
+125% and 150% scaling). It fails when a header is clipped or has under 5 px
+to spare, a number is truncated or needs more than its width minus 5 px, a
+header's text edge is off its cells' text edge, the last column's text comes
+within 8 px of the sticky actions column (at rest when the table fits,
+scrolled to the end when it does not), or the table scrolls sideways while
+the window is at least its minimum width. The name column has no fixed
+width: it takes the space left and narrows to 200 px (280 px in tree view)
+before the table scrolls.
+It writes `columns-<tag>-<lang>-<view>-<set>-<width>[-right].png` and
+`columns-<tag>.json` with each column's width, header need and value need,
+the table's minimum width and the gap to the actions column.
+`scripts/process-columns.test.mjs` pins one width per value kind (id,
+percent, rate, bytes, duration), the run time format (`7h 6m 32s` in both
+languages) against Consolas and Liberation Mono widths, and the table's
+minimum width.

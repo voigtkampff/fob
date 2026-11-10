@@ -15,7 +15,9 @@
   ><Table.Row class="hover:bg-transparent"
     >{#each columns.filter((c) => c.visible) as column}<Table.Head
         class={`${column.numeric ? "text-right" : ""} ${treeView && column.id === "name" ? "tree-name" : ""} ${column.id === "name" ? "pl-4" : ""}`}
-        style={`width:${columnWidth(column.id, treeView)}px`}
+        style={column.id === "name"
+          ? undefined
+          : `width:${columnWidth(column.id, treeView)}px`}
         aria-sort={sortConfig.field === column.id
           ? sortConfig.direction === "asc"
             ? "ascending"
