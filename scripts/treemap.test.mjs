@@ -108,7 +108,10 @@ test("blocks: large items kept, the rest folded into one block", () => {
   const capped = blocks(folder, { area: 1e12, maxItems: 1 });
   assert.equal(capped.length, 2);
   assert.equal(capped[1].size, 400);
-  assert.deepEqual(blocks({ n: "empty", s: 0, f: 0, d: true }, { area: 1e4 }), []);
+  assert.deepEqual(
+    blocks({ n: "empty", s: 0, f: 0, d: true }, { area: 1e4 }),
+    [],
+  );
 });
 
 test("paths, drill-down lookup and file types", () => {
