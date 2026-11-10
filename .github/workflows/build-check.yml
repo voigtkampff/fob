@@ -4,7 +4,6 @@ on:
   pull_request:
   push:
     branches: [main]
-    tags: ["v*"]
   workflow_dispatch:
   workflow_call:
     inputs:
@@ -60,8 +59,9 @@ jobs:
   build:
     name: Package (${{ matrix.platform }})
     needs: quality
-    # Packages build only for version tags and manual runs.
-    if: github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/tags/v')
+    # Packages build only for manual runs and for release.yml, which calls
+    # this workflow on v* tags with release: true.
+    if: inputs.release || github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/tags/v')
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 60
     strategy:
