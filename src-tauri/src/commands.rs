@@ -102,3 +102,16 @@ pub async fn get_process_icons(
     .await
     .map_err(|e| e.to_string())?
 }
+
+/// Physical disk health for the Disk detail. Cached for five minutes; one
+/// scan at a time.
+#[tauri::command]
+pub async fn disk_health(
+    state: State<'_, crate::disk_health::DiskHealthState>,
+) -> Result<crate::disk_health::Report, String> {
+    use crate::disk_health::{scan, TTL, WAIT};
+    let state = state.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || state.get(TTL, WAIT, scan))
+        .await
+        .map_err(|e| e.to_string())
+}

@@ -9,6 +9,7 @@ mod boot;
 mod commands;
 mod companion;
 mod desktop;
+mod disk_health;
 mod gpu;
 mod hotkey;
 mod i18n;
@@ -70,6 +71,7 @@ fn main() {
         .manage(hotkey::HotkeyState::default())
         .manage(AppState::new())
         .manage(space::SpaceState::default())
+        .manage(disk_health::DiskHealthState::default())
         .manage(preferences::Preferences::default())
         .manage(desktop::DesktopState::default())
         .manage(overlay::Shared::default())
@@ -101,6 +103,7 @@ fn main() {
             companion::quit_app,
             sensors::setup::sensor_setup_status,
             sensors::setup::sensor_setup,
+            commands::disk_health,
             space::space_drives,
             space::space_scan,
             space::space_stop,
