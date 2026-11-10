@@ -4,7 +4,13 @@ import { readFile } from "node:fs/promises";
 import ts from "typescript";
 import { en, zh } from "../src/lib/i18n/strings.js";
 import defaults from "../src/lib/definitions/default-config.json" with { type: "json" };
-import { columnKinds, columnWidth } from "../src/lib/utils/table-layout.js";
+import {
+  actionsWidth,
+  columnKinds,
+  columnWidth,
+  nameMinWidth,
+  tableWidth,
+} from "../src/lib/utils/table-layout.js";
 
 async function load(path, replace = {}) {
   let source = await readFile(new URL(path, import.meta.url), "utf8");
@@ -100,6 +106,47 @@ test("number and id columns take one width per kind of value", () => {
   assert.equal(columnWidth("gpu_usage"), columnWidth("cpu_usage"));
   assert.equal(columnWidth("gpu_memory"), columnWidth("memory_usage"));
   assert.equal(columnWidth("disk_write"), columnWidth("disk_read"));
+});
+
+const zhT = (key, vars = {}) =>
+  zh[key].replace(/\{(\w+)\}/g, (_, name) => String(vars[name]));
+// 12 px text: Consolas (Windows) is 0.55 em per character, Liberation Mono
+// (the Linux preview) 0.6 em, plus 8 px cell padding each side.
+const monoWidth = (text, em) => text.length * 12 * em + 16;
+
+test("run time reads 0h 37m 45s in both languages and fits its column", () => {
+  const runTime = column("run_time").format;
+  assert.equal(runTime(37 * 60 + 45, zhT), "0h 37m 45s");
+  assert.equal(runTime(7 * 3600 + 6 * 60 + 32, zhT), "7h 6m 32s");
+  assert.equal(runTime(7 * 3600 + 6 * 60 + 32), "7h 6m 32s");
+  assert.equal(zhT("dur.hms", { h: 7, m: 6, s: 32 }), "7时6分32秒");
+  // A year of uptime, and 416 days as the widest value the preview checks.
+  for (const seconds of [8760 * 3600 + 3599, 9999 * 3600 + 3599])
+    for (const em of [0.55, 0.6])
+      assert.ok(
+        monoWidth(runTime(seconds, zhT), em) <= columnWidth("run_time") - 5,
+        `${runTime(seconds, zhT)} at ${em} em`,
+      );
+});
+
+test("the name column gives way before the table scrolls under the actions column", () => {
+  const visible = Object.entries(defaults.appearance.columnVisibility).map(
+    ([id, visible]) => ({ id, visible }),
+  );
+  for (const tree of [false, true]) {
+    const others = visible
+      .filter((c) => c.visible && c.id !== "name")
+      .reduce((sum, c) => sum + columnWidth(c.id, tree), 0);
+    assert.equal(columnWidth("name", tree), nameMinWidth(tree));
+    assert.equal(
+      tableWidth(visible, tree),
+      actionsWidth + others + nameMinWidth(tree),
+    );
+    // The default columns fit a 1920 px screen at 100% and 125% scaling.
+    assert.ok(tableWidth(visible, tree) <= 1920 / 1.25, `tree ${tree}`);
+  }
+  assert.equal(tableWidth(visible), 1367);
+  assert.equal(tableWidth(visible, true), 1447);
 });
 
 test("column labels say 硬盘 and Disk in both languages", () => {

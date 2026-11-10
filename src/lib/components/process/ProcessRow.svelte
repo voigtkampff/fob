@@ -21,7 +21,7 @@
 
 <Table.Row data-pinned={isPinned} data-high-usage={isHighUsage}
   >{#each columns.filter((c) => c.visible) as column}<Table.Cell
-      class={`${column.numeric ? "text-right font-mono text-xs" : ""} ${column.id === "name" ? "pl-4" : ""} ${tree && column.id === "name" ? "tree-name" : ""}`}
+      class={`${column.numeric ? "text-right font-mono text-xs" : ""} ${column.id === "name" ? "overflow-hidden pl-4" : ""} ${tree && column.id === "name" ? "tree-name" : ""}`}
       ><div
         class={column.id === "name" ? "" : "max-w-72 truncate"}
         title={column.id === "name"

@@ -67,7 +67,8 @@ export function formatDuration(seconds, t = tEn) {
   return t("dur.minutes", { m });
 }
 
-/** A process run time: "4h 18m 25s" / "4时18分25秒".
+/** A process run time: "4h 18m 25s" / "4时18分25秒". The process table
+ * passes no `t`, so its run-time column reads "4h 18m 25s" in both languages.
  * @param {number} seconds
  * @param {Translate} [t]
  */
