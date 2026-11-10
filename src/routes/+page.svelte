@@ -18,7 +18,7 @@
   import SpacePage from "$lib/components/space/SpacePage.svelte";
   import type { DetailKind } from "$lib/components/dashboard/detail";
   import { listen, type UnlistenFn } from "@tauri-apps/api/event";
-  import { onMount, onDestroy } from "svelte";
+  import { onMount, onDestroy, tick } from "svelte";
   import {
     debounce,
     filterProcesses,
@@ -81,6 +81,13 @@
   // hotkey, double-click) brings it back there ("open-page").
   let tab: "dashboard" | "processes" | "space" = "processes";
   let detail: DetailKind | null = null;
+  /** The storage panel's health link: the Disk detail, focused on health. */
+  async function openDiskHealth() {
+    tab = "dashboard";
+    detail = "disk";
+    await tick();
+    document.getElementById("disk-health-title")?.focus();
+  }
 
   function setProcessView(view: "flat" | "tree") {
     settingsStore.updateConfig({
@@ -379,6 +386,7 @@
             started={$processStore.extra?.started ?? null}
             sources={$processStore.extra?.sensors?.sources ?? []}
             onOpenSpace={() => (tab = "space")}
+            onOpenDiskHealth={openDiskHealth}
           />
         {/if}
 

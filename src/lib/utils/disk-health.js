@@ -1,5 +1,20 @@
 /** @typedef {import("$lib/types").PhysicalDisk} PhysicalDisk */
 
+/** Bus names that read the same in every language; others go through i18n
+ * (`dh.bus.*`). */
+export const BUS_NAMES = /** @type {Record<string, string>} */ ({
+  nvme: "NVMe",
+  sata: "SATA",
+  ata: "ATA",
+  atapi: "ATAPI",
+  usb: "USB",
+  raid: "RAID",
+  scsi: "SCSI",
+  sas: "SAS",
+  sd: "SD",
+  mmc: "MMC",
+});
+
 /** NVMe counts data in decimal units, so sizes here are decimal too.
  * @param {number} bytes */
 export function formatDecimalBytes(bytes) {
@@ -52,4 +67,52 @@ export function diskAlert(disk) {
     disk.windows.health === "unhealthy" ||
     disk.windows.operational.some(operationalBad)
   );
+}
+
+export const REFRESH_MS = 5 * 60 * 1000;
+export const PENDING_RETRY_MS = 10 * 1000;
+
+/** @typedef {{ kind: "loading" } | { kind: "failed", message: string } | import("$lib/types").DiskHealthReport} DiskHealthView */
+
+/** Asks for the disk health report now, every 5 minutes, and once more 10 s
+ * after a pending reply, until the returned stop function runs. One request
+ * at a time; the backend's 5 minute cache serves every open view.
+ * @param {() => Promise<import("$lib/types").DiskHealthReport>} request
+ * @param {(view: DiskHealthView, pending: boolean) => void} onChange
+ * @returns {() => void} stop */
+export function watchDiskHealth(request, onChange) {
+  /** @type {DiskHealthView} */
+  let view = { kind: "loading" };
+  let live = true;
+  let busy = false;
+  /** @type {ReturnType<typeof setTimeout> | undefined} */
+  let retry;
+  const load = async () => {
+    if (busy || !live) return;
+    busy = true;
+    try {
+      const report = await request();
+      if (!live) return;
+      const pending = report.kind === "pending";
+      if (!pending || view.kind === "loading") view = report;
+      clearTimeout(retry);
+      if (pending) retry = setTimeout(load, PENDING_RETRY_MS);
+      onChange(view, pending);
+    } catch (e) {
+      if (live) {
+        view = { kind: "failed", message: String(e) };
+        onChange(view, false);
+      }
+    } finally {
+      busy = false;
+    }
+  };
+  onChange(view, false);
+  void load();
+  const timer = setInterval(load, REFRESH_MS);
+  return () => {
+    live = false;
+    clearInterval(timer);
+    clearTimeout(retry);
+  };
 }

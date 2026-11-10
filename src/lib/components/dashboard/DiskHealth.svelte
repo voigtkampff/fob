@@ -4,65 +4,30 @@
   import { invoke } from "@tauri-apps/api/core";
   import type { DiskHealthReport, PhysicalDisk } from "$lib/types";
   import {
+    BUS_NAMES,
     diskAlert,
     driveWarnings,
     formatCount,
     formatDecimalBytes,
     operationalBad,
+    watchDiskHealth,
+    type DiskHealthView,
   } from "$lib/utils/disk-health.js";
   import { t } from "$lib/i18n";
 
-  const REFRESH_MS = 5 * 60 * 1000;
-  const PENDING_RETRY_MS = 10 * 1000;
-
-  type View =
-    | { kind: "loading" }
-    | { kind: "failed"; message: string }
-    | DiskHealthReport;
-  let view = $state<View>({ kind: "loading" });
+  let view = $state<DiskHealthView>({ kind: "loading" });
   let pending = $state(false);
+  $effect(() =>
+    watchDiskHealth(
+      () => invoke<DiskHealthReport>("disk_health"),
+      (next, refreshing) => {
+        view = next;
+        pending = refreshing;
+      },
+    ),
+  );
 
-  $effect(() => {
-    let live = true;
-    let busy = false;
-    let retry: ReturnType<typeof setTimeout> | undefined;
-    const load = async () => {
-      if (busy) return;
-      busy = true;
-      try {
-        const report = await invoke<DiskHealthReport>("disk_health");
-        if (!live) return;
-        pending = report.kind === "pending";
-        if (report.kind !== "pending" || view.kind === "loading") view = report;
-        if (pending) retry = setTimeout(load, PENDING_RETRY_MS);
-      } catch (e) {
-        if (live) view = { kind: "failed", message: String(e) };
-      } finally {
-        busy = false;
-      }
-    };
-    load();
-    const timer = setInterval(load, REFRESH_MS);
-    return () => {
-      live = false;
-      clearInterval(timer);
-      clearTimeout(retry);
-    };
-  });
-
-  const BUS: Record<string, string> = {
-    nvme: "NVMe",
-    sata: "SATA",
-    ata: "ATA",
-    atapi: "ATAPI",
-    usb: "USB",
-    raid: "RAID",
-    scsi: "SCSI",
-    sas: "SAS",
-    sd: "SD",
-    mmc: "MMC",
-  };
-  const bus = (d: PhysicalDisk) => BUS[d.bus] ?? $t(`dh.bus.${d.bus}`);
+  const bus = (d: PhysicalDisk) => BUS_NAMES[d.bus] ?? $t(`dh.bus.${d.bus}`);
   const diskName = (d: PhysicalDisk) =>
     d.number == null ? $t("dh.diskNoNumber") : $t("dh.disk", { n: d.number });
   const time = (ms: number) =>
@@ -72,7 +37,9 @@
 
 <div class="panel health">
   <div class="row">
-    <span class="name strong">{$t("dh.title")}</span>
+    <h3 id="disk-health-title" tabindex="-1" class="name strong">
+      {$t("dh.title")}
+    </h3>
     {#if pending}<span class="muted small">{$t("dh.pending")}</span>{/if}
   </div>
   {#if view.kind === "loading" || view.kind === "pending"}
@@ -199,6 +166,11 @@
     justify-content: space-between;
     gap: 10px;
     min-width: 0;
+  }
+  h3 {
+    margin: 0;
+    font-size: inherit;
+    outline: none;
   }
   .strong {
     font-weight: 600;
