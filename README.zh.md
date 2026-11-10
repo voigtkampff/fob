@@ -1,3 +1,5 @@
+[English](README.md) | 中文
+
 # Fob
 
 Fob 是面向 Windows 10 和 11（x64）的性能监视器。它是 Abdenasser 的

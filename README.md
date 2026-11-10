@@ -1,3 +1,5 @@
+English | [中文](README.zh.md)
+
 # Fob
 
 Fob is a performance monitor for Windows 10 and 11 (x64). It is a fork of
