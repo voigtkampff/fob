@@ -15,8 +15,6 @@ on:
       zip_sha256:
         description: Expected SHA256 of the Fob zip inside the artifact
         required: true
-  push:
-    branches: [ci/windows-package-smoke]
 
 permissions:
   contents: read
@@ -24,17 +22,13 @@ permissions:
 
 jobs:
   smoke:
-    name: Smoke (${{ matrix.target.name }})
+    name: Smoke
     runs-on: windows-2022
     timeout-minutes: 20
-    strategy:
-      fail-fast: false
-      matrix:
-        target: ${{ fromJSON(github.event_name == 'push' && '[{"name":"0.8.6 release","run":"42834478618","sha":"71d89a29a34956fc997c0c9b4c8312e2d423d0a4","zip":"ade6e4cabd532ed8092fc48a2d27f8256e62d128509e4f470c64cba17c9ee46d"},{"name":"0.8.7 SATA test","run":"42894650101","sha":"2f612e5a6fe6e17ed86df892d09ade037a19396d","zip":"6dc64702e524322e3bc00950e96f96a4c5ceb65e13444bffe968d15dbf2fb671"}]' || '[{"name":"dispatch"}]') }}
     env:
-      RUN_ID: ${{ inputs.run_id || matrix.target.run }}
-      SOURCE_SHA: ${{ inputs.source_sha || matrix.target.sha }}
-      ZIP_SHA256: ${{ inputs.zip_sha256 || matrix.target.zip }}
+      RUN_ID: ${{ inputs.run_id }}
+      SOURCE_SHA: ${{ inputs.source_sha }}
+      ZIP_SHA256: ${{ inputs.zip_sha256 }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -57,6 +51,6 @@ jobs:
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: package-smoke-${{ strategy.job-index }}
+          name: package-smoke-${{ inputs.run_id }}
           path: ${{ runner.temp }}/evidence
           if-no-files-found: warn
