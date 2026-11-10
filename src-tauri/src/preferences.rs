@@ -289,11 +289,31 @@ pub fn startup(app: &AppHandle) -> Startup {
 #[cfg(test)]
 mod tests {
     use super::*;
+    /// The source without its `#[cfg(test)]` items. rustfmt puts the end of
+    /// a top-level item at column 0, which is where each one stops.
+    fn production_code(src: &str) -> String {
+        let mut code = String::new();
+        let mut in_test = false;
+        for line in src.lines() {
+            if line == "#[cfg(test)]" {
+                in_test = true;
+            } else if !in_test {
+                code.push_str(line);
+                code.push('\n');
+            } else if line == "}" || (!line.starts_with([' ', '#']) && line.ends_with(';')) {
+                in_test = false;
+            }
+        }
+        code
+    }
+
     /// Bundle identifiers look like com.vendor.app. The only one allowed
-    /// in these sources is the current identifier, so a retired folder
-    /// cannot return.
-    fn unexpected_app_identifiers(src: &str) -> Vec<&str> {
+    /// in production code is the current identifier, so a retired folder
+    /// cannot return. Test examples do not create folders, so they are skipped.
+    fn unexpected_app_identifiers(src: &str) -> Vec<String> {
         const CURRENT: &str = "com.hcb.fob";
+        let src = production_code(src);
+        let src = src.as_str();
         let mut found = Vec::new();
         let mut from = 0;
         while let Some(rel) = src[from..].find("com.") {
@@ -321,11 +341,24 @@ mod tests {
             }
             let token = &src[start..end];
             if token != CURRENT {
-                found.push(token);
+                found.push(token.to_string());
             }
             from = end;
         }
         found
+    }
+
+    #[test]
+    fn the_identifier_guard_skips_only_test_items() {
+        let src = "fn a() {\n    \"com.old.app\";\n}\n#[cfg(test)]\nmod tests {\n    \"com.vendor.app\";\n}\n#[cfg(test)]\nconst X: &str = \"com.fixture.app\";\nfn b() {\n    \"com.hcb.fob\";\n    \"com.other.app\";\n}\n";
+        assert_eq!(
+            unexpected_app_identifiers(src),
+            ["com.old.app", "com.other.app"]
+        );
+        assert_eq!(
+            unexpected_app_identifiers(&src.replace('\n', "\r\n")),
+            ["com.old.app", "com.other.app"]
+        );
     }
 
     #[test]
