@@ -1,242 +1,267 @@
 # Fob
 
-Fob (formerly winperf) is a Windows performance monitor (target: Windows 10/11
-x64), built as a fork of [NeoHtop](https://github.com/Abdenasser/neohtop) by
-Abdenasser (MIT, see [LICENSE](LICENSE)). Fob adds a card dashboard on top of
-NeoHtop's process monitor; everything else is NeoHtop's work. The original
-NeoHtop README follows below the line. The repository and the Rust crate keep
-the old name `winperf`; everything shipped is called Fob (`fob.exe`,
-`fob-sensors.exe`).
+Fob is a performance monitor for Windows 10 and 11 (x64). It is a fork of
+[NeoHtop](https://github.com/Abdenasser/neohtop) by Abdenasser (MIT, see
+[LICENSE](LICENSE)). Fob adds a card dashboard, a tray mini window, a status
+bar overlay, a disk space map, and an optional sensor helper on top of
+NeoHtop's process monitor.
 
-- Branch `main` tracks NeoHtop's `main` (remote `upstream`, fetch only), so
-  upstream changes can be merged in with `git fetch upstream && git merge upstream/main`.
-- Branch `master` holds the original winperf CLI bootstrap; `egui-wip` the stopped egui attempt.
+Fob was called winperf before. The Rust crate and some internal names still
+use `winperf`. Everything that ships is called Fob: `fob.exe`,
+`fob-sensors.exe`, and `fob-mft.exe`.
 
-## What Fob adds
+Current version: 0.8.4 (see [CHANGELOG.md](CHANGELOG.md)). This repository
+has no published GitHub releases. To get a package, build it from source as
+described in [Build the Windows package](#build-the-windows-package).
 
-- **Dashboard tab (default):** card panel with CPU (% + per-core bars, split into P-cores and E-cores on
-  hybrid CPUs from the Windows efficiency class), GPU
-  (% from the Windows PDH counter `\GPU Engine(*)\Utilization Percentage`,
-  per adapter, busiest engine like Task Manager; NVIDIA also via NVML), memory,
-  free space on the system drive, network down/up with a 2-minute graph, and the
-  top 5 processes by memory. NeoHtop's process table is the **Processes** tab.
-- **Tray mini window:** left-click the tray icon for a 360 px panel with the
-  same cards, sized to its content, hidden on focus loss or Esc. Starts in the
-  tray by default; closing the main window keeps Fob in the tray; Quit is in the
-  tray menu. No native menu bar: settings, About and Quit are in the title-bar
-  menu (Ctrl+, opens settings).
-- **Detail views:** click a card for per-thread CPU and top processes,
-  per-engine GPU and top GPU processes, memory with commit charge, all drives,
-  per-app network speeds and adapters, and all temperature/fan sensors.
-- **Chinese and English (v0.5):** follows the Windows display language;
-  switch in Settings or the tray menu.
-- **Sensor helper (v0.4/v0.5):** an optional, read-only helper
-  (`sensors-helper/`, .NET Framework 4.7.2 + LibreHardwareMonitorLib 0.9.6)
-  serves temperatures, fan speeds and, while Fob is connected, per-process
-  network bytes from an ETW session (Microsoft-Windows-Kernel-Network) on the
-  named pipe `\\.\pipe\fob-sensors`. "Enable fan/temperature" explains the
-  steps first, then one UAC prompt installs the bundled signed PawnIO driver if
-  missing (its own installer window), copies the helper to
-  `%ProgramFiles%\Fob\sensors` (files checked against SHA-256 hashes compiled
-  into fob.exe) and registers the `fob-sensors` logon task through the Task
-  Scheduler API. Fob itself stays unelevated; "Disable" removes task and
-  helper. Nothing is faked.
-- **No telemetry:** NeoHtop's usage analytics were removed.
-- Not done: battery, health score, speed test.
+> Screenshots: to be added. The `screenshot.png`, `screenshot-light.png`,
+> and `docs/screenshots/` images in this repository show NeoHtop, not Fob.
 
-## Build the Windows package (cross-compiled on Linux)
+## What Fob shows
 
-`scripts/package-windows.sh` builds the sensor helper (`sensors-helper/build.sh`,
-needs a .NET 8 SDK; runs the wire-format test), the frontend and the exe, and
-writes `dist/fob-v<version>-x86_64-windows.zip` (portable folder: `fob.exe`,
-`sensors/`, `PawnIO/`, `licenses/`, `SHA256SUMS.txt`).
+The main window has three tabs: **Dashboard**, **Processes**, and
+**Space map**.
 
-## Build the Windows exe (cross-compiled on Linux)
+- **Dashboard.** Cards for CPU, GPU, memory, free space on the system drive,
+  network, temperatures and fans, and the top processes by memory. Click a
+  card to open its detail view:
+  - CPU: per-thread load and top processes.
+  - GPU: per-engine load and top GPU processes.
+  - Memory: usage with commit charge.
+  - Drives: all drives.
+  - Network: per-app speeds and adapters.
+  - Temperatures & fans: all sensors.
+- **CPU core groups (0.8.4).** On hybrid CPUs, the CPU views split the load
+  into performance and efficiency cores, from the efficiency class that
+  Windows reports for each core. Intel CPUs show P-cores and E-cores. AMD and
+  other vendors show Performance cores and Efficiency cores. Each group is
+  the average of its own threads, so a group never goes past 100%. CPUs with
+  one kind of core look as before.
+- **GPU load.** Fob reads the Windows PDH counter
+  `\GPU Engine(*)\Utilization Percentage` per adapter and shows the busiest
+  engine, as Task Manager does. NVIDIA cards are also read through NVML.
+- **Processes.** NeoHtop's process table, with columns for **Disk read**
+  and **Disk write** in bytes per second, **GPU %**, and an optional
+  **Dedicated VRAM** column (0.8.3). A dash means that Fob has no reading.
+  It never means 0. See [docs/process-disk-gpu.md](docs/process-disk-gpu.md)
+  for the sources and limits of each column.
+- **Space map.** A treemap of what fills a drive. Choose a drive and press
+  **Scan**. Click a folder to open it. Right-click an item and choose
+  **Show in File Explorer**. Alt+Left and Alt+Right go back and forward.
+  Fob scans a drive only when you press **Scan**.
+- **Tray mini window.** Left-click the tray icon to open a 360 px panel with
+  the same cards. It hides when it loses focus or when you press Esc, unless
+  you pin it. Drag it by its title bar to move it. Double-click the title bar
+  to put it back by the tray.
+- **Status bar.** An always-on-top row of readings, off by default. Clicks
+  pass through it. Hold Ctrl to drag it. You choose the readings and their
+  order, dock it at the top, at the bottom, or anywhere, and set its opacity
+  and theme. It does not hook into games, so it cannot show FPS.
+- **Global hotkeys.** You can set separate hotkeys to show or hide the mini
+  window, the status bar, and the full window. All three are off until you
+  set them, and each needs Ctrl, Alt, or Win.
+- **Chinese and English.** Fob follows the Windows display language. You can
+  change it in Settings or in the tray menu.
+- **No telemetry.** NeoHtop's usage reporting was removed. Fob sends nothing
+  about your system off your machine.
 
-Same approach as tower-rs: plain `cargo xwin build` of the Tauri crate, no
-installer, one standalone exe that uses the WebView2 runtime shipped with
-Windows 10/11. The VC runtime and WebView2Loader are linked statically
-(`.cargo/config.toml` sets `STATIC_VCRUNTIME`).
+Not done: battery, health score, and speed test.
+
+## Run Fob
+
+Fob is a portable folder. It has no installer.
+
+1. Extract `fob-v<version>-x86_64-windows.zip`.
+2. Keep the `sensors` and `PawnIO` folders next to `fob.exe`.
+3. Run `fob.exe`.
+
+By default Fob starts in the tray. Closing the main window keeps Fob running
+in the tray. To quit, use **Quit** in the tray menu. Fob has no native menu
+bar. Settings, About, and Quit are in the title-bar menu. Ctrl+, opens
+Settings.
+
+`fob.exe` uses the WebView2 runtime that ships with Windows 10 and 11. It
+runs with normal user rights.
+
+## Turn on temperature, fan, and per-app network readings
+
+Without the sensor helper, only NVIDIA graphics cards report temperature and
+fan speed. The optional, read-only sensor helper adds CPU and motherboard
+sensors, per-app network speeds, and MFT scans for Space map without
+elevating Fob.
+
+To install it, click **Enable full temperature monitoring** on the
+**Temp & fan** card, or open **Settings › General › Sensor helper** and
+click **Install**. Fob lists the steps first. Nothing installs until you
+press **Continue** and approve one Windows permission (UAC) prompt. Then
+Fob does the following:
+
+1. Installs the PawnIO driver (v2.2.0, signed by namazso), only if it is
+   missing. PawnIO opens its own installer window.
+2. Copies the helper to `C:\Program Files\Fob\sensors`. Fob checks each file
+   against SHA-256 hashes compiled into `fob.exe` before it copies them.
+3. Creates the scheduled task `fob-sensors` through the Task Scheduler API.
+   The task starts the helper as administrator now and each time you sign
+   in, without asking again.
+
+`fob.exe` itself stays unelevated. The helper serves sensor readings on the
+named pipe `\\.\pipe\fob-sensors`. It reads temperatures and fan speeds with
+LibreHardwareMonitorLib 0.9.6. It never changes fan speeds.
+
+**Settings › General › Sensor helper** shows the installed and bundled
+versions and offers **Install**, **Update**, **Repair**, or
+**Refresh status**. **Refresh status** never asks for permission. To remove
+the helper, choose **Disable…**. It stops the helper and removes it after
+one permission prompt. The PawnIO driver stays installed. Uninstall it in
+Windows Settings if nothing else needs it.
+
+> **Privacy note.** While the helper runs, programs in your Windows user
+> session can query file names, sizes, and folder structure across whole
+> fixed NTFS drives, including folders you cannot open. The helper returns
+> no file contents and makes no writes.
+
+### How Space map scans a drive
+
+1. If the helper is installed and current, the helper reads the NTFS Master
+   File Table (MFT). Scanning never asks for permission.
+2. If the helper is missing, old, or incompatible, Fob reads the MFT
+   directly when Windows allows it.
+3. Otherwise Fob walks the folders.
+
+The result names the method it used, for example **MFT via helper** or
+**Folder scan**. Details: [docs/mft-helper.md](docs/mft-helper.md).
+
+## Settings
+
+Fob saves settings automatically to `settings.json` in its app config
+folder (Tauri app identifier `com.hcb.fob`). The defaults come from
+[src/lib/definitions/default-config.json](src/lib/definitions/default-config.json).
+Change settings in the Settings window. These `behavior` defaults are the
+ones you are most likely to change:
+
+| Key | Default | Meaning |
+| --- | --- | --- |
+| `refreshRate` | `3000` | Refresh interval in milliseconds, for the main window and the mini window |
+| `language` | `"auto"` | `auto` follows Windows |
+| `startInTray` | `true` | Start as a tray icon only |
+| `keepRunning` | `true` | Keep running in the tray when the main window closes |
+| `launchAtLogin` | `false` | Open Fob when you sign in to Windows |
+| `miniOpacity` | `100` | Mini window background opacity, in percent |
+| `overlayEnabled` | `false` | Show the status bar |
+| `overlayMetrics` | `["cpu", "cpuTemp", "gpu", "gpuTemp", "ram", "net"]` | Status bar readings, left to right |
+| `overlayDock` | `"top"` | Status bar position: `top`, `bottom`, or `free` |
+| `overlayOpacity` | `60` | Status bar opacity, in percent |
+| `miniHotkey`, `overlayHotkey`, `mainHotkey` | `""` | Global hotkeys, not set |
+
+The status bar can also show `vram`, `disk`, and `power` (GPU power).
+
+## Build the Windows package
+
+Fob is cross-compiled for Windows on Linux with `cargo xwin`. The build makes
+no installer. It makes one standalone exe. The VC runtime and WebView2Loader
+are linked statically (`.cargo/config.toml` sets `STATIC_VCRUNTIME`).
+
+### Requirements
+
+- Node.js 22 (`.nvmrc`) and npm.
+- Rust 1.88 or newer (`rust-version` in `src-tauri/Cargo.toml`), with
+  `cargo-xwin` and the `x86_64-pc-windows-msvc` target.
+- [llvm-mingw](https://github.com/mstorsjo/llvm-mingw), for `llvm-rc`.
+  Without `llvm-rc`, `fob.exe` is built without its manifest, icon, and
+  version resources, and Windows refuses to start it.
+- A .NET 8 SDK, to build the sensor helper.
+- Python 3 with `pefile` (`pip install pefile`).
+- `curl`, to download the pinned PawnIO installer once.
+
+### Build the full package
 
 ```bash
-export PATH=/workspace/tools/xbin:/workspace/tools/llvm-mingw-20261020-ucrt-ubuntu-22.04-x86_64/bin:$HOME/.cargo/bin:$PATH
-npm ci && npm run build                     # frontend -> build/ (embedded into the exe)
+LLVM_MINGW=/path/to/llvm-mingw DOTNET=/path/to/dotnet scripts/package-windows.sh
+```
+
+`LLVM_MINGW` defaults to
+`/workspace/tools/llvm-mingw-20261020-ucrt-ubuntu-22.04-x86_64`. `DOTNET`
+defaults to `dotnet` on `PATH`, then `/workspace/tools/dotnet/dotnet`.
+
+The script does the following:
+
+1. Builds the sensor helper with `sensors-helper/build.sh`. That script runs
+   the helper's wire-format tests, builds `fob-mft.exe` and
+   `fob-sensors.exe`, downloads and checks `PawnIO_setup.exe`, and writes
+   the hash manifest that `fob.exe` embeds.
+2. Builds the frontend with `npm run build`.
+3. Builds the exe with `cargo xwin build`.
+4. Checks the manifest, version resources, and icon of every exe.
+5. Writes `dist/fob-v<version>-x86_64-windows.zip` and
+   `dist/fob-v<version>-SHA256SUMS.txt`.
+
+The zip contains one folder with `fob.exe`, `sensors/`, `PawnIO/`,
+`licenses/`, `LICENSE.txt`, `README.txt`, and `SHA256SUMS.txt`.
+
+### Build only the exe
+
+```bash
+npm ci && npm run build    # frontend -> build/, embedded into the exe
 cd src-tauri && cargo xwin build --target x86_64-pc-windows-msvc --release
 # -> src-tauri/target/x86_64-pc-windows-msvc/release/winperf.exe (shipped as fob.exe)
 ```
 
-Tests: `cd src-tauri && cargo test` (Linux needs the webkit2gtk-4.1 / gtk3 dev
-packages), `npm run test:dashboard`, `npm run test:i18n`, `npm run check`, and
-the helper's wire test in `sensors-helper/build.sh`.
+Put `llvm-rc` on `PATH` first.
 
----
+### Run the tests
 
-<div align="center">
-  <img src="app-icon.png" alt="NeoHtop ghost" width="96" />
-  <h1>NeoHtop</h1>
-  <p><strong>Your system. In plain sight.</strong></p>
-  <p>A modern, open-source system monitor for macOS, Linux and Windows.<br />Explore processes, understand your graphics card, and keep your whole machine in view.</p>
+| Command | What it covers |
+| --- | --- |
+| `npm run check` | Svelte and type checks |
+| `npm run test:release` | `node --test scripts/*.test.mjs` and the metrics test |
+| `for t in tests/*.mjs; do node "$t" \|\| exit; done` | Frontend scripts: dashboard, i18n, copy, overlay, treemap, and others |
+| `cd src-tauri && cargo test` | Rust backend. On Linux it needs the webkit2gtk-4.1 and gtk3 development packages. |
+| `cargo test --manifest-path tools/monitoring-harness/Cargo.toml` | Monitoring modules, without the GTK and WebKit packages |
+| `cargo test --manifest-path sensors-helper/mft-worker/Cargo.toml` | MFT worker |
+| `npm run format:check` | Prettier and `cargo fmt` |
 
-<a href="https://github.com/Abdenasser/neohtop/releases/latest"><img src="https://img.shields.io/github/v/release/Abdenasser/neohtop?style=flat-square&label=download" alt="Latest release" /></a>
-<a href="https://github.com/Abdenasser/neohtop/actions/workflows/build-check.yml"><img src="https://github.com/Abdenasser/neohtop/actions/workflows/build-check.yml/badge.svg" alt="Cross-platform builds" /></a>
-<a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue?style=flat-square" alt="MIT license" /></a>
-<a href="https://github.com/Abdenasser/neohtop/stargazers"><img src="https://img.shields.io/github/stars/Abdenasser/neohtop?style=flat-square" alt="GitHub stars" /></a>
+`sensors-helper/build.sh` also runs the helper's C# wire tests.
 
-  <p><a href="https://github.com/Abdenasser/neohtop/releases/latest"><strong>Download NeoHtop</strong></a> · <a href="https://abdenasser.github.io/neohtop/">Website</a> · <a href="CHANGELOG.md">What’s new</a> · <a href="docs/screenshots/README.md">Screenshots</a> · <a href="docs/usage.md">Desktop guide</a></p>
-</div>
+## Known limits
 
-<img src="docs/assets/neohtop-desktop.png" alt="NeoHtop in Catppuccin, captured with macOS: CPU, memory and GPU charts, storage, network and processes" width="1280" />
+- Microsoft Defender flagged winperf 0.4.0 as
+  `Behavior:Win32/Execution.A!ml` during sensor setup. Fob 0.5.0 and later
+  changed the setup steps, but the exe is unsigned and still elevates once
+  and registers a logon task. See
+  [docs-fob/defender-false-positive.md](docs-fob/defender-false-positive.md).
+- Per-process **Disk read** and **Disk write** come from
+  `GetProcessIoCounters`. They count every read and write call, including
+  cached reads, so they can exceed what the physical disk did.
+- With the default columns the process table is about 1306 px wide, so the
+  default 1280 px window needs a short horizontal scroll.
+- Some 0.8.x behavior has not yet been checked on Windows: the PDH GPU
+  values per process, and the Settings install, update, and repair flow for
+  the helper. See [docs/process-disk-gpu.md](docs/process-disk-gpu.md) and
+  [docs/helper-settings.md](docs/helper-settings.md).
 
-<p align="center"><sub>Catppuccin, front and center. 23 more themes when you want a change. Free, local, and open source.</sub></p>
+## More documentation
 
-## Meet NeoHtop 1.3
+- [CHANGELOG.md](CHANGELOG.md): Fob releases (0.8.x) and the NeoHtop 1.3.0
+  notes it builds on.
+- [docs/process-disk-gpu.md](docs/process-disk-gpu.md): per-process disk and
+  GPU columns.
+- [docs/helper-settings.md](docs/helper-settings.md): helper controls in
+  Settings.
+- [docs/mft-helper.md](docs/mft-helper.md): MFT scans through the helper,
+  and the security boundary.
+- [tools/fob-perf/README.md](tools/fob-perf/README.md): a read-only tool that
+  samples Fob's CPU and memory use on Windows (in Chinese).
+- [.github/DEVELOPMENT.md](.github/DEVELOPMENT.md): NeoHtop's development
+  and release guide. Its release steps describe NeoHtop's multi-platform
+  workflow, not the Fob package.
 
-A fresh desktop experience with more to explore—from the process holding a port to the GPU doing the work.
+## Credits and license
 
-- **Go beyond a flat process list.** Expand process families, see their combined CPU and RAM, and keep matching children in context while you search.
-- **See your graphics card.** GPU utilization, memory and driver-reported diagnostics sit alongside CPU, RAM, storage, system and network readings.
-- **Keep the essentials in your menu bar.** A compact companion shows live resources and your busiest processes. Jump straight into an inspector without hunting through the table.
-- **Put a name to the process.** Native app icons when the system can provide them; the familiar ghost when it can’t.
-- **Find what owns a port.** Type `:3000` or `port:443`. Socket scans run only when you need them.
-- **Keep the themes you love.** All **24 themes**, rebuilt around consistent shadcn-svelte controls, readable tokens, and a searchable gallery.
+Fob is based on [NeoHtop](https://github.com/Abdenasser/neohtop) by
+Abdenasser and is released under the MIT License. See [LICENSE](LICENSE).
 
-[Read the complete v1.3.0 changelog →](CHANGELOG.md)
-
-<table>
-  <tr>
-    <td width="50%"><img src="docs/screenshots/cpu-details.jpg" alt="CPU details with a utilization chart and per-core activity" /><br /><strong>Go deeper from every resource card.</strong><br /><sub>CPU cores, memory breakdowns, graphics adapters, mounted volumes, system identity and network interfaces.</sub></td>
-    <td width="50%"><img src="docs/screenshots/themes.jpg" alt="Appearance settings showing the light and dark theme gallery" /><br /><strong>Your setup, your atmosphere.</strong><br /><sub>Dark, light, colorful, retro and accessible palettes. The same theme follows you across app windows.</sub></td>
-  </tr>
-</table>
-
-## A whole monitor in your menu bar.
-
-<table>
-  <tr>
-    <td width="40%"><img src="docs/screenshots/menubar-overview-system.png" alt="The NeoHtop ghost in the macOS menu bar with its live overview open" width="400" /></td>
-    <td><h3>Open. Check. Carry on.</h3><p>Your essential readings, without bringing the full app forward.</p><ul><li>CPU, memory, GPU, network and free storage.</li><li>Your five busiest processes, with native icons.</li><li>One click from a process to its inspector.</li><li>Shared pause, sampling interval and theme.</li><li>Optional monitoring after closing the main window.</li></ul><p><a href="docs/usage.md#menu-bar-companion">Explore the companion →</a></p><sub>Real macOS system capture. Also available through the system tray on supported desktops.</sub></td>
-  </tr>
-</table>
-
-## Less hunting. More understanding.
-
-| What you’re looking for           | Where to start                                                                |
-| --------------------------------- | ----------------------------------------------------------------------------- |
-| A process eating CPU or RAM       | Sort the table, filter by usage, pin it, or open its inspector.               |
-| What belongs to an app            | Switch to **Tree** and expand its process family.                             |
-| The server holding your dev port  | Search **`:3000`** or **`port:443`**. A bare number still finds a PID.        |
-| GPU load and memory               | Open **Graphics** from the GPU card; select an adapter on multi-GPU machines. |
-| A sudden resource spike           | Inspect the CPU, memory, GPU or network chart with the pointer or keyboard.   |
-| Traffic on a particular interface | Open **Network**, search interfaces, or include inactive ones.                |
-| A quick check between tasks       | Open the ghost in the **menu bar/system tray**.                               |
-| Your preferred monitoring pace    | Open **Settings → General** and choose a refresh interval.                    |
-
-The charts keep roughly two minutes of history in memory. Pause, inspect and resume from the app bar or companion; both windows share the same sample and monitoring state.
-
-## Download
-
-Official packages are published on [GitHub Releases](https://github.com/Abdenasser/neohtop/releases/latest), with SHA-256 checksums and a build manifest.
-
-| Platform                  | Packages                                                                                                                                                                                                                                                                                                      |
-| ------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **macOS · Apple Silicon** | [DMG](https://github.com/Abdenasser/neohtop/releases/download/v1.3.0/silicon-NeoHtop_1.3.0_aarch64.dmg)                                                                                                                                                                                                       |
-| **macOS · Intel**         | [DMG](https://github.com/Abdenasser/neohtop/releases/download/v1.3.0/intel-NeoHtop_1.3.0_x64.dmg)                                                                                                                                                                                                             |
-| **Windows · x64**         | [Installer](https://github.com/Abdenasser/neohtop/releases/download/v1.3.0/NeoHtop_1.3.0_x64-setup.exe)                                                                                                                                                                                                       |
-| **Linux · x86_64**        | [deb](https://github.com/Abdenasser/neohtop/releases/download/v1.3.0/NeoHtop_1.3.0_x86_64.deb) · [rpm](https://github.com/Abdenasser/neohtop/releases/download/v1.3.0/NeoHtop_1.3.0_x86_64.rpm) · [AppImage](https://github.com/Abdenasser/neohtop/releases/download/v1.3.0/NeoHtop_1.3.0_x86_64.AppImage)    |
-| **Linux · ARM64**         | [deb](https://github.com/Abdenasser/neohtop/releases/download/v1.3.0/NeoHtop_1.3.0_aarch64.deb) · [rpm](https://github.com/Abdenasser/neohtop/releases/download/v1.3.0/NeoHtop_1.3.0_aarch64.rpm) · [AppImage](https://github.com/Abdenasser/neohtop/releases/download/v1.3.0/NeoHtop_1.3.0_aarch64.AppImage) |
-
-[Installation and troubleshooting →](docs/install.md)
-
-<details>
-<summary><strong>Prefer a community package manager?</strong></summary>
-
-Community packages are maintained independently and can update on a different schedule from official releases.
-
-| Platform         | Command                                                                   |
-| ---------------- | ------------------------------------------------------------------------- |
-| Homebrew         | `brew install --cask neohtop`                                             |
-| Arch Linux / AUR | `yay -S neohtop` or `paru -S neohtop`                                     |
-| Fedora / Terra   | `dnf install neohtop` after enabling [Terra](https://terra.fyralabs.com/) |
-| Windows / Scoop  | `scoop bucket add extras`, then `scoop install extras/neohtop`            |
-| Solus            | `eopkg install neohtop`                                                   |
-
-</details>
-
-## A few details worth knowing
-
-<details>
-<summary><strong>Search, filters and process families</strong></summary>
-
-Search names, commands and PIDs. Commas match any term; regular expressions work too: `node, python`, `d$`, or `^kernel`. Use **Filters** to combine CPU, GPU engine activity, RAM, runtime and status conditions. Clear active conditions in one action.
-
-Tree mode keeps parent context around matches and pages whole families together. Process CPU % is a share of all logical processors, like Task Manager (0–100%), so family totals stay within 100%; summed resident RAM can double-count shared pages. List mode keeps individual process readings. **View** controls columns, and the bottom bar controls page size.
-
-</details>
-
-<details>
-<summary><strong>GPU support depends on your platform and driver</strong></summary>
-
-| Platform | Driver sources                                                                  |
-| -------- | ------------------------------------------------------------------------------- |
-| macOS    | IORegistry utilization and available Apple silicon shared-memory/core data.     |
-| Linux    | AMD amdgpu sysfs and NVIDIA NVML; DRM inventory for other adapters.             |
-| Windows  | NVIDIA NVML; DXGI inventory and reported dedicated capacity for other adapters. |
-
-Temperature, power, clock and other counters appear only where exposed. Unsupported or unreadable values stay unavailable. Shared GPU memory on Apple silicon is already part of system RAM.
-
-Optional **GPU %** process columns and filters use **Linux DRM engine accounting**. They need a baseline and can exceed 100% across engines; they are different from the device’s normalized utilization. Collection runs only when the column or filter is enabled. Socket visibility also depends on OS permissions; the app does not request elevation automatically.
-
-</details>
-
-<details>
-<summary><strong>Settings, shortcuts and the menu-bar companion</strong></summary>
-
-- **⌘F / Ctrl+F:** focus process search.
-- **⌘, / Ctrl+,:** open Settings. General holds refresh/tray behavior; Appearance holds themes.
-- **Escape:** clear search when focused, or dismiss an open detail sheet.
-- **Chart arrow keys:** inspect recorded samples.
-
-The companion shows CPU, RAM, GPU, network, free storage and the five busiest processes. Select a process to inspect it in the main app. It stops polling while hidden. On some Linux desktops, use the tray menu’s **Show overview** command or the app-bar button.
-
-Closing the main window quits by default. Enable **Keep running when the window closes** to continue from the tray. Closing Settings/About leaves monitoring running; **Quit NeoHtop** always exits. Preferences save automatically and migrate from existing local settings.
-
-</details>
-
-## Build with us
-
-NeoHtop is built with **Rust + Tauri + Svelte**, with **shadcn-svelte + Tailwind CSS** for shared controls and all 24 original themes. Native process icons use platform providers, with Lucide for interface controls.
-
-```sh
-git clone https://github.com/Abdenasser/neohtop.git
-cd neohtop
-npm ci
-npm run tauri dev
-```
-
-Use **Node.js 22**, **Rust 1.88+**, and the [Tauri prerequisites](https://v2.tauri.app/start/prerequisites/) for your OS.
-
-[Development and release guide](.github/DEVELOPMENT.md) · [Contributing](.github/CONTRIBUTING.md) · [Report a bug](https://github.com/Abdenasser/neohtop/issues) · [Migration notes](SHADCN_MIGRATION.md)
-
-## Prefer your terminal?
-
-Meet [**NeoHtop CLI**](https://github.com/Abdenasser/neohtop-cli), the separate Go/Charm companion with process trees, CPU sparklines, memory bars, filters and themes.
-
-```sh
-npm install -g neohtop-cli
-```
-
-[Desktop vs CLI →](docs/desktop-vs-cli.md)
-
-## Free today. Open source at the core.
-
-This release is the free, MIT-licensed desktop app. No account or cloud subscription is required. **NeoHtop Pro is postponed** and is not available to buy or install; no launch date or pricing is announced.
-
-If NeoHtop earns a place in your setup, [star the project](https://github.com/Abdenasser/neohtop/stargazers), [sponsor development](https://github.com/sponsors/Abdenasser), or [buy Abdenasser a coffee](https://www.buymeacoffee.com/abdenasser).
-
-[The story behind NeoHtop](https://www.abdenasser.com/2024/11/06/oh-boy-neohtop/) · [MIT License](LICENSE)
-
-## Privacy
-
-winperf has no analytics, telemetry or launch counter: the NeoHtop usage
-reporting (settings pane, notice, relay, installation identifier) was removed.
-Nothing about your system leaves your machine.
+The sensor helper bundles third-party components under their own licenses:
+LibreHardwareMonitorLib (MPL-2.0), PawnIO (GPL-2.0), HidSharp, and
+ntfs-reader. Their license texts are in
+[sensors-helper/licenses/](sensors-helper/licenses/). Other third-party
+license texts are in [licenses/](licenses/).
