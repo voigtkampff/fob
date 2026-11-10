@@ -23,3 +23,18 @@ Real counter math is covered elsewhere: `cargo test` and
 `cargo run --release --example disk_rates` in `tools/monitoring-harness`
 (Linux sysinfo counters), and `gpu/engine_counters.rs` tests for the PDH
 parsing. None of this shows Windows PDH or GetProcessIoCounters at runtime.
+
+## Column widths
+
+```bash
+node .cursor/skills/verify-fob/bin/process-column-widths.mjs /workspace/scratch/verify/evidence after
+```
+
+Renders every column from a full tree view plus a row with the longest value
+each column shows (`100.0%`, `24575.9 MB`, `1024 KB/s`, `1023.9 GB`,
+`9999h 59m 59s`, a 7-digit PID), in zh and en, flat and tree, at 1024 and
+1600 px. It fails when a header is clipped or has under 5 px to spare, a
+number is truncated, or a header's text edge is off its cells' text edge.
+It writes `columns-<tag>-*.png` and `columns-<tag>.json` with each column's
+width, header need and value need. `scripts/process-columns.test.mjs` pins
+one width per value kind (id, percent, rate, bytes, duration).

@@ -4,6 +4,7 @@ import { readFile } from "node:fs/promises";
 import ts from "typescript";
 import { en, zh } from "../src/lib/i18n/strings.js";
 import defaults from "../src/lib/definitions/default-config.json" with { type: "json" };
+import { columnKinds, columnWidth } from "../src/lib/utils/table-layout.js";
 
 async function load(path, replace = {}) {
   let source = await readFile(new URL(path, import.meta.url), "utf8");
@@ -83,6 +84,22 @@ test("GPU and both disk speeds show by default; the old I/O total column is gone
   const ids = columns.map((c) => c.id);
   assert.ok(ids.indexOf("gpu_usage") < ids.indexOf("virtual_memory"));
   assert.ok(ids.indexOf("disk_write") < ids.indexOf("virtual_memory"));
+});
+
+test("number and id columns take one width per kind of value", () => {
+  for (const c of columns)
+    if (c.numeric) assert.ok(columnKinds[c.id], `${c.id} has a width kind`);
+  const byKind = {};
+  for (const [id, kind] of Object.entries(columnKinds)) {
+    assert.ok(column(id), `${id} is a column`);
+    (byKind[kind] ??= new Set()).add(columnWidth(id));
+  }
+  for (const [kind, widths] of Object.entries(byKind))
+    assert.equal(widths.size, 1, `${kind} columns share a width`);
+  assert.equal(columnWidth("ppid"), columnWidth("pid"));
+  assert.equal(columnWidth("gpu_usage"), columnWidth("cpu_usage"));
+  assert.equal(columnWidth("gpu_memory"), columnWidth("memory_usage"));
+  assert.equal(columnWidth("disk_write"), columnWidth("disk_read"));
 });
 
 test("column labels say 硬盘 and Disk in both languages", () => {

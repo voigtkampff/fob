@@ -24,7 +24,7 @@
         ><Button
           variant="ghost"
           size="sm"
-          class={`h-8 max-w-full px-1 text-xs ${sortConfig.field === column.id ? "text-primary" : "text-muted-foreground"}`}
+          class={`-mx-1 h-8 max-w-[calc(100%+0.5rem)] px-1 text-xs ${sortConfig.field === column.id ? "text-primary" : "text-muted-foreground"}`}
           onclick={() => onToggleSort(column.id)}
           title={treeView && column.id === "memory_usage"
             ? $t("col.familyRamTitle")

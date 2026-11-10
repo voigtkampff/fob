@@ -2,9 +2,19 @@
   import ProcessTable from "../../src/lib/components/process/ProcessTable.svelte";
   import { column_definitions } from "../../src/lib/definitions/columns";
   import { sortProcesses } from "../../src/lib/utils";
+  import {
+    buildProcessTree,
+    processIdentity,
+  } from "../../src/lib/utils/process-tree.js";
   import { settingsStore } from "../../src/lib/stores/settings";
 
   const MB = 1024 * 1024;
+  // ?view=tree shows the tree view, ?wide adds the optional columns and a
+  // row with the longest value each column can show.
+  const params = new URLSearchParams(location.search);
+  const viewMode = params.get("view") === "tree" ? "tree" : "flat";
+  const wide = params.has("wide");
+  const wideColumns = new Set(["gpu_memory", "ppid", "command"]);
   const now = Math.floor(Date.now() / 1000);
   // Mocked readings, not measured on Windows. null is "no reading".
   const base = {
@@ -95,12 +105,29 @@
       disk_read: null,
       disk_write: null,
     },
+    ...(wide
+      ? [
+          {
+            pid: 1234567,
+            ppid: 9120,
+            name: "LongestValues.exe",
+            cpu_usage: 100,
+            memory_usage: 24575.9 * MB,
+            virtual_memory: 1023.9 * 1024 * MB,
+            gpu_usage: 100,
+            gpu_memory: 24575 * MB,
+            disk_read: 1023.9 * 1024,
+            disk_write: 1023.9 * MB,
+            run_time: 9999 * 3600 + 59 * 60 + 59,
+          },
+        ]
+      : []),
   ].map((p, i) => ({
     ...base,
-    ...p,
     command: p.name,
     start_time: now - 600 * (i + 1),
     run_time: 600 * (i + 1),
+    ...p,
   }));
   /** @type {import("../../src/lib/types").SortConfig} */
   let sortConfig = $state({ field: "cpu_usage", direction: "desc" });
@@ -109,10 +136,23 @@
       ...col,
       visible:
         col.required ||
+        (wide && wideColumns.has(col.id)) ||
         ($settingsStore.appearance.columnVisibility[col.id] ?? col.visible),
     })),
   );
   const sorted = $derived(sortProcesses(processes, sortConfig, new Set()));
+  const treeRows = $derived(
+    viewMode === "tree"
+      ? buildProcessTree(
+          sorted,
+          new Set(processes.map(processIdentity)),
+          null,
+          {
+            sortConfig,
+          },
+        ).rows
+      : [],
+  );
 </script>
 
 <p class="preview-note">
@@ -122,6 +162,8 @@
   <ProcessTable
     processes={sorted}
     {columns}
+    {viewMode}
+    {treeRows}
     systemStats={{ memory_total: 32 * 1024 * MB }}
     {sortConfig}
     pinnedProcesses={new Set()}
