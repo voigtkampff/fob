@@ -48,6 +48,7 @@ if [ -f "$RELEASED" ]; then
   fetch "$RELEASED_ZIP_URL" "$RELEASED_ZIP_SHA256" "$RELEASED_ZIP"
   python3 -c 'import sys, zipfile; open(sys.argv[3], "wb").write(zipfile.ZipFile(sys.argv[1]).read(sys.argv[2]))' \
     "$RELEASED_ZIP" fob-v0.8.4/sensors/fob-mft.exe dist/fob-mft.released.exe
+  python3 ../scripts/same-pe-code.test.py
   python3 ../scripts/same-pe-code.py dist/sensors/fob-mft.exe dist/fob-mft.released.exe
   mv dist/fob-mft.released.exe dist/sensors/fob-mft.exe
 fi
