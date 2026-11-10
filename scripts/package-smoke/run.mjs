@@ -73,6 +73,10 @@ async function cdp() {
     });
     let id = 0;
     const waiting = new Map();
+    ws.onclose = () => {
+      for (const ok of waiting.values()) ok({});
+      waiting.clear();
+    };
     ws.onmessage = (m) => {
       const msg = JSON.parse(m.data);
       waiting.get(msg.id)?.(msg);
