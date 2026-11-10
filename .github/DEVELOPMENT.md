@@ -26,6 +26,24 @@ the Rust tests on a Windows runner and builds the portable zip with
 The workflow artifact `fob-windows-x86_64` holds
 `fob-v<version>-x86_64-windows.zip`.
 
+A manual **Windows package smoke** run starts one such zip on a hosted
+Windows Server 2022 desktop without rebuilding it. Give it the run id, the full
+commit SHA that run built and the zip's SHA256. It checks that the run is a
+successful Build Check or Draft Release of this repository for that commit,
+then the artifact digest, the zip hash and `SHA256SUMS.txt`. It then starts
+fob.exe twice with fresh standard settings, in English and in Chinese:
+
+- the main window must be visible and render the dashboard,
+- the storage panel's disk health link must open the Disk detail with at
+  least one disk read on the runner,
+- closing the window must leave Fob running in the tray,
+- the app's quit command, and a click on Quit in the title bar menu, must each
+  end it with code 0.
+
+Screenshots and JSON results are in the `package-smoke-*` artifact. The runner
+has virtual SAS or NVMe disks at 96 DPI and runs as an administrator, so the
+run says nothing about SATA readings, display scaling, UAC or the sensor helper.
+
 The sensor helper keeps its own version (`sensors-helper/src/winperf-sensors.csproj`).
 While it stays the same, `sensors-helper/build.sh` must produce the released
 helper byte for byte, because fob.exe embeds the helper hashes and installed
@@ -45,7 +63,8 @@ For a release:
    be overwritten.
 3. **Draft Release** creates or updates a draft named `Fob v<version>` with the
    zip, the CHANGELOG section and the zip's SHA256. It never publishes.
-4. Run the zip on Windows, review the notes, then publish the draft on GitHub.
+4. Run **Windows package smoke** on the zip, then run it on a real Windows PC,
+   review the notes, and publish the draft on GitHub.
 
 ### Code Formatting
 

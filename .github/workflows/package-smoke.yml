@@ -1,0 +1,56 @@
+name: Windows package smoke
+
+# Runs an already built fob-windows-x86_64 zip on a hosted Windows desktop.
+# Nothing is rebuilt: the zip must come from a successful Build Check or
+# Draft Release run of this repository, for the given commit and hash.
+on:
+  workflow_dispatch:
+    inputs:
+      run_id:
+        description: Build Check or Draft Release run that uploaded fob-windows-x86_64
+        required: true
+      source_sha:
+        description: Full commit SHA that run built
+        required: true
+      zip_sha256:
+        description: Expected SHA256 of the Fob zip inside the artifact
+        required: true
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  smoke:
+    name: Smoke
+    runs-on: windows-2022
+    timeout-minutes: 20
+    env:
+      RUN_ID: ${{ inputs.run_id }}
+      SOURCE_SHA: ${{ inputs.source_sha }}
+      ZIP_SHA256: ${{ inputs.zip_sha256 }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+      - name: Download and verify the package
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: node scripts/package-smoke/provenance.mjs "$env:RUN_ID" "$env:SOURCE_SHA" "$env:ZIP_SHA256" "$env:RUNNER_TEMP\package"
+      - name: Run the package
+        run: node scripts/package-smoke/run.mjs "$env:FOB_DIR" "$env:RUNNER_TEMP\evidence"
+      - name: Summarize
+        if: always()
+        run: |
+          Copy-Item "$env:RUNNER_TEMP\package\provenance.json" "$env:RUNNER_TEMP\evidence" -ErrorAction SilentlyContinue
+          "Automation commit: $env:GITHUB_SHA" >> $env:GITHUB_STEP_SUMMARY
+          "Package run $env:RUN_ID, commit $env:SOURCE_SHA, zip $env:ZIP_SHA256, fob.exe $env:FOB_EXE_SHA256" >> $env:GITHUB_STEP_SUMMARY
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: package-smoke-${{ inputs.run_id }}
+          path: ${{ runner.temp }}/evidence
+          if-no-files-found: warn
