@@ -31,8 +31,8 @@ While it stays the same, `sensors-helper/build.sh` must produce the released
 helper byte for byte, because fob.exe embeds the helper hashes and installed
 helpers are checked against them. `sensors-helper/released-helper-<version>.sha256`
 holds those hashes and the build fails on any difference. The Rust worker is
-rebuilt and compared with the released one apart from its link time and PDB id,
-then the released file ships. Raise the helper version, and remove that file,
+rebuilt and compared with the released one apart from its link time, PDB id and
+import hints (Windows SDK updates renumber them), then the released file ships. Raise the helper version, and remove that file,
 only when the helper changes.
 
 For a release:
