@@ -77,7 +77,7 @@ failed gate. Do not repair unrelated app behavior to make this experiment pass.
 
 ## Future one-mode experiment, not started
 
-The previous 90-second B pilot on example hybrid CPU used statusbar, app refresh 3 seconds,
+The previous 90-second B pilot on an Intel hybrid CPU used statusbar, app refresh 3 seconds,
 sampler cadence 1 second, and a Fob process already about 38 minutes old. It is not
 one leg of a matched pair against a freshly restarted A. If fresh B bytes differ,
 it is also not a run of the newly paired build. Never combine it into controlled A/B.

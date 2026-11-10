@@ -36,7 +36,7 @@ processes from an unsigned exe are the strongest single signal.
 - The PawnIO installer runs with its own visible window (no `-silent`).
 - The background "start the helper" call backs off from 1 minute to 30
   minutes, and it is an in-process API call.
-- Full VERSIONINFO on both exes (CompanyName HCB (the owner before 0.7.14), ProductName Fob,
+- Full VERSIONINFO on both exes (CompanyName HCB (a personal name before 0.7.14), ProductName Fob,
   FileDescription, LegalCopyright, OriginalFilename, InternalName, versions) and
   application manifests (asInvoker, Windows 10/11 supportedOS).
 - Every shipped exe and dll is listed with its SHA-256 in `SHA256SUMS.txt`

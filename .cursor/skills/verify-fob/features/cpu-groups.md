@@ -14,7 +14,7 @@ Each run renders the dashboard CPU card, the mini window card and its CPU
 detail, the process-tab CPU card at 144 px and 200 px, the CPU detail and the
 CPU details sheet for five layouts, and fails unless:
 
-- example hybrid CPU (Intel hybrid): P 核 / E 核 (P-cores / E-cores) with each group's
+- Intel hybrid (8 P-cores and 8 E-cores): P 核 / E 核 (P-cores / E-cores) with each group's
   average, bars grouped 16 + 8, detail headings `8 核 / 16 线程` and
   `8 核 / 8 线程`, total unchanged,
 - Ryzen AI 9 HX 370 (AMD hybrid): 性能核 / 能效核 (Performance cores /

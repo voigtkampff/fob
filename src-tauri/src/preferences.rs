@@ -289,6 +289,45 @@ pub fn startup(app: &AppHandle) -> Startup {
 #[cfg(test)]
 mod tests {
     use super::*;
+    /// Bundle identifiers look like com.vendor.app. The only one allowed
+    /// in these sources is the current identifier, so a retired folder
+    /// cannot return.
+    fn unexpected_app_identifiers(src: &str) -> Vec<&str> {
+        const CURRENT: &str = "com.hcb.fob";
+        let mut found = Vec::new();
+        let mut from = 0;
+        while let Some(rel) = src[from..].find("com.") {
+            let start = from + rel;
+            let rest = &src[start + 4..];
+            let first = rest
+                .chars()
+                .take_while(|c| c.is_ascii_alphanumeric() || *c == '_' || *c == '-')
+                .count();
+            if first == 0 {
+                from = start + 4;
+                continue;
+            }
+            let mut end = start + 4 + first;
+            while end < src.len() && src.as_bytes()[end] == b'.' {
+                let label = &src[end + 1..];
+                let n = label
+                    .chars()
+                    .take_while(|c| c.is_ascii_alphanumeric() || *c == '_' || *c == '-')
+                    .count();
+                if n == 0 {
+                    break;
+                }
+                end += 1 + n;
+            }
+            let token = &src[start..end];
+            if token != CURRENT {
+                found.push(token);
+            }
+            from = end;
+        }
+        found
+    }
+
     #[test]
     fn folders_follow_the_identifier_and_no_debug_log() {
         let conf: Value = serde_json::from_str(include_str!("../tauri.conf.json")).unwrap();
@@ -301,9 +340,10 @@ mod tests {
             ("space.rs", include_str!("space.rs")),
             ("main.rs", include_str!("main.rs")),
         ] {
+            let unexpected = unexpected_app_identifiers(src);
             assert!(
-                !src.contains(concat!("com.", "the owner")),
-                "{name}: old folder"
+                unexpected.is_empty(),
+                "{name}: unexpected identifier {unexpected:?}"
             );
             assert!(
                 !src.contains(concat!("fob", ".log")),

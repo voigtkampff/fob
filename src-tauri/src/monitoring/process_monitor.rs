@@ -411,7 +411,7 @@ mod tests {
 
     #[test]
     fn cpu_is_a_share_of_the_whole_machine() {
-        // node at 115.8 % of one core on a 24-thread example hybrid CPU
+        // node at 115.8 % of one core on a 24-thread Intel hybrid CPU
         assert!((normalize_cpu(115.8, 24) - 4.825).abs() < 1e-4);
         // every thread busy is 100 %, never more
         assert_eq!(normalize_cpu(2400.0, 24), 100.0);

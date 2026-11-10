@@ -192,7 +192,7 @@ mod tests {
         }
     }
 
-    /// example hybrid CPU: 8 P-cores with two threads each (0-15), 8 E-cores (16-23).
+    /// An Intel hybrid CPU with 8 P-cores (two threads each, 0-15) and 8 E-cores (16-23).
     fn intel_hybrid_8p8e() -> Vec<CpuSet> {
         let p = (0..16).map(|i| set(i, i / 2 * 2, 1));
         let e = (16..24).map(|i| set(i, i, 0));

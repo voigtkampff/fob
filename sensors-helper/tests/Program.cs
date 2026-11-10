@@ -14,7 +14,7 @@ static class WireTests
     const string Gpu = "NVIDIA Example GPU";
 
     // Sensor identifiers/names as LibreHardwareMonitorLib 0.9.x reports them for
-    // an Intel 13th-gen CPU, a Example Chip Super I/O and an NVIDIA GPU.
+    // an example hybrid CPU, an example Super I/O chip and an NVIDIA GPU.
     static IEnumerable<Reading> Sample(int tick)
     {
         float d = tick; // small drift per line

@@ -5,7 +5,7 @@ import { averageCpu } from "../src/lib/utils/dashboard.js";
 import { translate } from "../src/lib/i18n/strings.js";
 
 const range = (a, b) => Array.from({ length: b - a }, (_, i) => a + i);
-/** example hybrid CPU as the backend reports it: 8 P-cores on threads 0-15, 8 E-cores on 16-23. */
+/** An Intel hybrid CPU as the backend reports it: 8 P-cores on threads 0-15, 8 E-cores on 16-23. */
 const intel = (vendor = "intel") => ({
   state: "hybrid",
   vendor,

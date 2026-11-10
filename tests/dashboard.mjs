@@ -475,7 +475,7 @@ console.log("PASS: per-app network rows group, stick for 30 s and sort");
     "cpu",
     "an APU is a CPU whatever its name says",
   );
-  assert.equal(sensorDevice({ hardware: "Nuvoton", id: "/lpc/example/0/temperature/0" }), "other");
+  assert.equal(sensorDevice({ hardware: "Example Chip", id: "/lpc/example/0/temperature/0" }), "other");
   assert.deepEqual(
     ["Core #1", "Core Average", "CCDs Max (Tdie)", "Tdie", "Core (Tctl/Tdie)", "CPU Package"].map(cpuTempRank),
     [5, 4, 3, 2, 1, 0],
