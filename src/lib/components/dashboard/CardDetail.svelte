@@ -32,6 +32,7 @@
   import ChartCursor from "$lib/components/charts/ChartCursor.svelte";
   import { percentText as pct1 } from "$lib/utils/chart-cursor.js";
   import SensorSetup from "./SensorSetup.svelte";
+  import DiskHealth from "./DiskHealth.svelte";
   import { sensorSetup } from "$lib/stores/sensorSetup";
   import { t } from "$lib/i18n";
 
@@ -332,6 +333,8 @@
         <p class="note">{$t("detail.noDrives")}</p>
       {/each}
     </div>
+    <!-- The mini window keeps its fixed height, so health stays in the main window. -->
+    {#if !compact}<DiskHealth />{/if}
   {:else if kind === "network"}
     <div class="panel">
       <div class="row rates">

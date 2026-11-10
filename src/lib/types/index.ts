@@ -331,3 +331,86 @@ export type BusyProcess = Pick<
   Process,
   "pid" | "start_time" | "name" | "cpu_usage" | "memory_usage" | "gpu_usage"
 >;
+
+/** commands::disk_health. Mirrors src-tauri/src/disk_health/mod.rs. */
+export type DiskBus =
+  | "nvme"
+  | "sata"
+  | "ata"
+  | "atapi"
+  | "usb"
+  | "raid"
+  | "scsi"
+  | "sas"
+  | "sd"
+  | "mmc"
+  | "virtual"
+  | "spaces"
+  | "other"
+  | "unknown";
+export interface NvmeCriticalWarning {
+  spare_low: boolean;
+  temperature: boolean;
+  reliability: boolean;
+  read_only: boolean;
+  backup_failed: boolean;
+  pmr_read_only: boolean;
+  raw: number;
+}
+export interface NvmeHealthLog {
+  critical_warning: NvmeCriticalWarning;
+  temperature_c: number | null;
+  available_spare: number | null;
+  spare_threshold: number | null;
+  percent_used: number;
+  data_read_bytes: number;
+  data_written_bytes: number;
+  power_cycles: number;
+  power_on_hours: number;
+  unsafe_shutdowns: number;
+  media_errors: number;
+  error_log_entries: number;
+  warning_temp_minutes: number;
+  critical_temp_minutes: number;
+}
+export type NvmeState =
+  | { kind: "ok"; log: NvmeHealthLog }
+  | { kind: "not_asked" }
+  | { kind: "unsupported" }
+  | { kind: "denied" }
+  | { kind: "bad_reply" }
+  | { kind: "error"; code: number };
+export type DiskOperational =
+  | {
+      kind:
+        | "ok"
+        | "degraded"
+        | "stressed"
+        | "predictive_failure"
+        | "error"
+        | "non_recoverable"
+        | "no_contact"
+        | "lost_communication";
+    }
+  | { kind: "other"; code: number };
+export type WindowsDiskStatus =
+  | {
+      kind: "ok";
+      health: "healthy" | "warning" | "unhealthy" | "unknown";
+      operational: DiskOperational[];
+    }
+  | { kind: "not_reported" }
+  | { kind: "failed"; code: number };
+export interface PhysicalDisk {
+  number: number | null;
+  model: string | null;
+  bus: DiskBus;
+  removable: boolean;
+  volumes: string[];
+  windows: WindowsDiskStatus;
+  nvme: NvmeState;
+}
+export type DiskHealthReport =
+  | { kind: "ok"; checked_at_ms: number; disks: PhysicalDisk[] }
+  | { kind: "unavailable" }
+  | { kind: "pending" };
