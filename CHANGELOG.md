@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.8.5
+
+- Processes columns that show the same kind of value now have the same width: IDs, percentages, speeds, sizes and times each share one width
+- Column headers fit with their sort arrow and line up with the values below them, including GPU %, 硬盘读取 / 硬盘写入 (Disk read / Disk write), 专用显存 (Dedicated VRAM), 父进程 PID (Parent PID), 用户 (User) and 进程族 CPU (Family CPU) in tree view
+- Checked in a browser preview at 1024 and 1600 px wide in Chinese and English; a check on Windows at 125% and 150% display scaling is still pending
+- The bundled sensor helper is unchanged at 0.8.2
+
 ## 0.8.4
 
 - On hybrid CPUs the CPU views split the load into performance and efficiency cores, read from the efficiency class Windows reports for each core. Intel shows P 核 / E 核 (P-cores / E-cores); AMD and other vendors show 性能核 / 能效核 (Performance cores / Efficiency cores)
