@@ -133,6 +133,12 @@ async function cdp() {
 }
 
 async function launch(tag, behavior) {
+  const lingering = await until(
+    () => native("webview-processes", "com.hcb.fob") === 0,
+    30000,
+    1000,
+  );
+  check(`${tag}: no WebView2 process of an earlier launch is left`, lingering);
   for (const dir of [configDir, webviewDir])
     rmSync(dir, {
       recursive: true,
@@ -166,6 +172,7 @@ async function launch(tag, behavior) {
     );
   run.window = await until(main, 60000, 500);
   run.allWindows = native("windows", child.pid);
+  run.elevation = native("elevated", child.pid);
   check(
     `${tag}: main window "Fob" is visible, not minimized, at a usable size`,
     run.window,

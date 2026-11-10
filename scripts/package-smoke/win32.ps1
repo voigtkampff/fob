@@ -56,9 +56,13 @@ switch ($Action) {
     $b.Save($Out); @{ width = $s.Width; height = $s.Height } | ConvertTo-Json -Compress
   }
   "elevated" {
-    $p = Get-Process -Id ([int]$Arg)
     $t = [System.Security.Principal.WindowsIdentity]::GetCurrent()
-    @{ runnerElevated = (New-Object System.Security.Principal.WindowsPrincipal $t).IsInRole([System.Security.Principal.WindowsBuiltInRole]::Administrator); path = $p.Path } | ConvertTo-Json -Compress
+    $admin = (New-Object System.Security.Principal.WindowsPrincipal $t).IsInRole([System.Security.Principal.WindowsBuiltInRole]::Administrator)
+    $uac = (Get-ItemProperty HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System).EnableLUA
+    @{ runnerIsAdmin = $admin; enableLUA = $uac; fobPath = (Get-Process -Id ([int]$Arg)).Path } | ConvertTo-Json -Compress
+  }
+  "webview-processes" {
+    @(Get-CimInstance Win32_Process -Filter "Name='msedgewebview2.exe'" | Where-Object { $_.CommandLine -like "*$Arg*" }).Count | ConvertTo-Json
   }
   default { throw "unknown action $Action" }
 }
