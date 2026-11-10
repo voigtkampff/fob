@@ -1295,7 +1295,8 @@ mod tests {
 
     #[test]
     fn the_scan_thread_runs_at_background_priority() {
-        let src = include_str!("space.rs");
+        // Windows checkouts can turn line endings into CRLF.
+        let src = include_str!("space.rs").replace("\r\n", "\n");
         let start = src.find("pub fn start(").unwrap();
         let body = &src[start..src[start..].find("\n}\n").unwrap() + start];
         assert!(body.contains("background_priority();"));
