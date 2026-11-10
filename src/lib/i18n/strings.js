@@ -164,6 +164,15 @@ export const en = {
     "Windows denied the NVMe health query. Fob doesn't ask for administrator rights",
   "dh.nvme.bad_reply": "The disk returned incomplete NVMe health data",
   "dh.nvme.error": "The NVMe health query failed (error {v})",
+  "dh.ata.sleeping":
+    "Windows reports this disk asleep, so its statistics weren't read this time",
+  "dh.ata.unsupported":
+    "This disk or its driver doesn't provide standard statistics",
+  "dh.ata.denied":
+    "Windows denied the statistics query. Fob doesn't ask for administrator rights",
+  "dh.ata.bad_reply": "The disk returned incomplete statistics",
+  "dh.ata.error": "The statistics query failed (error {v})",
+  "dh.ata.partial": "The disk didn't report the items not shown",
   "dh.warnTitle": "Reported by the drive",
   "dh.warn.spare_low": "Available spare is below its threshold",
   "dh.warn.temperature": "Temperature went past a threshold",
@@ -879,6 +888,12 @@ export const zh = {
   "dh.nvme.denied": "Windows 拒绝了 NVMe 健康查询，Fob 不会请求管理员权限",
   "dh.nvme.bad_reply": "硬盘返回的 NVMe 健康数据不完整",
   "dh.nvme.error": "NVMe 健康查询失败（错误 {v}）",
+  "dh.ata.sleeping": "Windows 报告此硬盘处于休眠状态，本次未读取统计",
+  "dh.ata.unsupported": "此硬盘或其驱动不提供标准统计",
+  "dh.ata.denied": "Windows 拒绝了统计查询，Fob 不会请求管理员权限",
+  "dh.ata.bad_reply": "硬盘返回的统计数据不完整",
+  "dh.ata.error": "统计查询失败（错误 {v}）",
+  "dh.ata.partial": "未显示的项目硬盘没有提供",
   "dh.warnTitle": "硬盘报告",
   "dh.warn.spare_low": "可用备用空间低于阈值",
   "dh.warn.temperature": "温度超过阈值",

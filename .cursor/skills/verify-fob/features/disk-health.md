@@ -13,14 +13,19 @@ node .cursor/skills/verify-fob/bin/disk-health.mjs /workspace/scratch/verify/evi
 ```
 
 Renders the real `CardDetail` (disk) with generic replies from
-`tests/fixtures/disk-health-fixtures.js`: `ok` (NVMe, SATA, USB without a
-drive letter), `warning` (drive critical warning bits, Windows predictive
-failure), `errors` (denied, controller error, short reply, a disk without a
-number), `empty`, `unavailable`, `pending`, `loading` and `failed`, in zh and
+`tests/fixtures/disk-health-fixtures.js`: `ok` (NVMe, a SATA SSD with every
+ATA statistic, a SATA HDD with some, USB without a drive letter), `warning`
+(drive critical warning bits, Windows predictive failure on a SATA disk
+Windows reports asleep), `errors` (NVMe denied, controller error, short
+reply, SATA denied, unsupported, short reply and error 1117, a disk without
+a number), `empty`, `unavailable`, `pending`, `loading` and `failed`, in zh and
 en at device scale 1, 1.25 and 1.5. The main window's detail is capped at
 980 px, so every window width from the 1120 px minimum up looks the same.
 It fails unless the section is in the main Disk detail and not in the mini
 window, opening it sends exactly one request, every state shows its note,
+the SATA values show with their units (°C, %, TB, hours, counts), the
+partial and sleeping notes show, no SATA disk says it shows the Windows
+status only,
 only the warning fixture has alerts, no label and value overlap, nothing is
 clipped or past the panel edge, and no Chinese text has 。. It writes
 `disk-health-<tag>-<lang>-<state>-<scale>.png` and `disk-health-<tag>.json`.
@@ -38,7 +43,8 @@ with pointer events and checks the Physical disks summary in the `ok`,
 `warning`, `long` (long models, seven volumes, no number), `unavailable`,
 `loading`, `failed` and `empty` states, zh and en, at device scale 1, 1.25
 and 1.5 in a 1120 px window. It fails unless there is one entry per physical
-disk, only NVMe disks with a log show temperature and life used, nothing is
+disk, only disks whose NVMe log or ATA statistics reported them show
+temperature and life used (the HDD shows temperature only), nothing is
 clipped, the capacity card, chart and volumes are still there, nothing asks
 before the panel opens, and exactly one 5 minute refresh timer runs while it
 is open. In `ok` it clicks 查看健康详情 / View health details and checks the
@@ -52,19 +58,25 @@ and `sidebar-<tag>.json`.
 ## Tests
 
 - `src-tauri/src/disk_health/tests.rs`: NVMe log decoding (units, a
-  `u128::MAX` counter, absent temperature and spare), short and malformed
-  replies, the device descriptor without the serial, error classes, the
+  `u128::MAX` counter, absent temperature and spare), ATA Device Statistics
+  decoding (Supported and Valid bits, signed temperature and 80h, life used
+  0 and 255, sector size and overflow, page header, page list count, offsets
+  and lengths), which buses are asked, short and malformed replies, the device descriptor without the serial, error classes, the
   disk/volume/WMI join, and the cache (shared scan, TTL, slow scan). On the
   box run them through `/workspace/scratch/dh-test` (`cargo test`), which
   includes `disk_health/mod.rs` by path.
 - `disk_health/windows.rs` tests run on GitHub Windows only: every IOCTL needs
-  no access rights, hand offsets match the `windows` crate, and the CI
+  no access rights, hand offsets match the `windows` crate (ATA protocol and
+  log page values, the access alignment descriptor), and the CI
   machine's own disks are probed and printed.
-- `scripts/disk-health.test.mjs`: TS types match the Rust variants,
+- `scripts/disk-health.test.mjs`: TS types match the Rust variants and the
+  `AtaStats` fields, temperature and life used from either log, the note
+  each bus gets,
   formatting, warnings only from real flags, and the shared watcher (one
   request on open, every 5 minutes, one retry after a pending reply, no
   overlapping requests, nothing after stop).
 
-None of this reads a real NVMe or SATA disk on Windows. That needs the
-owner's PC: compare with a SMART tool, check a SATA disk, a USB enclosure,
-and that no UAC prompt appears.
+None of this reads a real NVMe or SATA disk on Windows; GitHub runners have
+no SATA disk, so the ATA path is never exercised there. That needs the
+owner's PC: compare with a SMART tool, check a SATA SSD and HDD, a sleeping
+HDD, a USB enclosure, and that no UAC prompt appears.

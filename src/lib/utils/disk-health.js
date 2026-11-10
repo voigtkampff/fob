@@ -52,6 +52,46 @@ export function driveWarnings(disk) {
   return WARNINGS.filter((k) => w[k]);
 }
 
+/** Temperature and life used as the drive reported them, from its NVMe
+ * health log or its ATA statistics; null for anything not reported.
+ * @param {PhysicalDisk} disk
+ * @returns {{ temperature_c: number | null, percent_used: number | null }} */
+export function headline(disk) {
+  if (disk.nvme.kind === "ok")
+    return {
+      temperature_c: disk.nvme.log.temperature_c,
+      percent_used: disk.nvme.log.percent_used,
+    };
+  if (disk.ata.kind === "ok")
+    return {
+      temperature_c: disk.ata.stats.temperature_c,
+      percent_used: disk.ata.stats.percent_used,
+    };
+  return { temperature_c: null, percent_used: null };
+}
+
+/** The i18n key and value of the note under a disk: the query its bus is
+ * asked (ATA statistics for SATA, the NVMe log for the rest), or none when
+ * everything asked for was reported.
+ * @param {PhysicalDisk} disk
+ * @returns {{ key: string, vars?: Record<string, number> } | null} */
+export function queryNote(disk) {
+  if (disk.ata.kind === "ok") {
+    const s = disk.ata.stats;
+    return Object.values(s).some((v) => v == null)
+      ? { key: "dh.ata.partial" }
+      : null;
+  }
+  if (disk.ata.kind !== "not_asked")
+    return disk.ata.kind === "error"
+      ? { key: "dh.ata.error", vars: { v: disk.ata.code } }
+      : { key: `dh.ata.${disk.ata.kind}` };
+  if (disk.nvme.kind === "ok") return null;
+  return disk.nvme.kind === "error"
+    ? { key: "dh.nvme.error", vars: { v: disk.nvme.code } }
+    : { key: `dh.nvme.${disk.nvme.kind}` };
+}
+
 /** Operational codes Windows names as a problem. Unknown codes are shown
  * as their number, not as a problem.
  * @param {import("$lib/types").DiskOperational} op */

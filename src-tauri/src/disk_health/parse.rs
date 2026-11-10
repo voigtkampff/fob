@@ -1,7 +1,8 @@
-//! Pure decoders for the bytes Windows returns. Offsets follow winioctl.h and
-//! nvme.h; `windows.rs` tests check them against the `windows` crate layouts.
+//! Pure decoders for the bytes Windows returns. Offsets follow winioctl.h,
+//! nvme.h and the ATA Device Statistics log (ACS-4, log 04h); `windows.rs`
+//! tests check the Windows ones against the `windows` crate layouts.
 
-use super::{Bus, CriticalWarning, NvmeHealth, NvmeState};
+use super::{AtaStats, Bus, CriticalWarning, NvmeHealth, Refusal};
 
 /// FIELD_OFFSET(STORAGE_PROPERTY_QUERY, AdditionalParameters).
 pub const QUERY_HEADER: usize = 8;
@@ -19,6 +20,9 @@ const KELVIN: i32 = 273;
 fn u32_at(b: &[u8], at: usize) -> Option<u32> {
     Some(u32::from_le_bytes(b.get(at..at + 4)?.try_into().ok()?))
 }
+fn u64_at(b: &[u8], at: usize) -> Option<u64> {
+    Some(u64::from_le_bytes(b.get(at..at + 8)?.try_into().ok()?))
+}
 fn u128_at(b: &[u8], at: usize) -> Option<u128> {
     Some(u128::from_le_bytes(b.get(at..at + 16)?.try_into().ok()?))
 }
@@ -35,40 +39,58 @@ pub enum BadReply {
     Header,
 }
 
-/// The request for the NVMe SMART / Health Information log page (02h).
-/// StorageDeviceProtocolSpecificProperty (50), PropertyStandardQuery (0),
-/// ProtocolTypeNvme (3), NVMeDataTypeLogPage (2).
-pub fn health_log_request() -> Vec<u8> {
-    let mut b = vec![0u8; QUERY_HEADER + PROTOCOL_DATA + HEALTH_LOG];
+/// A StorageDeviceProtocolSpecificProperty (50) PropertyStandardQuery with
+/// room for `length` bytes of protocol data right after the request.
+fn protocol_request(
+    protocol: u32,
+    data_type: u32,
+    value: u32,
+    sub_value: u32,
+    length: usize,
+) -> Vec<u8> {
+    let mut b = vec![0u8; QUERY_HEADER + PROTOCOL_DATA + length];
     let put = |b: &mut [u8], at: usize, v: u32| b[at..at + 4].copy_from_slice(&v.to_le_bytes());
     put(&mut b, 0, 50);
     put(&mut b, 4, 0);
     let p = QUERY_HEADER;
-    put(&mut b, p, 3);
-    put(&mut b, p + 4, 2);
-    put(&mut b, p + 8, 2);
+    put(&mut b, p, protocol);
+    put(&mut b, p + 4, data_type);
+    put(&mut b, p + 8, value);
+    put(&mut b, p + 12, sub_value);
     put(&mut b, p + 16, PROTOCOL_DATA as u32);
-    put(&mut b, p + 20, HEALTH_LOG as u32);
+    put(&mut b, p + 20, length as u32);
     b
 }
 
-/// The log page inside a STORAGE_PROTOCOL_DATA_DESCRIPTOR reply, checked the
-/// way Microsoft's sample checks it.
-pub fn health_log_reply(reply: &[u8]) -> Result<&[u8], BadReply> {
+/// The NVMe SMART / Health Information log page (02h): ProtocolTypeNvme (3),
+/// NVMeDataTypeLogPage (2).
+pub fn health_log_request() -> Vec<u8> {
+    protocol_request(3, 2, 2, 0, HEALTH_LOG)
+}
+
+/// The `length` bytes of protocol data inside a
+/// STORAGE_PROTOCOL_DATA_DESCRIPTOR reply, checked the way Microsoft's
+/// sample checks it.
+fn protocol_reply(reply: &[u8], length: usize) -> Result<&[u8], BadReply> {
     if reply.len() < PROTOCOL_DESCRIPTOR {
         return Err(BadReply::Short);
     }
     let (version, size) = (u32_at(reply, 0), u32_at(reply, 4));
     let offset = u32_at(reply, 8 + 16).ok_or(BadReply::Short)? as usize;
-    let length = u32_at(reply, 8 + 20).ok_or(BadReply::Short)? as usize;
+    let got = u32_at(reply, 8 + 20).ok_or(BadReply::Short)? as usize;
     if version != Some(PROTOCOL_DESCRIPTOR as u32) || size != Some(PROTOCOL_DESCRIPTOR as u32) {
         return Err(BadReply::Header);
     }
-    if offset < PROTOCOL_DATA || length < HEALTH_LOG {
+    if offset < PROTOCOL_DATA || got < length {
         return Err(BadReply::Header);
     }
     let start = 8usize.checked_add(offset).ok_or(BadReply::Header)?;
-    reply.get(start..start + HEALTH_LOG).ok_or(BadReply::Short)
+    let end = start.checked_add(length).ok_or(BadReply::Header)?;
+    reply.get(start..end).ok_or(BadReply::Short)
+}
+
+pub fn health_log_reply(reply: &[u8]) -> Result<&[u8], BadReply> {
+    protocol_reply(reply, HEALTH_LOG)
 }
 
 /// NVMe base specification, SMART / Health Information (Log Page 02h).
@@ -136,14 +158,98 @@ pub fn device_descriptor(reply: &[u8]) -> Result<DeviceInfo, BadReply> {
     })
 }
 
-/// Win32 error from the NVMe log query, as the state the UI explains.
-pub fn query_error(code: u32) -> NvmeState {
+/// Win32 error from a query, as the state the UI explains.
+pub fn refusal(code: u32) -> Refusal {
     const ERROR_INVALID_FUNCTION: u32 = 1;
     const ERROR_ACCESS_DENIED: u32 = 5;
     const ERROR_NOT_SUPPORTED: u32 = 50;
     match code {
-        ERROR_ACCESS_DENIED => NvmeState::Denied,
-        ERROR_INVALID_FUNCTION | ERROR_NOT_SUPPORTED => NvmeState::Unsupported,
-        code => NvmeState::Error { code },
+        ERROR_ACCESS_DENIED => Refusal::Denied,
+        ERROR_INVALID_FUNCTION | ERROR_NOT_SUPPORTED => Refusal::Unsupported,
+        code => Refusal::Error(code),
     }
+}
+
+/// ATA Device Statistics: log address 04h, one 512-byte page per request.
+pub const ATA_PAGE: usize = 512;
+const DEVICE_STATISTICS_LOG: u32 = 0x04;
+pub const PAGE_LIST: u8 = 0x00;
+pub const PAGE_GENERAL: u8 = 0x01;
+pub const PAGE_TEMPERATURE: u8 = 0x05;
+pub const PAGE_SOLID_STATE: u8 = 0x07;
+
+/// One Device Statistics page: ProtocolTypeAta (2), AtaDataTypeLogPage (2),
+/// the log address, then the page number.
+pub fn ata_page_request(page: u8) -> Vec<u8> {
+    protocol_request(2, 2, DEVICE_STATISTICS_LOG, u32::from(page), ATA_PAGE)
+}
+
+/// The page in a reply, if its header names the page asked for. Every page
+/// starts with a QWORD: revision in bits 15:0 (never 0), page number in
+/// bits 23:16.
+pub fn ata_page_reply(reply: &[u8], page: u8) -> Result<&[u8], BadReply> {
+    let data = protocol_reply(reply, ATA_PAGE)?;
+    let header = u64_at(data, 0).ok_or(BadReply::Short)?;
+    if header & 0xFFFF == 0 || (header >> 16) & 0xFF != u64::from(page) {
+        return Err(BadReply::Header);
+    }
+    Ok(data)
+}
+
+/// Page 00h: byte 8 is the entry count, the page numbers follow.
+pub fn supported_pages(list: &[u8]) -> Result<Vec<u8>, BadReply> {
+    let count = *list.get(8).ok_or(BadReply::Short)? as usize;
+    list.get(9..9 + count)
+        .map(<[u8]>::to_vec)
+        .ok_or(BadReply::Short)
+}
+
+/// A statistic's 48-bit value, only when the drive sets both Supported
+/// (bit 63) and Valid Value (bit 62).
+fn statistic(page: Option<&[u8]>, at: usize) -> Option<u64> {
+    let q = u64_at(page?, at)?;
+    (q >> 63 == 1 && (q >> 62) & 1 == 1).then_some(q & 0xFFFF_FFFF_FFFF)
+}
+
+/// Logical sectors as bytes; None when the sector size is unknown or the
+/// product does not fit.
+fn sectors_to_bytes(sectors: Option<u64>, sector_bytes: Option<u32>) -> Option<f64> {
+    sectors?
+        .checked_mul(u64::from(sector_bytes?))
+        .map(|b| b as f64)
+}
+
+/// The statistics Fob shows, from the pages that were read. Offsets are
+/// ACS-4 9.5: General (01h) power-on resets 8, power-on hours 16, logical
+/// sectors written 24, read 40; Temperature (05h) current 8; Solid State
+/// (07h) percentage used 8.
+pub fn ata_stats(
+    general: Option<&[u8]>,
+    temperature: Option<&[u8]>,
+    solid_state: Option<&[u8]>,
+    sector_bytes: Option<u32>,
+) -> AtaStats {
+    let low32 = |v: u64| (v & 0xFFFF_FFFF) as u32;
+    AtaStats {
+        // A signed byte; -128 (80h) is "no valid value".
+        temperature_c: statistic(temperature, 8)
+            .map(|v| i32::from(v as u8 as i8))
+            .filter(|&c| c != -128),
+        percent_used: statistic(solid_state, 8).map(|v| v as u8),
+        power_on_hours: statistic(general, 16).map(low32),
+        power_cycles: statistic(general, 8).map(low32),
+        data_written_bytes: sectors_to_bytes(statistic(general, 24), sector_bytes),
+        data_read_bytes: sectors_to_bytes(statistic(general, 40), sector_bytes),
+    }
+}
+
+/// BytesPerLogicalSector from a STORAGE_ACCESS_ALIGNMENT_DESCRIPTOR reply;
+/// only sizes a disk can have (a multiple of 512, up to 64 KiB).
+pub fn logical_sector_bytes(reply: &[u8]) -> Option<u32> {
+    let size = u32_at(reply, 4)? as usize;
+    if size < 20 {
+        return None;
+    }
+    let bytes = u32_at(reply, 16)?;
+    ((512..=65536).contains(&bytes) && bytes % 512 == 0).then_some(bytes)
 }

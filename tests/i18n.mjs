@@ -53,7 +53,8 @@ for (const [locale, patterns] of [
     assert.match(locale["setup.uacNote"], pattern);
 }
 
-// Every literal key used in src/ exists ($t("…"), t("…"), $t(`prefix.${…}`)).
+// Every literal key used in src/ exists ($t("…"), t("…"), $t(`prefix.${…}`),
+// and keys a helper hands to $t as { key: "…" } or { key: `prefix.${…}` }).
 function files(dir) {
   return readdirSync(dir).flatMap((name) => {
     const path = join(dir, name);
@@ -67,7 +68,8 @@ const prefixes = new Set();
 for (const file of files("src")) {
   const text = readFileSync(file, "utf8");
   for (const m of text.matchAll(/\$?\bt\(\s*"([\w.]+)"/g)) used.add(m[1]);
-  for (const m of text.matchAll(/\$?\bt\(\s*`([\w.]+)\.\$\{/g))
+  for (const m of text.matchAll(/\bkey:\s*"([a-z]+\.[\w.]+)"/g)) used.add(m[1]);
+  for (const m of text.matchAll(/(?:\$?\bt\(|\bkey:)\s*`([\w.]+)\.\$\{/g))
     prefixes.add(m[1]);
   for (const m of text.matchAll(/"([a-z]+\.\w+)"/g)) mentioned.add(m[1]);
 }
@@ -95,6 +97,7 @@ const dynamic = {
   "dh.bus": ["virtual", "spaces", "other", "unknown"],
   "dh.health": ["healthy", "warning", "unhealthy", "unknown"],
   "dh.nvme": ["not_asked", "unsupported", "denied", "bad_reply"],
+  "dh.ata": ["sleeping", "unsupported", "denied", "bad_reply"],
   "dh.op": [
     "degraded",
     "stressed",

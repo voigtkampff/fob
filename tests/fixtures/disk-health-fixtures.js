@@ -42,6 +42,27 @@ const nvme = (number, volumes, over = {}) => ({
   volumes,
   windows: healthy,
   nvme: { kind: "ok", log: log(over) },
+  ata: { kind: "not_asked" },
+});
+/** @type {import("../../src/lib/types").AtaStats} */
+const noStats = {
+  temperature_c: null,
+  percent_used: null,
+  power_on_hours: null,
+  power_cycles: null,
+  data_read_bytes: null,
+  data_written_bytes: null,
+};
+/** @param {number} number @param {string} model @param {string[]} volumes @param {import("../../src/lib/types").AtaState} ata @returns {Disk} */
+const sata = (number, model, volumes, ata) => ({
+  number,
+  model,
+  bus: "sata",
+  removable: false,
+  volumes,
+  windows: healthy,
+  nvme: { kind: "not_asked" },
+  ata,
 });
 const checked_at_ms = Date.UTC(2026, 0, 1, 9, 30);
 /** @type {Record<string, import("../../src/lib/types").DiskHealthReport>} */
@@ -51,15 +72,26 @@ export const REPLIES = {
     checked_at_ms,
     disks: [
       nvme(0, ["C:\\", "D:\\"]),
-      {
-        number: 1,
-        model: "SATA SSD 1TB",
-        bus: "sata",
-        removable: false,
-        volumes: ["E:\\"],
-        windows: healthy,
-        nvme: { kind: "not_asked" },
-      },
+      sata(1, "SATA SSD 1TB", ["E:\\"], {
+        kind: "ok",
+        stats: {
+          temperature_c: 36,
+          percent_used: 7,
+          power_on_hours: 15234,
+          power_cycles: 2210,
+          data_read_bytes: 22.1 * TB,
+          data_written_bytes: 18.4 * TB,
+        },
+      }),
+      sata(2, "SATA HDD 4TB", ["F:\\"], {
+        kind: "ok",
+        stats: {
+          ...noStats,
+          temperature_c: 33,
+          power_on_hours: 30411,
+          power_cycles: 978,
+        },
+      }),
       {
         number: 3,
         model: "USB Disk",
@@ -68,6 +100,7 @@ export const REPLIES = {
         volumes: [],
         windows: { kind: "not_reported" },
         nvme: { kind: "unsupported" },
+        ata: { kind: "not_asked" },
       },
     ],
   },
@@ -103,6 +136,7 @@ export const REPLIES = {
           operational: [{ kind: "ok" }, { kind: "predictive_failure" }],
         },
         nvme: { kind: "not_asked" },
+        ata: { kind: "sleeping" },
       },
     ],
   },
@@ -123,7 +157,12 @@ export const REPLIES = {
         volumes: ["G:\\"],
         windows: { kind: "not_reported" },
         nvme: { kind: "error", code: 1117 },
+        ata: { kind: "not_asked" },
       },
+      sata(4, "SATA SSD 500GB", ["K:\\"], { kind: "denied" }),
+      sata(5, "SATA HDD 2TB", ["L:\\"], { kind: "unsupported" }),
+      sata(6, "SATA SSD 256GB", [], { kind: "bad_reply" }),
+      sata(7, "SATA HDD 1TB", [], { kind: "error", code: 1117 }),
       {
         number: null,
         model: null,
@@ -132,6 +171,7 @@ export const REPLIES = {
         volumes: [],
         windows: { kind: "not_reported" },
         nvme: { kind: "bad_reply" },
+        ata: { kind: "not_asked" },
       },
     ],
   },
@@ -152,6 +192,7 @@ export const REPLIES = {
         volumes: [],
         windows: { kind: "failed", code: -2147217405 },
         nvme: { kind: "unsupported" },
+        ata: { kind: "not_asked" },
       },
       {
         number: null,
@@ -165,6 +206,7 @@ export const REPLIES = {
           operational: [{ kind: "non_recoverable" }],
         },
         nvme: { kind: "not_asked" },
+        ata: { kind: "not_asked" },
       },
     ],
   },

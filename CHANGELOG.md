@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.8.7
+
+- SATA disks attached directly to the motherboard now show what the drive reports in its standard ATA statistics: temperature, life used (the drive's estimate, which can pass 100%), data written and read, power-on time and power cycles. Fob reads them without administrator rights and does not read vendor SMART attributes
+- Only items the drive marks as valid are shown. A hard disk without SSD life used, a driver that refuses the query or a drive without these statistics says so instead of showing 0 or looking healthy
+- When Windows reports a SATA disk asleep, Fob skips its statistics for that reading instead of asking the disk. Windows does not always know a hard disk has spun down, so this cannot promise the disk never wakes
+- The 存储 (Storage) side panel shows the same temperature and life used for SATA disks as the Disk detail
+- USB, RAID and other disks still show only the status Windows reports; NVMe readings are unchanged
+- Checked with mocked readings in a browser preview in Chinese and English; readings on real Windows SATA disks are still pending
+- The bundled sensor helper is unchanged at 0.8.2
+
 ## 0.8.6
 
 - The 硬盘 (Disk) detail has a Physical disks section with one entry per physical disk: its number, bus, model and the volumes on it, including disks and partitions without a drive letter
