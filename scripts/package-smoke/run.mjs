@@ -21,8 +21,17 @@ const check = (name, pass, detail) => {
 const native = (action, arg = "", file = "") =>
   JSON.parse(
     execFileSync(
-      "pwsh",
-      ["-NoProfile", "-File", WIN32, action, String(arg), file],
+      "powershell",
+      [
+        "-NoProfile",
+        "-ExecutionPolicy",
+        "Bypass",
+        "-File",
+        WIN32,
+        action,
+        String(arg),
+        file,
+      ],
       {
         encoding: "utf8",
       },
@@ -327,6 +336,15 @@ try {
 } catch (error) {
   check("smoke completed", false, String(error?.stack ?? error));
 }
+for (const run of report.runs)
+  if (alive(run.pid)) {
+    process.kill(run.pid);
+    check(
+      `${run.tag}: Fob was not left running`,
+      false,
+      "killed during cleanup",
+    );
+  }
 report.pass = checks.length > 0 && checks.every((c) => c.pass);
 writeFileSync(join(out, "run.json"), JSON.stringify(report, null, 2));
 process.exit(report.pass ? 0 : 1);

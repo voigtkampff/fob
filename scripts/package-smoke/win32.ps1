@@ -1,4 +1,5 @@
 # Native window facts and captures for run.mjs. Prints one JSON value.
+# Runs in Windows PowerShell 5.1, whose .NET Framework has GDI+ built in.
 param([Parameter(Mandatory)][string]$Action, [string]$Arg, [string]$Out)
 $ErrorActionPreference = "Stop"
 Add-Type -ReferencedAssemblies System.Drawing -TypeDefinition @"
@@ -44,7 +45,7 @@ function Window($h) {
     rect = @($r.L, $r.T, ($r.R - $r.L), ($r.B - $r.T)) }
 }
 switch ($Action) {
-  "windows" { @([W]::Of([uint32]$Arg) | ForEach-Object { Window $_ }) | ConvertTo-Json -Depth 4 -Compress -AsArray }
+  "windows" { ConvertTo-Json -InputObject @([W]::Of([uint32]$Arg) | ForEach-Object { Window $_ }) -Depth 4 -Compress }
   "close" { [W]::PostMessage([IntPtr][int64]$Arg, 0x0010, [IntPtr]::Zero, [IntPtr]::Zero) | ConvertTo-Json }
   "window-shot" { $b = [W]::Print([IntPtr][int64]$Arg); $b.Save($Out); @{ width = $b.Width; height = $b.Height } | ConvertTo-Json -Compress }
   "screen-shot" {
