@@ -37,6 +37,12 @@
   import ChartCursor from "$lib/components/charts/ChartCursor.svelte";
   import { percentText as pct1 } from "$lib/utils/chart-cursor.js";
   import { sensorSetup, refreshSensorSetup } from "$lib/stores/sensorSetup";
+  import { dragReorder } from "$lib/utils/drag-reorder.js";
+  import {
+    DASHBOARD_CARDS,
+    moveNextTo,
+    stepOrder,
+  } from "$lib/utils/layout-order.js";
   import {
     Cpu,
     MemoryStick,
@@ -66,6 +72,9 @@
   export let detail: DetailKind | null = null;
   /** Opens the disk space map (a button in the disk detail). */
   export let onSpace: (() => void) | null = null;
+  /** Card order; the main window can move cards (the mini window cannot). */
+  export let order: string[] = DASHBOARD_CARDS;
+  export let onReorder: ((order: string[]) => void) | null = null;
 
   function open(kind: DetailKind) {
     if (expandable) detail = kind;
@@ -212,302 +221,337 @@
       </div>
     </header>
 
-    <section class="grid" aria-label={$t("dash.cards")}>
-      <div
-        class="card"
-        class:clickable={expandable}
-        role="button"
-        tabindex={expandable ? 0 : -1}
-        onclick={() => open("cpu")}
-        onkeydown={(e) => openKey(e, "cpu")}
-      >
-        <div class="card-head">
-          <span class="label"><Cpu class="size-3.5" />CPU</span>
-          <span class="chip">{$t("dash.threads", { n: cores.length })}</span>
-        </div>
-        <div class="big">{formatPercent(cpu, $t)}<small>%</small></div>
-        {#if coreGroups}
-          <div class="bars" aria-label={$t("dash.perCore")}>
-            {#each coreGroups as g (g.kind)}
-              <div class="bar-group" style={`flex:${g.threads.length}`}>
-                {#each g.threads as i (i)}
+    <section
+      class="grid"
+      class:movable={!!onReorder}
+      aria-label={$t("dash.cards")}
+      use:dragReorder={{
+        ids: order.map((id) => (onReorder ? id : null)),
+        handle: ".card-head",
+        vertical: true,
+        onMove: (id, target, after) =>
+          onReorder?.(moveNextTo(order, id, target, after)),
+        onStep: (id, step) => onReorder?.(stepOrder(order, id, step)),
+      }}
+    >
+      {#each order as id (id)}
+        {#if id === "cpu"}
+          <div
+            class="card"
+            class:clickable={expandable}
+            role="button"
+            tabindex={expandable ? 0 : -1}
+            onclick={() => open("cpu")}
+            onkeydown={(e) => openKey(e, "cpu")}
+          >
+            <div
+              class="card-head"
+              title={onReorder ? $t("layout.moveCard") : undefined}
+            >
+              <span class="label"><Cpu class="size-3.5" />CPU</span>
+              <span class="chip">{$t("dash.threads", { n: cores.length })}</span
+              >
+            </div>
+            <div class="big">{formatPercent(cpu, $t)}<small>%</small></div>
+            {#if coreGroups}
+              <div class="bars" aria-label={$t("dash.perCore")}>
+                {#each coreGroups as g (g.kind)}
+                  <div class="bar-group" style={`flex:${g.threads.length}`}>
+                    {#each g.threads as i (i)}
+                      <span
+                        class="bar"
+                        style={`height:${Math.max(6, Math.min(100, cores[i]))}%`}
+                        title={`${$t(g.label)} · ${$t("cpu.threadTip", { i, v: cores[i].toFixed(0) })}`}
+                      ></span>
+                    {/each}
+                  </div>
+                {/each}
+              </div>
+              <div class="foot">
+                {#each coreGroups as g, k (g.kind)}{k ? " · " : ""}{$t(g.label)}
+                  <span class="tabular-nums" class:muted={g.usage == null}
+                    >{groupPercent(g.usage)}{g.usage == null ? "" : "%"}</span
+                  >{/each}
+              </div>
+            {:else}
+              <div class="bars" aria-label={$t("dash.perCore")}>
+                {#each cores as core}
                   <span
                     class="bar"
-                    style={`height:${Math.max(6, Math.min(100, cores[i]))}%`}
-                    title={`${$t(g.label)} · ${$t("cpu.threadTip", { i, v: cores[i].toFixed(0) })}`}
+                    style={`height:${Math.max(6, Math.min(100, core))}%`}
+                    title={`${core.toFixed(0)}%`}
                   ></span>
                 {/each}
               </div>
-            {/each}
+              <div class="foot">
+                {level(cpu)} · {$t("dash.cores", {
+                  n: identity.physical_cores ?? "?",
+                })}
+              </div>
+            {/if}
           </div>
-          <div class="foot">
-            {#each coreGroups as g, k (g.kind)}{k ? " · " : ""}{$t(g.label)}
-              <span class="tabular-nums" class:muted={g.usage == null}
-                >{groupPercent(g.usage)}{g.usage == null ? "" : "%"}</span
-              >{/each}
-          </div>
-        {:else}
-          <div class="bars" aria-label={$t("dash.perCore")}>
-            {#each cores as core}
-              <span
-                class="bar"
-                style={`height:${Math.max(6, Math.min(100, core))}%`}
-                title={`${core.toFixed(0)}%`}
-              ></span>
-            {/each}
-          </div>
-          <div class="foot">
-            {level(cpu)} · {$t("dash.cores", {
-              n: identity.physical_cores ?? "?",
-            })}
-          </div>
-        {/if}
-      </div>
-
-      <div
-        class="card"
-        class:clickable={expandable}
-        role="button"
-        tabindex={expandable ? 0 : -1}
-        onclick={() => open("gpu")}
-        onkeydown={(e) => openKey(e, "gpu")}
-      >
-        <div class="card-head">
-          <span class="label"><Gauge class="size-3.5" />GPU</span>
-          {#if gpu.name}<span class="chip ellipsis" title={gpu.name}
-              >{gpu.name}</span
-            >{/if}
-        </div>
-        <div class="big">
-          {formatPercent(gpu.percent, $t)}{#if gpu.percent != null}<small
-              >%</small
-            >{/if}
-        </div>
-        <ChartCursor
-          {history}
-          max={100}
-          format={pct1}
-          lines={[{ pick: pickGpu, color: SERIES_COLOR.gpu }]}
-        >
-          <Spark
-            class="spark"
-            {history}
-            width={W}
-            height={H}
-            max={100}
-            lines={[{ key: "gpu", pick: pickGpu }]}
-          />
-        </ChartCursor>
-        <div class="foot">
-          {gpu.percent == null
-            ? gpus.length
-              ? $t("dash.gpuNoCounter")
-              : $t("dash.noGpu")
-            : level(gpu.percent)}
-        </div>
-      </div>
-
-      <div
-        class="card"
-        class:clickable={expandable}
-        role="button"
-        tabindex={expandable ? 0 : -1}
-        onclick={() => open("memory")}
-        onkeydown={(e) => openKey(e, "memory")}
-      >
-        <div class="card-head">
-          <span class="label"
-            ><MemoryStick class="size-3.5" />{$t("dash.memory")}</span
+        {:else if id === "gpu"}
+          <div
+            class="card"
+            class:clickable={expandable}
+            role="button"
+            tabindex={expandable ? 0 : -1}
+            onclick={() => open("gpu")}
+            onkeydown={(e) => openKey(e, "gpu")}
           >
-          <span class="chip"
-            >{memPct != null && memPct >= 85
-              ? $t("dash.memHigh")
-              : $t("dash.memNormal")}</span
-          >
-        </div>
-        <div class="big">{formatPercent(memPct, $t)}<small>%</small></div>
-        <ChartCursor
-          {history}
-          max={100}
-          format={pct1}
-          lines={[{ pick: (s) => s.memory, color: SERIES_COLOR.memory }]}
-        >
-          <Spark
-            class="spark"
-            {history}
-            width={W}
-            height={H}
-            max={100}
-            lines={[{ key: "memory", pick: (s) => s.memory }]}
-          />
-        </ChartCursor>
-        <div class="foot">
-          {formatGB(systemStats.memory_used, 2)} / {formatGB(
-            systemStats.memory_total,
-            0,
-          )}
-        </div>
-      </div>
-
-      <div
-        class="card"
-        class:clickable={expandable}
-        role="button"
-        tabindex={expandable ? 0 : -1}
-        onclick={() => open("disk")}
-        onkeydown={(e) => openKey(e, "disk")}
-      >
-        <div class="card-head">
-          <span class="label"
-            ><HardDrive class="size-3.5" />{$t("dash.freeSpace")}</span
-          >
-          {#if volume}<span class="chip"
-              >{compact ? "" : `${volume.mount} · `}{formatGB(
-                volume.total,
-                0,
-              )}</span
-            >{/if}
-        </div>
-        {#if volume}
-          <div class="big">
-            {(volume.available / 1024 ** 3).toFixed(0)}<small>GB</small>
-          </div>
-          <div class="track">
-            <span class="fill" style={`width:${usedPct ?? 0}%`}></span>
-          </div>
-          <div class="foot">
-            {$t("dash.used", {
-              v: formatGB(volume.total - volume.available, 0),
-            })} · {formatPercent(usedPct, $t)}%
-          </div>
-        {:else}
-          <div class="big">{$t("common.na")}</div>
-          <div class="foot">{$t("dash.noVolumes")}</div>
-        {/if}
-      </div>
-
-      <div
-        class="card"
-        class:clickable={expandable}
-        role="button"
-        tabindex={expandable ? 0 : -1}
-        onclick={() => open("network")}
-        onkeydown={(e) => openKey(e, "network")}
-      >
-        <div class="card-head">
-          <span class="label"
-            ><Globe class="size-3.5" />{$t("dash.network")}</span
-          >
-          <span class="legend"
-            ><i class="dot blue"></i>{compact ? "↓" : $t("dash.down")}
-            <i class="dot green"></i>{compact ? "↑" : $t("dash.up")}</span
-          >
-        </div>
-        <div class="big">{down.value}<small>{down.unit}</small></div>
-        <ChartCursor
-          {history}
-          max={netMax}
-          format={rateText}
-          lines={[
-            {
-              pick: (s) => s.received,
-              color: SERIES_COLOR.received,
-              label: "↓",
-            },
-            { pick: (s) => s.sent, color: SERIES_COLOR.sent, label: "↑" },
-          ]}
-        >
-          <Spark
-            class="spark"
-            {history}
-            width={W}
-            height={H}
-            max={netMax}
-            lines={[
-              { key: "sent", pick: (s) => s.sent },
-              { key: "received", pick: (s) => s.received },
-            ]}
-          />
-        </ChartCursor>
-        <div class="foot">↑ {up.value} {up.unit}</div>
-      </div>
-
-      <div
-        class="card"
-        class:clickable={expandable}
-        role="button"
-        tabindex={expandable ? 0 : -1}
-        onclick={() => open("temp")}
-        onkeydown={(e) => openKey(e, "temp")}
-      >
-        <div class="card-head">
-          <span class="label"
-            ><Thermometer class="size-3.5" />{$t("dash.temp")}</span
-          >
-          <span class="chip"
-            >{summary.count ? summary.count : $t("common.na")}</span
-          >
-        </div>
-        {#if summary.cpuTemp || summary.gpuTemp}
-          <div class="big">
-            {(summary.cpuTemp ?? summary.gpuTemp)?.value.toFixed(0)}<small
-              >°C {summary.cpuTemp ? "CPU" : "GPU"}</small
+            <div
+              class="card-head"
+              title={onReorder ? $t("layout.moveCard") : undefined}
             >
-          </div>
-          <ChartCursor
-            {history}
-            max={TEMP_MAX}
-            format={tempText}
-            lines={TEMP_LINES}
-          >
-            <Spark
-              class="spark"
+              <span class="label"><Gauge class="size-3.5" />GPU</span>
+              {#if gpu.name}<span class="chip ellipsis" title={gpu.name}
+                  >{gpu.name}</span
+                >{/if}
+            </div>
+            <div class="big">
+              {formatPercent(gpu.percent, $t)}{#if gpu.percent != null}<small
+                  >%</small
+                >{/if}
+            </div>
+            <ChartCursor
               {history}
-              width={W}
-              height={H}
-              max={TEMP_MAX}
-              lines={[
-                { key: "gpu_temp", pick: (s) => s.gpu_temp },
-                { key: "cpu_temp", pick: (s) => s.cpu_temp },
-              ]}
-            />
-          </ChartCursor>
-          <div class="foot">
-            {[
-              summary.cpuTemp && summary.gpuTemp
-                ? `GPU ${formatSensor(summary.gpuTemp)}`
-                : "",
-              fansLine
-                ? compact
-                  ? fansLine
-                  : $t("dash.fans", { v: fansLine })
-                : summary.fan
-                  ? $t("dash.fan", { v: formatSensor(summary.fan) })
-                  : "",
-            ]
-              .filter(Boolean)
-              .join(" · ")}
+              max={100}
+              format={pct1}
+              lines={[{ pick: pickGpu, color: SERIES_COLOR.gpu }]}
+            >
+              <Spark
+                class="spark"
+                {history}
+                width={W}
+                height={H}
+                max={100}
+                lines={[{ key: "gpu", pick: pickGpu }]}
+              />
+            </ChartCursor>
+            <div class="foot">
+              {gpu.percent == null
+                ? gpus.length
+                  ? $t("dash.gpuNoCounter")
+                  : $t("dash.noGpu")
+                : level(gpu.percent)}
+            </div>
           </div>
-        {:else if summary.fan}
-          <div class="big">{formatSensor(summary.fan)}</div>
-          <div class="foot">{fansLine || summary.fan.name}</div>
-        {:else if !offerSetup}
-          <div class="big muted">—</div>
-          <p class="note">
-            {compact ? $t("dash.noSensorShort") : $t("dash.noSensor")}
-          </p>
-        {/if}
-        {#if offerSetup}
-          <div class="big muted">—</div>
-          <span class="enable"
-            >{setup === "update"
-              ? $t("dash.updateHelper")
-              : setup === "repair"
-                ? $t("dash.repair")
-                : $t("dash.enable")} ›</span
+        {:else if id === "memory"}
+          <div
+            class="card"
+            class:clickable={expandable}
+            role="button"
+            tabindex={expandable ? 0 : -1}
+            onclick={() => open("memory")}
+            onkeydown={(e) => openKey(e, "memory")}
           >
+            <div
+              class="card-head"
+              title={onReorder ? $t("layout.moveCard") : undefined}
+            >
+              <span class="label"
+                ><MemoryStick class="size-3.5" />{$t("dash.memory")}</span
+              >
+              <span class="chip"
+                >{memPct != null && memPct >= 85
+                  ? $t("dash.memHigh")
+                  : $t("dash.memNormal")}</span
+              >
+            </div>
+            <div class="big">{formatPercent(memPct, $t)}<small>%</small></div>
+            <ChartCursor
+              {history}
+              max={100}
+              format={pct1}
+              lines={[{ pick: (s) => s.memory, color: SERIES_COLOR.memory }]}
+            >
+              <Spark
+                class="spark"
+                {history}
+                width={W}
+                height={H}
+                max={100}
+                lines={[{ key: "memory", pick: (s) => s.memory }]}
+              />
+            </ChartCursor>
+            <div class="foot">
+              {formatGB(systemStats.memory_used, 2)} / {formatGB(
+                systemStats.memory_total,
+                0,
+              )}
+            </div>
+          </div>
+        {:else if id === "disk"}
+          <div
+            class="card"
+            class:clickable={expandable}
+            role="button"
+            tabindex={expandable ? 0 : -1}
+            onclick={() => open("disk")}
+            onkeydown={(e) => openKey(e, "disk")}
+          >
+            <div
+              class="card-head"
+              title={onReorder ? $t("layout.moveCard") : undefined}
+            >
+              <span class="label"
+                ><HardDrive class="size-3.5" />{$t("dash.freeSpace")}</span
+              >
+              {#if volume}<span class="chip"
+                  >{compact ? "" : `${volume.mount} · `}{formatGB(
+                    volume.total,
+                    0,
+                  )}</span
+                >{/if}
+            </div>
+            {#if volume}
+              <div class="big">
+                {(volume.available / 1024 ** 3).toFixed(0)}<small>GB</small>
+              </div>
+              <div class="track">
+                <span class="fill" style={`width:${usedPct ?? 0}%`}></span>
+              </div>
+              <div class="foot">
+                {$t("dash.used", {
+                  v: formatGB(volume.total - volume.available, 0),
+                })} · {formatPercent(usedPct, $t)}%
+              </div>
+            {:else}
+              <div class="big">{$t("common.na")}</div>
+              <div class="foot">{$t("dash.noVolumes")}</div>
+            {/if}
+          </div>
+        {:else if id === "network"}
+          <div
+            class="card"
+            class:clickable={expandable}
+            role="button"
+            tabindex={expandable ? 0 : -1}
+            onclick={() => open("network")}
+            onkeydown={(e) => openKey(e, "network")}
+          >
+            <div
+              class="card-head"
+              title={onReorder ? $t("layout.moveCard") : undefined}
+            >
+              <span class="label"
+                ><Globe class="size-3.5" />{$t("dash.network")}</span
+              >
+              <span class="legend"
+                ><i class="dot blue"></i>{compact ? "↓" : $t("dash.down")}
+                <i class="dot green"></i>{compact ? "↑" : $t("dash.up")}</span
+              >
+            </div>
+            <div class="big">{down.value}<small>{down.unit}</small></div>
+            <ChartCursor
+              {history}
+              max={netMax}
+              format={rateText}
+              lines={[
+                {
+                  pick: (s) => s.received,
+                  color: SERIES_COLOR.received,
+                  label: "↓",
+                },
+                { pick: (s) => s.sent, color: SERIES_COLOR.sent, label: "↑" },
+              ]}
+            >
+              <Spark
+                class="spark"
+                {history}
+                width={W}
+                height={H}
+                max={netMax}
+                lines={[
+                  { key: "sent", pick: (s) => s.sent },
+                  { key: "received", pick: (s) => s.received },
+                ]}
+              />
+            </ChartCursor>
+            <div class="foot">↑ {up.value} {up.unit}</div>
+          </div>
+        {:else if id === "temp"}
+          <div
+            class="card"
+            class:clickable={expandable}
+            role="button"
+            tabindex={expandable ? 0 : -1}
+            onclick={() => open("temp")}
+            onkeydown={(e) => openKey(e, "temp")}
+          >
+            <div
+              class="card-head"
+              title={onReorder ? $t("layout.moveCard") : undefined}
+            >
+              <span class="label"
+                ><Thermometer class="size-3.5" />{$t("dash.temp")}</span
+              >
+              <span class="chip"
+                >{summary.count ? summary.count : $t("common.na")}</span
+              >
+            </div>
+            {#if summary.cpuTemp || summary.gpuTemp}
+              <div class="big">
+                {(summary.cpuTemp ?? summary.gpuTemp)?.value.toFixed(0)}<small
+                  >°C {summary.cpuTemp ? "CPU" : "GPU"}</small
+                >
+              </div>
+              <ChartCursor
+                {history}
+                max={TEMP_MAX}
+                format={tempText}
+                lines={TEMP_LINES}
+              >
+                <Spark
+                  class="spark"
+                  {history}
+                  width={W}
+                  height={H}
+                  max={TEMP_MAX}
+                  lines={[
+                    { key: "gpu_temp", pick: (s) => s.gpu_temp },
+                    { key: "cpu_temp", pick: (s) => s.cpu_temp },
+                  ]}
+                />
+              </ChartCursor>
+              <div class="foot">
+                {[
+                  summary.cpuTemp && summary.gpuTemp
+                    ? `GPU ${formatSensor(summary.gpuTemp)}`
+                    : "",
+                  fansLine
+                    ? compact
+                      ? fansLine
+                      : $t("dash.fans", { v: fansLine })
+                    : summary.fan
+                      ? $t("dash.fan", { v: formatSensor(summary.fan) })
+                      : "",
+                ]
+                  .filter(Boolean)
+                  .join(" · ")}
+              </div>
+            {:else if summary.fan}
+              <div class="big">{formatSensor(summary.fan)}</div>
+              <div class="foot">{fansLine || summary.fan.name}</div>
+            {:else if !offerSetup}
+              <div class="big muted">—</div>
+              <p class="note">
+                {compact ? $t("dash.noSensorShort") : $t("dash.noSensor")}
+              </p>
+            {/if}
+            {#if offerSetup}
+              <div class="big muted">—</div>
+              <span class="enable"
+                >{setup === "update"
+                  ? $t("dash.updateHelper")
+                  : setup === "repair"
+                    ? $t("dash.repair")
+                    : $t("dash.enable")} ›</span
+              >
+            {/if}
+          </div>
         {/if}
-      </div>
+      {/each}
     </section>
 
     <section class="card procs" aria-label={$t("dash.topByMemory")}>
@@ -617,6 +661,9 @@
     gap: 6px;
     min-width: 0;
     min-height: 132px;
+  }
+  .movable .card-head {
+    cursor: grab;
   }
   .card-head {
     display: flex;

@@ -1,6 +1,6 @@
 <script lang="ts">
   import type { Process, Column, ProcessTreeRow } from "$lib/types";
-  import { tableWidth } from "$lib/utils/table-layout.js";
+  import { tableWidth, nameWidth } from "$lib/utils/table-layout.js";
   import { TableHeader, ProcessRow } from "$lib/components";
   import { processIdentity } from "$lib/utils/process-tree.js";
   import { Button } from "$lib/components/ui/button/index.js";
@@ -23,6 +23,16 @@
   export let onTogglePin: (command: string) => void;
   export let onShowDetails: (process: Process) => void;
   export let onKillProcess: (process: Process) => void;
+  export let onMoveColumn: (
+    id: string,
+    target: string,
+    after: boolean,
+  ) => void = () => {};
+  export let onStepColumn: (id: string, step: -1 | 1) => void = () => {};
+
+  let regionWidth = 0;
+  $: tree = viewMode === "tree";
+  $: nameColumnWidth = nameWidth(columns, tree, regionWidth);
 
   $: rows =
     viewMode === "tree"
@@ -50,6 +60,7 @@
     role="region"
     aria-label={$t("proc.tableAria")}
     tabindex="0"
+    bind:clientWidth={regionWidth}
     onkeydown={(event) => {
       if (
         event.target === event.currentTarget &&
@@ -62,13 +73,15 @@
       }
     }}
   >
-    <Table.Root
-      style={`width:max(100%,${tableWidth(columns, viewMode === "tree")}px)`}
+    <Table.Root style={`width:max(100%,${tableWidth(columns, tree)}px)`}
       ><TableHeader
         {columns}
         {sortConfig}
         {onToggleSort}
-        treeView={viewMode === "tree"}
+        {onMoveColumn}
+        {onStepColumn}
+        nameWidth={nameColumnWidth}
+        treeView={tree}
       /><Table.Body
         >{#each rows as row (row.key)}<ProcessRow
             process={row.process}
@@ -90,7 +103,7 @@
             {onKillProcess}
           />{:else}<Table.Row
             ><Table.Cell
-              colspan={columns.filter((c) => c.visible).length + 1}
+              colspan={columns.filter((c) => c.visible).length + 2}
               class="h-48 text-center"
               ><Search class="mx-auto mb-3 size-6 text-muted-foreground" />
               <p class="text-sm font-medium">

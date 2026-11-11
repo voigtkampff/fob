@@ -8,6 +8,11 @@
 - The 存储 (Storage) side panel shows the same temperature and life used for SATA disks as the Disk detail
 - USB, RAID and other disks still show only the status Windows reports; NVMe readings are unchanged
 - Checked with mocked readings in a browser preview in Chinese and English; readings on real Windows SATA disks are still pending
+- Processes columns can be dragged by their header into a new order; 进程名称 (Process Name) stays first. A short click still sorts, Esc cancels a drag, and Alt+←/→ moves the focused header
+- The summary cards on the 仪表盘 (Dashboard) and 进程 (Processes) tabs can be dragged by their title into a new order, or moved with Alt+arrow keys; a drag does not open the card
+- Column and card orders are saved with the other settings and come back after a restart; a column shown later returns to its saved place
+- On a wide or full-screen window the 进程名称 (Process Name) column no longer stretches across the empty space; it stops at the width a long name and the deepest tree indent need, and long names are cut with the full name in a tooltip
+- The ordering and width changes were checked in a browser preview at 1024 and 1920 px in Chinese and English; dragging in the Windows app, display scaling and saving in the installed app are still pending
 - The bundled sensor helper is unchanged at 0.8.2
 
 ## 0.8.6

@@ -9,3 +9,4 @@
 | Process disk speed and GPU columns               | process-columns.md |
 | CPU core groups (P-cores / E-cores)              | cpu-groups.md      |
 | Disk health (Disk detail and storage side panel) | disk-health.md     |
+| Column and summary card order (drag, Alt+Arrow)  | layout-order.md    |
