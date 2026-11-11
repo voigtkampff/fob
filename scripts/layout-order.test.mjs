@@ -86,41 +86,49 @@ test("every process column can be saved in columnOrder", () => {
   assert.deepEqual(config.behavior.columnOrder, []);
 });
 
-test("the name column grows to its widest, then the other columns share what is left evenly", () => {
-  const columns = ["name", "pid", "cpu_usage", "memory_usage", "ppid"].map(
-    (id) => ({ id, visible: id !== "ppid" }),
-  );
+test("the name column grows to its widest and every other column gets the same width", () => {
+  const columns = [
+    "name",
+    "pid",
+    "cpu_usage",
+    "memory_usage",
+    "user",
+    "ppid",
+  ].map((id) => ({ id, visible: id !== "ppid" }));
   for (const tree of [false, true]) {
     const min = tableWidth(columns, tree);
-    const base = Object.fromEntries(
-      ["pid", "cpu_usage", "memory_usage"].map((id) => [
-        id,
-        columnWidth(id, tree),
-      ]),
-    );
+    const widest = columnWidth("memory_usage", tree);
     const at = (region) => columnWidths(columns, tree, region);
     assert.deepEqual(Object.keys(at(0)), [
       "name",
       "pid",
       "cpu_usage",
       "memory_usage",
+      "user",
     ]);
-    assert.deepEqual(at(min - 50), { name: nameMinWidth(tree), ...base });
+    assert.equal(min, actionsWidth + nameMinWidth(tree) + 4 * widest);
+    assert.deepEqual(at(min - 50), {
+      name: nameMinWidth(tree),
+      pid: widest,
+      cpu_usage: widest,
+      memory_usage: widest,
+      user: widest,
+    });
     assert.equal(at(min + 40).name, nameMinWidth(tree) + 40);
-    assert.equal(at(min + 40).pid, base.pid);
-    for (const region of [1920, 2561, 3840]) {
+    assert.equal(at(min + 40).pid, widest);
+    for (const region of [min + 400, 1920, 2561, 3840]) {
       const w = at(region);
       const sum = Object.values(w).reduce((a, b) => a + b, actionsWidth);
       assert.equal(sum, region, `fills ${region}`);
       assert.equal(w.name, nameMaxWidth(tree));
-      const extras = Object.keys(base).map((id) => w[id] - base[id]);
-      assert.ok(extras.every((e) => e > 0));
-      assert.ok(
-        Math.max(...extras) - Math.min(...extras) <= 1,
-        `even ${extras}`,
-      );
+      const data = [w.pid, w.cpu_usage, w.memory_usage, w.user];
+      assert.ok(Math.max(...data) - Math.min(...data) <= 1, `equal ${data}`);
+      assert.ok(Math.min(...data) >= widest);
     }
   }
+  assert.deepEqual(columnWidths([{ id: "name", visible: true }], false, 900), {
+    name: 900 - actionsWidth,
+  });
 });
 
 test("a drag in progress shows its landing order and drops back without one", () => {

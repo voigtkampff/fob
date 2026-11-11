@@ -227,6 +227,67 @@
 .process-table-region [data-slot="table-row"][data-pinned="true"] .tree-name {
   background: color-mix(in srgb, var(--primary) 6%, var(--card));
 }
+/* A dot grip marks what can be dragged into a new order: movable column
+   headers (drawn here) and summary cards (a span in the card's title). */
+.drag-grip,
+.process-table-region th[data-movable]:not(.text-right)::before,
+.process-table-region th[data-movable].text-right > button::before {
+  position: absolute;
+  width: 6px;
+  height: 10px;
+  background-image: radial-gradient(
+    circle,
+    currentColor 0.9px,
+    transparent 1.2px
+  );
+  background-size: 4px 4px;
+  background-position: -1px -1px;
+  color: var(--muted-foreground);
+  opacity: 0.45;
+  transition: opacity 120ms;
+}
+/* Next to the label: at the cell's left edge for left-aligned headers, just
+   before the label for right-aligned (number) ones. */
+.process-table-region th[data-movable]:not(.text-right)::before,
+.process-table-region th[data-movable].text-right > button::before {
+  content: "";
+  top: calc(50% - 5px);
+  pointer-events: none;
+}
+.process-table-region th[data-movable]:not(.text-right)::before {
+  left: 2px;
+}
+.process-table-region th[data-movable].text-right > button {
+  position: relative;
+  overflow: visible;
+}
+.process-table-region th[data-movable].text-right > button::before {
+  left: -6px;
+}
+.process-table-region th[data-movable]:hover::before,
+.process-table-region th[data-movable]:focus-within::before,
+.process-table-region th[data-dragging]::before,
+.process-table-region th[data-movable]:hover > button::before,
+.process-table-region th[data-movable]:focus-within > button::before,
+.process-table-region th[data-dragging] > button::before,
+.drag-grip:hover,
+:hover > .sc-title > .drag-grip,
+:focus-visible .drag-grip,
+:hover > .card-head > .drag-grip,
+[data-dragging] .drag-grip {
+  opacity: 1;
+  color: var(--foreground);
+}
+.drag-grip {
+  cursor: grab;
+}
+.resource-grid.movable > [data-slot="card"] {
+  position: relative;
+}
+.resource-grid.movable .drag-grip {
+  left: 4px;
+  top: 19px;
+}
 /* Reordering (utils/drag-reorder.js): the dragged item lifts above its
    neighbours and follows the pointer (the action sets translate). */
 [data-dragging] {

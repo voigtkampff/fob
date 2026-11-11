@@ -2,6 +2,7 @@
   import GpuPanel from "./GpuPanel.svelte";
   import TempPanel from "./TempPanel.svelte";
   import { t } from "$lib/i18n";
+  import { setContext } from "svelte";
   import { dragReorder } from "$lib/utils/drag-reorder.js";
   import {
     PROCESS_CARDS,
@@ -37,6 +38,8 @@
   export let order: string[] = PROCESS_CARDS;
   export let onReorder: ((order: string[]) => void) | null = null;
   let move: { id: string; target: string; after: boolean } | null = null;
+  // StatCard shows the drag grip and hint only when its cards can move.
+  setContext("movable-cards", !!onReorder);
   $: shown = previewOrder(order, move);
 </script>
 

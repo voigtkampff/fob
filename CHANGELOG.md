@@ -9,9 +9,10 @@
 - USB, RAID and other disks still show only the status Windows reports; NVMe readings are unchanged
 - Checked with mocked readings in a browser preview in Chinese and English; readings on real Windows SATA disks are still pending
 - Processes columns can be dragged by their header into a new order; 进程名称 (Process Name) stays first. The column lifts and follows the pointer while the other columns, values included, slide aside to show where it will land. A short click still sorts, Esc cancels a drag and puts the columns back, and Alt+←/→ moves the focused header
+- A small dot grip next to each column header that can move and on each summary card shows what can be dragged; it darkens on hover, and the tooltip says 拖动调整顺序 (Drag to reorder) with the Alt+arrow keys. The 进程名称 (Process Name) and actions columns and the 迷你窗口 (mini window) cards have none
 - The summary cards on the 仪表盘 (Dashboard) and 进程 (Processes) tabs can be dragged by their title into a new order the same way, or moved with Alt+arrow keys; a drag does not open the card. With reduced motion turned on in Windows, items move without sliding
 - Column and card orders are saved with the other settings and come back after a restart; a column shown later returns to its saved place
-- On a wide or full-screen window the 进程名称 (Process Name) column no longer stretches across the empty space; it stops at the width a long name and the deepest tree indent need, long names are cut with the full name in a tooltip, and the other columns share the remaining width evenly
+- On a wide or full-screen window the 进程名称 (Process Name) column no longer stretches across the empty space; it stops at the width a long name and the deepest tree indent need, long names are cut with the full name in a tooltip, and the other columns all get the same width. With the default columns the table needs about 1660 px before it stops scrolling sideways, so a 1920 px screen at 125% scaling scrolls a little
 - The ordering and width changes were checked in a browser preview at 1024 and 1920 px in Chinese and English; dragging in the Windows app, display scaling and saving in the installed app are still pending
 - The bundled sensor helper is unchanged at 0.8.2
 

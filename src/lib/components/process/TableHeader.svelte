@@ -41,6 +41,7 @@
     >{#each shown as column (column.id)}<Table.Head
         class={`${column.numeric ? "text-right" : ""} ${treeView && column.id === "name" ? "tree-name" : ""} ${column.id === "name" ? "pl-4" : ""}`}
         style={`width:${widths[column.id]}px`}
+        data-movable={column.id === "name" ? undefined : ""}
         aria-sort={sortConfig.field === column.id
           ? sortConfig.direction === "asc"
             ? "ascending"
