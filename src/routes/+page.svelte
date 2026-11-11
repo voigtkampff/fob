@@ -41,7 +41,6 @@
     PROCESS_CARDS,
     moveNextTo,
     normalizeOrder,
-    stepOrder,
   } from "$lib/utils/layout-order.js";
   import type { Process } from "$lib/types";
   import {
@@ -464,16 +463,6 @@
             saveOrder(
               "columnOrder",
               moveNextTo(columnOrder, id, target, after),
-            )}
-          onStepColumn={(id, step) =>
-            saveOrder(
-              "columnOrder",
-              stepOrder(
-                columnOrder,
-                id,
-                step,
-                columns.filter((col) => col.visible).map((col) => col.id),
-              ),
             )}
           onTogglePin={processStore.togglePin}
           onShowDetails={processStore.showProcessDetails}

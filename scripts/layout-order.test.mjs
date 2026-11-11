@@ -7,7 +7,6 @@ import {
   moveNextTo,
   normalizeOrder,
   previewOrder,
-  stepOrder,
 } from "../src/lib/utils/layout-order.js";
 import {
   actionsWidth,
@@ -40,14 +39,11 @@ test("a saved order keeps its known ids once and puts missing ones back by their
   }
 });
 
-test("moving next to a target and stepping skip hidden ids", () => {
+test("moving next to a target", () => {
   assert.deepEqual(moveNextTo(D, "a", "c", true), ["b", "c", "a", "d"]);
   assert.deepEqual(moveNextTo(D, "d", "a", false), ["d", "a", "b", "c"]);
   assert.deepEqual(moveNextTo(D, "a", "a", true), D);
   assert.deepEqual(moveNextTo(D, "a", "x", true), D);
-  assert.deepEqual(stepOrder(D, "a", 1, ["a", "c", "d"]), ["b", "c", "a", "d"]);
-  assert.deepEqual(stepOrder(D, "d", 1), D);
-  assert.deepEqual(stepOrder(D, "a", -1), D);
 });
 
 test("card ids match the ones the settings file accepts", () => {

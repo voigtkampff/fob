@@ -4,8 +4,8 @@ Process columns (all but the name column) and the Dashboard and Processes
 summary cards can be dragged into a new order. The dragged item lifts and
 follows the pointer while the others slide into the order it would land in
 (a dragged column's body cells come with its header); release saves once,
-Escape puts everything back. Alt+Arrow moves the focused header or card one
-place. Slides are WAAPI animations started only by a change in order, and
+Escape puts everything back. There is no keyboard shortcut for reordering.
+Slides are WAAPI animations started only by a change in order, and
 reduced motion turns them off (`utils/drag-reorder.js`). Orders are saved as `behavior.columnOrder`,
 `behavior.dashboardCards` and `behavior.processCards` (empty means the
 default order). The settings file keeps only distinct known ids
@@ -31,7 +31,8 @@ zh and en, at 1920 and 1024 px. It fails unless:
 - Escape mid drag (after the neighbours moved), released over the same
   header, puts the order back and sorts nothing;
 - a press that moves under 6 px still sorts;
-- Alt+Right on a focused header moves it and keeps focus;
+- Alt+Right on a focused header or card moves and saves nothing and keeps
+  focus;
 - a hidden column, a reload and tree view keep the saved order, and tree view
   shows every family row with the long name cut and the deepest name inside
   its cell;
@@ -46,10 +47,19 @@ zh and en, at 1920 and 1024 px. It fails unless:
   the name column is at its narrowest, the data columns share their common
   minimum and the table scrolls;
 - with reduced motion a drag still lifts the item but nothing slides;
-- movable headers and all summary cards show a dot grip (none on the name and
-  actions columns), fully opaque on hover, in dark and light themes, with the
-  drag hint in their tooltips; the grip takes no focus and a Dashboard card
-  drags from it.
+- every summary card shows a dot grip whose left edge is within 1 px of the
+  value below it, fully opaque on hover, in dark and light themes; column
+  headers show no grip; headers and cards carry the drag hint in their
+  tooltips; the grip takes no focus and a Dashboard card drags from it;
+- a faint line marks the left edge of every column after the first, in the
+  header and the rows, with none on the outer edge;
+- a dragged card is a copy in the top layer (its own slot stays empty).
+
+`ui-drag-clip.mjs <evidence-dir>` drags a Processes card, a Dashboard card
+and a column header toward each window edge at 1280 and 1920 px (and with
+the Dashboard scrolled). A lifted card must be drawn in full, inside the
+window, with no ancestor cutting it off; Escape must put it down. A header
+stays inside the table's own scroll area by design.
 
 It writes `<lang>-1920-*.png`, `<lang>-1024-*.png` and `ui-reorder.json`.
 `scripts/layout-order.test.mjs` covers the order helpers, the card ids the

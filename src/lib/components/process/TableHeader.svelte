@@ -15,10 +15,8 @@
   export let onPreviewColumn: (
     move: { id: string; target: string; after: boolean } | null,
   ) => void;
-  export let onStepColumn: (id: string, step: -1 | 1) => void;
   $: shown = columns.filter((c) => c.visible);
   let row: HTMLTableRowElement | undefined;
-  const MOVE_KEYS = "Alt+ArrowLeft Alt+ArrowRight"; // i18n-ignore key names
 </script>
 
 <Table.Header
@@ -31,7 +29,7 @@
       ids: [...shown.map((c) => (c.id === "name" ? null : c.id)), null],
       onMove: onMoveColumn,
       onPreview: onPreviewColumn,
-      onStep: onStepColumn,
+      handle: "button",
       cells: (id) => [
         ...(row
           ?.closest("table")
@@ -41,7 +39,6 @@
     >{#each shown as column (column.id)}<Table.Head
         class={`${column.numeric ? "text-right" : ""} ${treeView && column.id === "name" ? "tree-name" : ""} ${column.id === "name" ? "pl-4" : ""}`}
         style={`width:${widths[column.id]}px`}
-        data-movable={column.id === "name" ? undefined : ""}
         aria-sort={sortConfig.field === column.id
           ? sortConfig.direction === "asc"
             ? "ascending"
@@ -52,7 +49,6 @@
           size="sm"
           class={`-mx-1 h-8 max-w-[calc(100%+0.5rem)] px-1 text-xs ${sortConfig.field === column.id ? "text-primary" : "text-muted-foreground"}`}
           onclick={() => onToggleSort(column.id)}
-          aria-keyshortcuts={column.id === "name" ? undefined : MOVE_KEYS}
           title={`${
             treeView && column.id === "memory_usage"
               ? $t("col.familyRamTitle")

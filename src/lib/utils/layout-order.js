@@ -59,16 +59,6 @@ export function moveNextTo(order, id, target, after) {
   return rest;
 }
 
-/** Moves id one step among the ids in shown (the visible ones), keeping
- * hidden ids where they are relative to the others.
- * @param {string[]} order @param {string} id @param {-1 | 1} step @param {readonly string[]} [shown]
- * @returns {string[]} */
-export function stepOrder(order, id, step, shown = order) {
-  const visible = order.filter((x) => shown.includes(x));
-  const neighbour = visible[visible.indexOf(id) + step];
-  return neighbour ? moveNextTo(order, id, neighbour, step > 0) : order;
-}
-
 /** The order a drag in progress would land in; the saved order without one.
  * @param {string[]} order @param {{ id: string, target: string, after: boolean } | null} move
  * @returns {string[]} */

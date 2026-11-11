@@ -8,7 +8,6 @@
     PROCESS_CARDS,
     moveNextTo,
     previewOrder,
-    stepOrder,
   } from "$lib/utils/layout-order.js";
   import * as Tooltip from "$lib/components/ui/tooltip/index.js";
   import type {
@@ -55,7 +54,6 @@
         onMove: (id, target, after) =>
           onReorder?.(moveNextTo(order, id, target, after)),
         onPreview: (next) => (move = next),
-        onStep: (id, step) => onReorder?.(stepOrder(order, id, step)),
       }}
     >
       {#each shown as id (id)}

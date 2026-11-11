@@ -29,7 +29,6 @@
     target: string,
     after: boolean,
   ) => void = () => {};
-  export let onStepColumn: (id: string, step: -1 | 1) => void = () => {};
 
   let regionWidth = 0;
   $: tree = viewMode === "tree";
@@ -87,7 +86,6 @@
         {sortConfig}
         {onToggleSort}
         {onMoveColumn}
-        {onStepColumn}
         {widths}
         onPreviewColumn={(next) => (move = next)}
         treeView={tree}
