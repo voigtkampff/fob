@@ -9,11 +9,85 @@ use window_vibrancy::apply_acrylic;
 #[cfg(target_os = "macos")]
 use window_vibrancy::{apply_vibrancy, NSVisualEffectMaterial, NSVisualEffectState};
 
-/// Applies Windows-specific window effects
+/// The main window's system backdrop. Only the Glassy theme lets it show
+/// through the page (app.css); every other theme paints an opaque page over
+/// it, so Acrylic's live blur of whatever is behind the window would be GPU
+/// work nobody sees, done by DWM while the window is active (Acrylic turns
+/// solid when it is not). Those themes get Mica, which samples the wallpaper
+/// once, for the title bar and the moment before the page paints.
+#[cfg_attr(not(target_os = "windows"), allow(dead_code))]
+#[derive(Debug, PartialEq, Clone, Copy)]
+pub enum MainBackdrop {
+    Acrylic,
+    Mica,
+}
+
+#[cfg_attr(not(target_os = "windows"), allow(dead_code))]
+impl MainBackdrop {
+    pub fn for_page(glass: bool) -> Self {
+        if glass {
+            Self::Acrylic
+        } else {
+            Self::Mica
+        }
+    }
+}
+
+/// Applies Windows-specific window effects: Mica until the page says its
+/// theme is Glassy (`set_main_backdrop`).
 #[cfg(target_os = "windows")]
 pub fn setup_window_effects(window: &WebviewWindow) -> Result<(), Box<dyn std::error::Error>> {
-    apply_acrylic(window, Some((0, 0, 25, 125)))?;
+    apply_main_backdrop(window, MainBackdrop::Mica)?;
     Ok(())
+}
+
+#[cfg(target_os = "windows")]
+static MAIN_BACKDROP: std::sync::Mutex<Option<MainBackdrop>> = std::sync::Mutex::new(None);
+
+/// Before Windows 11 there is no Mica; those windows keep Acrylic, as before.
+#[cfg(target_os = "windows")]
+pub fn apply_main_backdrop(
+    window: &WebviewWindow,
+    backdrop: MainBackdrop,
+) -> Result<(), window_vibrancy::Error> {
+    let mut current = MAIN_BACKDROP.lock().unwrap_or_else(|e| e.into_inner());
+    if *current == Some(backdrop) {
+        return Ok(());
+    }
+    let acrylic = || apply_acrylic(window, Some((0, 0, 25, 125)));
+    match backdrop {
+        MainBackdrop::Acrylic => acrylic()?,
+        MainBackdrop::Mica => {
+            if window_vibrancy::apply_mica(window, None).is_err() {
+                acrylic()?;
+            }
+        }
+    }
+    *current = Some(backdrop);
+    Ok(())
+}
+
+/// The main window's page applied a theme; `glass` is the Glassy theme.
+#[tauri::command]
+pub async fn set_main_backdrop(app: tauri::AppHandle, glass: bool) -> Result<(), String> {
+    #[cfg(target_os = "windows")]
+    {
+        use tauri::Manager;
+        let handle = app.clone();
+        app.run_on_main_thread(move || {
+            if let Some(window) = handle.get_webview_window("main") {
+                if let Err(e) = apply_main_backdrop(&window, MainBackdrop::for_page(glass)) {
+                    eprintln!("main backdrop: {e}");
+                }
+            }
+        })
+        .map_err(|e| e.to_string())
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        let _ = (app, glass);
+        Ok(())
+    }
 }
 
 /// Fob: the mini window's glass: the Windows 11 system backdrop
@@ -107,6 +181,19 @@ fn acrylic_supported(build: Option<u32>) -> bool {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn only_the_glassy_page_gets_the_live_blur() {
+        use super::MainBackdrop;
+        assert_eq!(MainBackdrop::for_page(true), MainBackdrop::Acrylic);
+        assert_eq!(MainBackdrop::for_page(false), MainBackdrop::Mica);
+        // Glassy is the one theme whose page lets the backdrop show.
+        let css = include_str!("../../../src/app.css");
+        assert!(css.contains("[data-theme=\"glassy\"] body {\n  background: transparent;"));
+        let theme = include_str!("../../../src/lib/stores/theme.ts");
+        assert!(
+            theme.contains("invoke(\"set_main_backdrop\", { glass: theme.name === \"glassy\" })")
+        );
+    }
     #[test]
     fn backdrop_defaults_to_acrylic() {
         use super::{backdrop_kind, Backdrop};

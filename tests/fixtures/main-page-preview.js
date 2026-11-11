@@ -66,6 +66,10 @@ const processes = params.has("procs")
   : [];
 /** @type {number[]} */
 const calls = [];
+/** Every command the page sends, in order. */
+/** @type {{ command: string, args: unknown }[]} */
+const ipcLog = [];
+Object.defineProperty(window, "ipcLog", { value: ipcLog });
 Object.defineProperty(window, "diskHealthCalls", { value: calls });
 Object.defineProperty(window, "isTauri", { value: true, configurable: true });
 const snapshot = {
@@ -80,6 +84,54 @@ const snapshot = {
   paused: false,
   interval: 1000,
   error: null,
+};
+// ?live: every read is a new frame whose readings move (deterministic), with
+// a growing history, the way a running app's are; for paint and update
+// checks. Without it every read returns the same frame.
+const live = params.has("live");
+let tick = 0;
+let livePaused = false;
+/** @type {any} */
+let lastLive = null;
+/** @type {import("../../src/lib/types").ResourceSample[]} */
+const history = [];
+const liveSnapshot = () => {
+  if (livePaused && lastLive) return { ...lastLive, paused: true };
+  tick++;
+  const wave = (/** @type {number} */ k) => (Math.sin(tick * 0.9 + k) + 1) / 2;
+  history.push({
+    timestamp: Date.now(),
+    interval: 1000,
+    cpu: 10 + 30 * wave(0),
+    memory: 40 + 5 * wave(1),
+    received: 1e5 * wave(2),
+    sent: 4e4 * wave(3),
+    gpus: {},
+    disk_read: 2e6 * wave(4),
+    disk_write: 1e6 * wave(5),
+  });
+  if (history.length > 300) history.shift();
+  lastLive = {
+    ...snapshot,
+    frame: {
+      ...snapshot.frame,
+      captured_at: Date.now(),
+      sequence: tick + 1,
+      processes: processes.map((p, i) => ({
+        ...p,
+        cpu_usage: Math.round(p.cpu_usage * (0.5 + wave(i)) * 10) / 10,
+        disk_usage: [Math.round(4096 * wave(i + 1)), 0],
+      })),
+      stats: {
+        ...stats,
+        cpu_usage: [10 + 30 * wave(0), 15 + 20 * wave(1)],
+        network_rx_bytes: (stats.network_rx_bytes ?? 0) + tick * 1e5,
+        network_tx_bytes: (stats.network_tx_bytes ?? 0) + tick * 4e4,
+      },
+    },
+    history: [...history],
+  };
+  return lastLive;
 };
 // The 5 minute health refresh timers alive right now, so the check can see
 // that closing the panel or leaving the Disk detail stops polling.
@@ -106,8 +158,8 @@ mockWindows("main");
 // The native side merges a patch the same way (preferences.rs `merge`),
 // replacing column widths whole.
 const merge = mergePreferences;
-// @ts-expect-error The test transport deliberately returns concrete fixture values.
 mockIPC(async (command, args) => {
+  ipcLog.push({ command, args });
   if (command === "read_preferences") return { config, revision, ready: true };
   if (command === "update_preferences") {
     const patch = /** @type {any} */ (args).patch;
@@ -117,7 +169,14 @@ mockIPC(async (command, args) => {
     return { config, revision: ++revision, ready: true };
   }
   if (command === "plugin:event|listen") return 1;
-  if (command === "get_processes") return snapshot;
+  if (command === "get_processes") return live ? liveSnapshot() : snapshot;
+  // The poll skips a hidden or minimized window; with ?live it is shown.
+  if (live && command === "plugin:window|is_visible") return true;
+  if (live && command === "set_monitor_paused") {
+    livePaused = /** @type {any} */ (args).paused;
+    return null;
+  }
+  if (live && command === "plugin:window|is_minimized") return false;
   if (command === "disk_health") {
     calls.push(performance.now());
     if (state === "loading") return new Promise(() => {});
