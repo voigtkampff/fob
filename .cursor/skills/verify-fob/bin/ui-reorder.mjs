@@ -309,6 +309,18 @@ try {
       cardGripMinusValueLeft: g.gripOffsets,
       columnRule: ruled(g, "dark"),
     });
+    // Owners show account names in full; an owner with no account keeps its
+    // SID, cut in the cell and whole in the tooltip.
+    const owners = await evaluate(
+      `[...document.querySelectorAll('tbody td[data-col="user"] > div')].map((d) => ({ text: d.textContent.trim(), title: d.title, fits: d.scrollWidth <= d.clientWidth, mono: getComputedStyle(d.firstElementChild ?? d).fontFamily.includes('mono') }))`,
+    );
+    const sid = "S-1-5-21-1000000001-1000000002-1000000003-1999";
+    check(
+      ["SYSTEM", "LOCAL SERVICE", "sample-user"].every((n) =>
+        owners.some((o) => o.text === n && o.fits && !o.mono),
+      ) && owners.some((o) => o.text === sid && o.title === sid),
+      at(`owner names wrong ${JSON.stringify(owners)}`),
+    );
     const memCard = await center(
       "document.querySelector('#resource-trigger-memory').closest('.resource-grid > *')",
     );

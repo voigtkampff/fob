@@ -102,9 +102,11 @@
           >
         {:else if column.format}{column.format(process[column.id], $t)}
         {:else}<span
-            class={["pid", "ppid", "user", "session_id"].includes(column.id)
+            class={["pid", "ppid", "session_id"].includes(column.id)
               ? "font-mono text-xs text-muted-foreground"
-              : ""}>{process[column.id] ?? "—"}</span
+              : column.id === "user"
+                ? "text-muted-foreground"
+                : ""}>{process[column.id] ?? "—"}</span
           >{/if}
       </div></Table.Cell
     >{/each}<ActionButtons

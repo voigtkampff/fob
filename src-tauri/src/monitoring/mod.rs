@@ -4,6 +4,7 @@
 //! and processes. It includes process monitoring, system statistics collection,
 //! and data structures for representing system state.
 
+mod accounts;
 mod cpu_topology;
 pub use cpu_topology::*;
 mod gpu_process_monitor;

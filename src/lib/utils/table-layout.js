@@ -31,8 +31,10 @@ export const columnKinds = {
   virtual_memory: "bytes",
   run_time: "duration",
 };
-/** @type {Record<string, number>} */
-const textWidths = { name: 250, status: 100, user: 65, start_time: 180 };
+/** user fits an account name such as NETWORK SERVICE; longer names and
+ * unresolved SIDs are cut and shown whole in the tooltip.
+ * @type {Record<string, number>} */
+const textWidths = { name: 250, status: 100, user: 130, start_time: 180 };
 /** Narrowest the name column gets, at 10 levels of tree indent in tree view. */
 export const nameMinWidth = (tree = false) => (tree ? 280 : 200);
 /** Widest the name column gets: everything its cell can show. ProcessRow
