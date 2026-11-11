@@ -23,6 +23,14 @@ pub struct EngineInstance<'a> {
     pub engine_type: &'a str,
 }
 
+/// PDH marks a usable value VALID_DATA (0, unchanged since the last read) or
+/// NEW_DATA (1, changed); every other status means do not use it.
+pub fn usable_status(status: u32) -> bool {
+    const PDH_CSTATUS_VALID_DATA: u32 = 0;
+    const PDH_CSTATUS_NEW_DATA: u32 = 1;
+    matches!(status, PDH_CSTATUS_VALID_DATA | PDH_CSTATUS_NEW_DATA)
+}
+
 fn hex(value: &str) -> Option<u32> {
     let digits = value
         .strip_prefix("0x")
@@ -305,6 +313,16 @@ mod tests {
         let gpu = ProcessGpu::from_sample(&snap).unwrap();
         assert_eq!(gpu.of(1), (12.5, None));
         assert_eq!(gpu.of(2), (0.0, None));
+    }
+
+    #[test]
+    fn valid_and_new_data_are_used_and_other_statuses_are_not() {
+        assert!(usable_status(0));
+        assert!(usable_status(1));
+        // INVALID_DATA, NO_INSTANCE, ITEM_NOT_VALIDATED from pdhmsg.h.
+        for status in [0xC000_0BBA, 0x8000_07D1, 0x8000_07D3] {
+            assert!(!usable_status(status), "{status:#x}");
+        }
     }
 
     #[test]

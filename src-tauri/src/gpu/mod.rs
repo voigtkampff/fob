@@ -63,22 +63,9 @@ impl GpuMonitor {
             devices.extend(linux::collect());
             #[cfg(target_os = "windows")]
             {
-                let mut covered = devices
-                    .iter()
-                    .map(|d| d.name.trim_start_matches("NVIDIA ").to_lowercase())
-                    .collect::<Vec<_>>();
                 let busy = self.engines.sample().unwrap_or_default();
                 self.process_usage = ProcessGpu::from_sample(&busy);
-                for device in windows::collect(&busy) {
-                    if device.vendor == "NVIDIA" {
-                        let name = device.name.trim_start_matches("NVIDIA ").to_lowercase();
-                        if let Some(index) = covered.iter().position(|n| *n == name) {
-                            covered.remove(index);
-                            continue;
-                        }
-                    }
-                    devices.push(device);
-                }
+                devices = pair_nvidia(devices, windows::collect(&busy));
             }
             devices
         };
@@ -91,6 +78,57 @@ impl GpuMonitor {
         devices.truncate(8);
         devices
     }
+}
+
+/// winperf: on Windows one NVIDIA card shows up twice, once from NVML and once
+/// from DXGI with PDH engine counters. Keep one entry per card: NVML's
+/// temperature, power, fan, clock and memory, with PDH's utilization and
+/// engines whenever PDH has a reading, so the card's GPU % is the busiest
+/// engine from the same PDH sample as the process list's GPU %. NVML's own
+/// utilization (kernel-busy time over its last 1/6 to 1 s) is only a labeled
+/// fallback. Cards pair by name only when that name is unique on both sides:
+/// identical cards cannot be told apart by name, so none of them borrows
+/// another card's PDH reading.
+#[cfg_attr(not(target_os = "windows"), allow(dead_code))]
+fn pair_nvidia(nvml: Vec<GpuDevice>, mut dxgi: Vec<GpuDevice>) -> Vec<GpuDevice> {
+    fn key(device: &GpuDevice) -> String {
+        device
+            .name
+            .trim()
+            .trim_start_matches("NVIDIA ")
+            .trim()
+            .to_lowercase()
+    }
+    let named = |list: &[GpuDevice], name: &str| {
+        list.iter()
+            .filter(|d| d.vendor == "NVIDIA" && key(d) == name)
+            .count()
+    };
+    let mut cards = Vec::with_capacity(nvml.len() + dxgi.len());
+    for mut card in nvml.iter().cloned() {
+        let name = key(&card);
+        let unique = named(&nvml, &name) == 1 && named(&dxgi, &name) == 1;
+        let twin = dxgi
+            .iter()
+            .position(|d| d.vendor == "NVIDIA" && key(d) == name)
+            .map(|index| dxgi.remove(index));
+        card.source = match twin {
+            Some(twin) if unique => match twin.utilization {
+                Some(busy) => {
+                    card.utilization = Some(busy);
+                    card.engines = twin.engines;
+                    "NVIDIA NVML driver; utilization from PDH GPU Engine counters, same sample as the process list"
+                }
+                None => "NVIDIA NVML driver; utilization from NVML because PDH GPU Engine counters are unavailable",
+            },
+            Some(_) => "NVIDIA NVML driver; utilization from NVML because several cards share this name",
+            None => "NVIDIA NVML driver; utilization from NVML, no PDH adapter with this name",
+        }
+        .into();
+        cards.push(card);
+    }
+    cards.extend(dxgi);
+    cards
 }
 
 /// Debug builds only (screenshots on a machine without a GPU):
@@ -123,6 +161,141 @@ fn fake_gpu() -> Option<GpuDevice> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    fn card(id: &str, name: &str, vendor: &str, utilization: Option<f64>) -> GpuDevice {
+        GpuDevice {
+            id: id.into(),
+            name: name.into(),
+            vendor: vendor.into(),
+            utilization,
+            memory_used: None,
+            memory_total: None,
+            memory_kind: "dedicated".into(),
+            temperature: None,
+            power_watts: None,
+            core_clock_mhz: None,
+            cores: None,
+            source: "test".into(),
+            fan_percent: None,
+            engines: Vec::new(),
+        }
+    }
+    fn nvml(id: &str, name: &str, utilization: Option<f64>) -> GpuDevice {
+        GpuDevice {
+            memory_used: Some(1 << 30),
+            memory_total: Some(8 << 30),
+            temperature: Some(51.0),
+            power_watts: Some(42.5),
+            core_clock_mhz: Some(1800),
+            fan_percent: Some(30.0),
+            ..card(id, name, "NVIDIA", utilization)
+        }
+    }
+    fn pdh(id: &str, name: &str, vendor: &str, utilization: Option<f64>) -> GpuDevice {
+        GpuDevice {
+            engines: utilization
+                .map(|busy| vec![("3D".into(), busy), ("Copy".into(), 1.0)])
+                .unwrap_or_default(),
+            ..card(id, name, vendor, utilization)
+        }
+    }
+    fn by_id<'a>(cards: &'a [GpuDevice], id: &str) -> &'a GpuDevice {
+        cards.iter().find(|c| c.id == id).unwrap()
+    }
+
+    #[test]
+    fn an_nvidia_card_shows_the_pdh_busiest_engine_and_keeps_nvml_sensors() {
+        let cards = pair_nvidia(
+            vec![nvml("GPU-a", "NVIDIA Example 9000", Some(17.0))],
+            vec![pdh("luid:0:a", "NVIDIA Example 9000", "NVIDIA", Some(6.5))],
+        );
+        assert_eq!(cards.len(), 1, "one entry per card");
+        let c = &cards[0];
+        assert_eq!(c.id, "GPU-a");
+        assert_eq!(c.utilization, Some(6.5));
+        assert_eq!(c.engines, vec![("3D".into(), 6.5), ("Copy".into(), 1.0)]);
+        assert_eq!(
+            (c.temperature, c.power_watts, c.memory_used, c.fan_percent),
+            (Some(51.0), Some(42.5), Some(1 << 30), Some(30.0))
+        );
+        assert!(c.source.contains("utilization from PDH"), "{}", c.source);
+    }
+
+    #[test]
+    fn a_measured_idle_card_reads_zero_and_only_missing_pdh_falls_back_to_nvml() {
+        let idle = pair_nvidia(
+            vec![nvml("GPU-a", "NVIDIA Example 9000", Some(3.0))],
+            vec![pdh("luid:0:a", "NVIDIA Example 9000", "NVIDIA", Some(0.0))],
+        );
+        assert_eq!(idle[0].utilization, Some(0.0));
+        assert!(idle[0].source.contains("from PDH"));
+
+        let missing = pair_nvidia(
+            vec![nvml("GPU-a", "NVIDIA Example 9000", Some(3.0))],
+            vec![pdh("luid:0:a", "NVIDIA Example 9000", "NVIDIA", None)],
+        );
+        assert_eq!(missing.len(), 1);
+        assert_eq!(missing[0].utilization, Some(3.0));
+        assert!(missing[0].engines.is_empty());
+        assert!(missing[0].source.contains("from NVML because PDH"));
+
+        let neither = pair_nvidia(
+            vec![nvml("GPU-a", "NVIDIA Example 9000", None)],
+            vec![pdh("luid:0:a", "NVIDIA Example 9000", "NVIDIA", None)],
+        );
+        assert_eq!(neither[0].utilization, None, "unknown, not 0");
+
+        let unmatched = pair_nvidia(
+            vec![nvml("GPU-a", "NVIDIA Example 9000", Some(3.0))],
+            vec![],
+        );
+        assert_eq!(unmatched[0].utilization, Some(3.0));
+        assert!(unmatched[0].source.contains("no PDH adapter"));
+    }
+
+    #[test]
+    fn identical_cards_never_borrow_each_others_pdh_reading() {
+        let cards = pair_nvidia(
+            vec![
+                nvml("GPU-a", "NVIDIA Example 9000", Some(10.0)),
+                nvml("GPU-b", "NVIDIA Example 9000", Some(90.0)),
+            ],
+            vec![
+                pdh("luid:0:b", "NVIDIA Example 9000", "NVIDIA", Some(88.0)),
+                pdh("luid:0:a", "NVIDIA Example 9000", "NVIDIA", Some(9.0)),
+            ],
+        );
+        assert_eq!(cards.len(), 2, "no duplicate DXGI entries");
+        for (id, nvml_busy) in [("GPU-a", 10.0), ("GPU-b", 90.0)] {
+            let c = by_id(&cards, id);
+            assert_eq!(c.utilization, Some(nvml_busy));
+            assert!(c.engines.is_empty());
+            assert!(c.source.contains("several cards share this name"));
+        }
+    }
+
+    #[test]
+    fn each_adapter_keeps_its_own_reading_on_a_mixed_machine() {
+        let cards = pair_nvidia(
+            vec![
+                nvml("GPU-b", "NVIDIA Example 7000", Some(70.0)),
+                nvml("GPU-a", "NVIDIA Example 9000", Some(17.0)),
+            ],
+            vec![
+                pdh("luid:0:1", "Intel(R) Example Graphics", "Intel", Some(12.0)),
+                pdh("luid:0:a", "NVIDIA Example 9000", "NVIDIA", Some(6.5)),
+                pdh("luid:0:b", "NVIDIA Example 7000", "NVIDIA", Some(2.0)),
+            ],
+        );
+        assert_eq!(cards.len(), 3);
+        assert_eq!(by_id(&cards, "GPU-a").utilization, Some(6.5));
+        assert_eq!(by_id(&cards, "GPU-b").utilization, Some(2.0));
+        let igpu = by_id(&cards, "luid:0:1");
+        assert_eq!(
+            (igpu.utilization, igpu.source.as_str()),
+            (Some(12.0), "test")
+        );
+    }
+
     #[test]
     fn unavailable_is_not_idle() {
         assert_eq!(percent(0.0), Some(0.0));
