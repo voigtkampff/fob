@@ -11,7 +11,6 @@
 - Processes columns can be dragged by their header into a new order; 进程名称 (Process Name) stays first. The column lifts and follows the pointer while the other columns, values included, slide aside to show where it will land. A short click still sorts, and Esc cancels a drag and puts the columns back
 - A small dot grip in each summary card's title shows the card can be dragged. It lines up with the values below and darkens on hover. Card titles and column headers both carry the tooltip 拖动调整顺序 (Drag to reorder); column headers show no grip. The 迷你窗口 (mini window) cards have none
 - A dragged summary card is drawn above everything else in the window, so the card area, the tab bar and the scrolling 仪表盘 (Dashboard) no longer cut it off; it stays inside the window
-- Faint lines part the Processes columns, in the header and the rows
 - The 用户 (User) column shows the account that owns each process the way Task Manager does, such as SYSTEM, LOCAL SERVICE, NETWORK SERVICE or a user name, instead of its SID. Each account is looked up once; an owner with no account keeps its SID, and a process whose owner Windows will not tell shows a dash
 - The summary cards on the 仪表盘 (Dashboard) and 进程 (Processes) tabs can be dragged by their title into a new order the same way; a drag does not open the card. Reordering has no keyboard shortcut. With reduced motion turned on in Windows, items move without sliding
 - Column and card orders are saved with the other settings and come back after a restart; a column shown later returns to its saved place

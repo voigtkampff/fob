@@ -227,23 +227,6 @@
 .process-table-region [data-slot="table-row"][data-pinned="true"] .tree-name {
   background: color-mix(in srgb, var(--primary) 6%, var(--card));
 }
-/* Faint lines between the process table's columns, in header and body
-   alike; the actions column keeps its own stronger edge. */
-.process-table-region
-  [data-slot="table-head"]
-  + [data-slot="table-head"]:not(.actions-heading) {
-  box-shadow:
-    inset 1px 0 var(--column-rule),
-    inset 0 -1px var(--border);
-}
-.process-table-region
-  [data-slot="table-cell"]
-  + [data-slot="table-cell"]:not(.actions-cell) {
-  box-shadow: inset 1px 0 var(--column-rule);
-}
-.process-table-region {
-  --column-rule: color-mix(in srgb, var(--border) 70%, transparent);
-}
 /* A dot grip in a summary card's title marks that the card can be dragged
    into a new order. It sits in line at the card's content edge, so its left
    edge lines up with the values below. */

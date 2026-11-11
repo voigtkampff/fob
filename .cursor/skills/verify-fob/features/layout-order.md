@@ -51,8 +51,8 @@ zh and en, at 1920 and 1024 px. It fails unless:
   value below it, fully opaque on hover, in dark and light themes; column
   headers show no grip; headers and cards carry the drag hint in their
   tooltips; the grip takes no focus and a Dashboard card drags from it;
-- a faint line marks the left edge of every column after the first, in the
-  header and the rows, with none on the outer edge;
+- no column draws a vertical line between columns, in the header or rows
+  (the actions column keeps its own edge);
 - the 用户 (User) column shows SYSTEM, LOCAL SERVICE and a user name in full
   and an owner with no account as its SID, whole in the tooltip;
 - a dragged card is a copy in the top layer (its own slot stays empty).

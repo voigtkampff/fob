@@ -13,7 +13,7 @@
 // - every summary card shows a dot grip whose left edge lines up with the
 //   value below, stronger on hover, with a short drag hint in the tooltip,
 //   and a Dashboard card drags from its grip; column headers show no grip
-//   but keep the hint; faint lines part the columns in header and body;
+//   but keep the hint; no vertical lines part the columns;
 // - Processes and Dashboard summary cards drag by their title, the drag opens
 //   nothing and the next click still does;
 // - all three orders survive a reload, and bad saved orders (unknown,
@@ -272,22 +272,18 @@ try {
           cellRules: tds.slice(1, -1).map(rule),
         };
       })()`);
-    // A faint line on the left edge of every column after the first, header
-    // and body alike, and none on the outer edge.
+    // No vertical line between columns: header cells keep only their
+    // bottom edge and body cells draw none.
     const ruled = (g, where) => {
       const line = /1px 0px 0px 0px inset/;
-      check(
-        g.headRules.every(
-          (r) => line.test(r) && /0px -1px 0px 0px inset/.test(r),
-        ) &&
-          g.cellRules.every((r) => line.test(r)) &&
-          !line.test(g.firstRules[0]) &&
-          !line.test(g.firstRules[1]),
-        at(
-          `${where}: column lines wrong ${JSON.stringify([g.firstRules, g.headRules[0], g.cellRules[0]])}`,
-        ),
+      const lined = [...g.firstRules, ...g.headRules, ...g.cellRules].filter(
+        (r) => line.test(r),
       );
-      return g.cellRules[0].match(/rgba?\([^)]*\)|color\([^)]*\)/)?.[0];
+      check(
+        !lined.length,
+        at(`${where}: vertical column lines drawn ${JSON.stringify(lined[0])}`),
+      );
+      return lined.length > 0;
     };
     const g = await grips();
     check(
@@ -307,7 +303,7 @@ try {
       lang,
       step: "grips",
       cardGripMinusValueLeft: g.gripOffsets,
-      columnRule: ruled(g, "dark"),
+      columnLines: ruled(g, "dark"),
     });
     // Owners show account names in full; an owner with no account keeps its
     // SID, cut in the cell and whole in the tooltip.
@@ -349,7 +345,7 @@ try {
     );
     await clip(`${lang}-1920-card-grips.png`, cardsClip);
     await mouse("mouseMoved", 5, 5);
-    await clip(`${lang}-1920-column-lines.png`, headClip);
+    await clip(`${lang}-1920-table-header.png`, headClip);
     if (lang === "zh") {
       await evaluate("localStorage.setItem('theme', 'githubLight')");
       await open(lang, "processes");
@@ -357,14 +353,14 @@ try {
       report.push({
         lang,
         step: "grips-light",
-        columnRule: ruled(light, "light"),
+        columnLines: ruled(light, "light"),
       });
       check(
         light.gripOffsets.every((d) => Math.abs(d) <= 1),
         at(`light: card grips not over the values ${light.gripOffsets}`),
       );
       await clip(`${lang}-1920-card-grips-light.png`, cardsClip);
-      await clip(`${lang}-1920-column-lines-light.png`, headClip);
+      await clip(`${lang}-1920-table-header-light.png`, headClip);
       await evaluate("localStorage.removeItem('theme')");
       await open(lang, "processes");
     }
