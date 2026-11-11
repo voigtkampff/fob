@@ -142,14 +142,9 @@ try {
           const clipped = [...(panel?.querySelectorAll('dt, dd, .note, .tag, .name, .warnings span') ?? [])]
             .filter((e) => e.scrollWidth > e.clientWidth + 0.5 && getComputedStyle(e).overflow !== 'hidden')
             .map((e) => e.textContent.trim());
-          const overlap = [...(panel?.querySelectorAll('dl') ?? [])].flatMap((dl) => {
-            const kids = [...dl.children];
-            const out = [];
-            for (let i = 0; i + 1 < kids.length; i += 2) {
-              const a = kids[i].getBoundingClientRect(), b = kids[i + 1].getBoundingClientRect();
-              if (b.left < a.right - 0.5 && Math.abs(a.top - b.top) < 2) out.push(kids[i].textContent.trim());
-            }
-            return out;
+          const overlap = [...(panel?.querySelectorAll('dl .metric') ?? [])].flatMap((row) => {
+            const a = row.querySelector('dt').getBoundingClientRect(), b = row.querySelector('dd').getBoundingClientRect();
+            return b.left < a.right - 0.5 && Math.abs(a.top - b.top) < 2 ? [row.querySelector('dt').textContent.trim()] : [];
           });
           const panelBox = panel?.getBoundingClientRect();
           const outside = [...(panel?.querySelectorAll('*') ?? [])].filter((e) => e.getBoundingClientRect().right > panelBox.right + 0.5).map((e) => e.textContent.trim().slice(0, 40));

@@ -36,6 +36,10 @@ fob.exe twice with fresh standard settings, in English and in Chinese:
 - the main window must be visible and render the dashboard,
 - the storage panel's disk health link must open the Disk detail with at
   least one disk read on the runner,
+- moving the Windows cursor over each disk metric row's label, middle and
+  value must paint only that row's label and value chips, at 4.5:1 or more,
+  without moving anything, and leaving must clear them (catppuccin,
+  githubLight and glassy in English, catppuccin in Chinese),
 - closing the window must leave Fob running in the tray,
 - the app's quit command, and a click on Quit in the title bar menu, must each
   end it with code 0.
@@ -43,6 +47,8 @@ fob.exe twice with fresh standard settings, in English and in Chinese:
 Screenshots and JSON results are in the `package-smoke-*` artifact. The runner
 has virtual SAS or NVMe disks at 96 DPI and runs as an administrator, so the
 run says nothing about SATA readings, display scaling, UAC or the sensor helper.
+Its disks report no warnings and no long values, so warning values and
+wrapped rows are checked on mocked readings in the browser preview only.
 
 The sensor helper keeps its own version (`sensors-helper/src/winperf-sensors.csproj`).
 While it stays the same, `sensors-helper/build.sh` must produce the released

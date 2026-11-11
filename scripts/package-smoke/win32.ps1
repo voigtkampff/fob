@@ -21,7 +21,10 @@ public static class W {
   [DllImport("user32.dll")] public static extern bool PostMessage(IntPtr h, uint m, IntPtr w, IntPtr l);
   [DllImport("user32.dll")] public static extern uint GetDpiForWindow(IntPtr h);
   [DllImport("user32.dll")] public static extern IntPtr GetForegroundWindow();
+  [DllImport("user32.dll")] public static extern bool ClientToScreen(IntPtr h, ref POINT p);
+  [DllImport("user32.dll")] public static extern bool SetCursorPos(int x, int y);
   [StructLayout(LayoutKind.Sequential)] public struct RECT { public int L, T, R, B; }
+  [StructLayout(LayoutKind.Sequential)] public struct POINT { public int X, Y; }
   public static List<IntPtr> Of(uint pid) {
     var all = new List<IntPtr>();
     EnumWindows((h, l) => { uint p; GetWindowThreadProcessId(h, out p); if (p == pid) all.Add(h); return true; }, IntPtr.Zero);
@@ -46,6 +49,9 @@ function Window($h) {
 }
 switch ($Action) {
   "windows" { ConvertTo-Json -InputObject @([W]::Of([uint32]$Arg) | ForEach-Object { Window $_ }) -Depth 4 -Compress }
+  "client-origin" { $p = New-Object W+POINT; [void][W]::ClientToScreen([IntPtr][int64]$Arg, [ref]$p); @{ x = $p.X; y = $p.Y } | ConvertTo-Json -Compress }
+  # Windows sends no mouse move when the cursor is already there, so step off first.
+  "cursor" { $x, $y = $Arg -split ","; [void][W]::SetCursorPos([int]$x + 3, [int]$y); Start-Sleep -Milliseconds 50; [W]::SetCursorPos([int]$x, [int]$y) | ConvertTo-Json }
   "close" { [W]::PostMessage([IntPtr][int64]$Arg, 0x0010, [IntPtr]::Zero, [IntPtr]::Zero) | ConvertTo-Json }
   "window-shot" { $b = [W]::Print([IntPtr][int64]$Arg); $b.Save($Out); @{ width = $b.Width; height = $b.Height } | ConvertTo-Json -Compress }
   "screen-shot" {
