@@ -6,9 +6,7 @@ import { en, zh } from "../src/lib/i18n/strings.js";
 import defaults from "../src/lib/definitions/default-config.json" with { type: "json" };
 import {
   actionsWidth,
-  columnKinds,
   columnWidth,
-  nameMinWidth,
   tableWidth,
 } from "../src/lib/utils/table-layout.js";
 
@@ -92,20 +90,14 @@ test("GPU and both disk speeds show by default; the old I/O total column is gone
   assert.ok(ids.indexOf("disk_write") < ids.indexOf("virtual_memory"));
 });
 
-test("number and id columns take one width per kind of value", () => {
-  for (const c of columns)
-    if (c.numeric) assert.ok(columnKinds[c.id], `${c.id} has a width kind`);
-  const byKind = {};
-  for (const [id, kind] of Object.entries(columnKinds)) {
-    assert.ok(column(id), `${id} is a column`);
-    (byKind[kind] ??= new Set()).add(columnWidth(id));
+test("every column has its own content width", () => {
+  for (const c of columns) {
+    assert.ok(columnWidth(c.id) >= 72, `${c.id} ${columnWidth(c.id)}`);
+    assert.ok(columnWidth(c.id, true) >= columnWidth(c.id), c.id);
   }
-  for (const [kind, widths] of Object.entries(byKind))
-    assert.equal(widths.size, 1, `${kind} columns share a width`);
-  assert.equal(columnWidth("ppid"), columnWidth("pid"));
-  assert.equal(columnWidth("gpu_usage"), columnWidth("cpu_usage"));
-  assert.equal(columnWidth("gpu_memory"), columnWidth("memory_usage"));
-  assert.equal(columnWidth("disk_write"), columnWidth("disk_read"));
+  // Short values are not stretched to the widest column's width.
+  assert.ok(columnWidth("pid") < columnWidth("memory_usage"));
+  assert.ok(columnWidth("cpu_usage") < columnWidth("user"));
 });
 
 const zhT = (key, vars = {}) =>
@@ -129,25 +121,18 @@ test("run time reads 0h 37m 45s in both languages and fits its column", () => {
       );
 });
 
-test("the name column gives way before the table scrolls under the actions column", () => {
+test("the default columns fit a 1920 px screen at 125% before scrolling", () => {
   const visible = Object.entries(defaults.appearance.columnVisibility).map(
     ([id, visible]) => ({ id, visible }),
   );
-  for (const tree of [false, true]) {
-    const others = visible.filter((c) => c.visible && c.id !== "name");
-    const widest = Math.max(...others.map((c) => columnWidth(c.id, tree)));
-    assert.equal(columnWidth("name", tree), nameMinWidth(tree));
-    // Every data column shares the widest data column's minimum.
-    assert.equal(
-      tableWidth(visible, tree),
-      actionsWidth + others.length * widest + nameMinWidth(tree),
-    );
-    // The default columns fit a 1920 px screen at 100% scaling; at 125%
-    // (1536 CSS px) the equal widths scroll sideways a little.
-    assert.ok(tableWidth(visible, tree) <= 1920, `tree ${tree}`);
-  }
-  assert.equal(tableWidth(visible), 1662);
-  assert.equal(tableWidth(visible, true), 1742);
+  const own = visible
+    .filter((c) => c.visible)
+    .reduce((sum, c) => sum + columnWidth(c.id), actionsWidth);
+  assert.equal(tableWidth(visible), own);
+  assert.equal(tableWidth(visible), 1262);
+  assert.equal(tableWidth(visible, true), 1401);
+  // 1920 px at 125% scaling is 1536 CSS px.
+  assert.ok(tableWidth(visible, true) <= 1536);
 });
 
 test("column labels say 硬盘 and Disk in both languages", () => {

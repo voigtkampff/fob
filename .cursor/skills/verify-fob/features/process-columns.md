@@ -41,16 +41,17 @@ header's text edge is off its cells' text edge, the last column's text comes
 within 8 px of the sticky actions column (at rest when the table fits,
 scrolled to the end when it does not), or the table scrolls sideways while
 the window is at least its minimum width, or the name column is wider than
-its widest (`nameMaxWidth` in `utils/table-layout.js`: 330 px, 560 px in tree
-view, room for the truncated name plus icons and the deepest indent). The
-other visible columns all have one width (`columnWidths`): at least the
-widest of their own minimums, so the default set needs 1662 px (1742 px in
-tree view) before it stops scrolling sideways. Beyond that the name column
-grows to its widest first, then the data columns share the rest equally.
+its widest (460 px, 560 px in tree view). Every other column keeps the width
+its values and header need (`columnWidth` in `utils/table-layout.js`), so
+the default set needs 1262 px (1401 px in tree view) before it stops
+scrolling sideways. Beyond that the name column grows to its widest, then
+the command, root and environment columns when shown, and the rest is left
+empty before the actions column. A width set by dragging a column's edge
+replaces that column's automatic width.
 It writes `columns-<tag>-<lang>-<view>-<set>-<width>[-right].png` and
 `columns-<tag>.json` with each column's width, header need and value need,
 the table's minimum width and the gap to the actions column.
-`scripts/process-columns.test.mjs` pins one width per value kind (id,
-percent, rate, bytes, duration), the run time format (`7h 6m 32s` in both
+`scripts/process-columns.test.mjs` pins each column's own width, the run
+time format (`7h 6m 32s` in both
 languages) against Consolas and Liberation Mono widths, and the table's
 minimum width.

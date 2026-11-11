@@ -4,6 +4,7 @@ import { mockIPC, mockWindows } from "@tauri-apps/api/mocks";
 import Page from "../../src/routes/+page.svelte";
 import { REPLIES, stats } from "./disk-health-fixtures.js";
 import { DEFAULT_CONFIG } from "../../src/lib/definitions/settings";
+import { mergePreferences } from "../../src/lib/utils/settings-patch.js";
 
 const params = new URLSearchParams(location.search);
 const lang = params.get("lang") === "zh" ? "zh" : "en";
@@ -102,16 +103,9 @@ Object.defineProperty(window, "healthTimers", { value: () => health.size });
 mockWindows("main");
 /** Patches carry only the changed leaves; arrays replace whole. */
 /** @type {(base: any, patch: any) => any} */
-const merge = (base, patch) =>
-  Object.fromEntries(
-    [...new Set([...Object.keys(base), ...Object.keys(patch)])].map((key) => {
-      const next = patch[key];
-      if (next === undefined) return [key, base[key]];
-      const nested =
-        next && typeof next === "object" && !Array.isArray(next) && base[key];
-      return [key, nested ? merge(base[key], next) : next];
-    }),
-  );
+// The native side merges a patch the same way (preferences.rs `merge`),
+// replacing column widths whole.
+const merge = mergePreferences;
 // @ts-expect-error The test transport deliberately returns concrete fixture values.
 mockIPC(async (command, args) => {
   if (command === "read_preferences") return { config, revision, ready: true };

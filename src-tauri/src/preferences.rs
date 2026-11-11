@@ -35,6 +35,10 @@ fn migrate_columns(config: &mut Value, saved: &Value) {
         config["appearance"]["columnVisibility"]["gpu_usage"] = Value::Bool(true);
     }
 }
+/// Bounds of a column width set by hand (manualMin, manualMax in
+/// src/lib/utils/table-layout.js).
+const COLUMN_WIDTH_MIN: f64 = 48.0;
+const COLUMN_WIDTH_MAX: f64 = 1200.0;
 fn defaults() -> Value {
     serde_json::from_str(include_str!(
         "../../src/lib/definitions/default-config.json"
@@ -72,6 +76,25 @@ fn merge(config: &mut Value, patch: &Value) {
                             config[group][key][column] = visible.clone();
                         }
                     }
+                }
+                continue;
+            }
+            // 0.8.7: widths set by dragging a column's edge, by column id.
+            // Only known ids with numbers are kept, rounded and clamped as
+            // the table does (src/lib/utils/table-layout.js).
+            if group == "behavior" && key == "columnWidths" {
+                if let Some(widths) = value.as_object() {
+                    let known = &config["appearance"]["columnVisibility"];
+                    let kept: serde_json::Map<String, Value> = widths
+                        .iter()
+                        .filter(|(id, _)| known.get(id.as_str()).is_some())
+                        .filter_map(|(id, width)| {
+                            let width = width.as_f64().filter(|w| w.is_finite())?;
+                            let width = width.round().clamp(COLUMN_WIDTH_MIN, COLUMN_WIDTH_MAX);
+                            Some((id.clone(), Value::from(width as u64)))
+                        })
+                        .collect();
+                    config[group][key] = Value::Object(kept);
                 }
                 continue;
             }
@@ -458,6 +481,30 @@ mod tests {
             merge(&mut kept, &bad);
             assert_eq!(kept, config, "{bad}");
         }
+    }
+    #[test]
+    fn saved_column_widths_keep_known_ids_with_bounded_numbers() {
+        let mut config = defaults();
+        assert_eq!(config["behavior"]["columnWidths"], json!({}));
+        merge(
+            &mut config,
+            &json!({"behavior":{"columnWidths":{
+                "name": 300.6, "pid": -20, "command": 99999, "user": "wide",
+                "unknown": 200, "cpu_usage": null
+            }}}),
+        );
+        assert_eq!(
+            config["behavior"]["columnWidths"],
+            json!({"name": 301, "pid": 48, "command": 1200})
+        );
+        // A value that is not an object leaves the saved widths alone.
+        let mut kept = config.clone();
+        merge(&mut kept, &json!({"behavior":{"columnWidths":[120]}}));
+        assert_eq!(kept, config);
+        // Settings from before 0.8.7 have none.
+        let mut old = defaults();
+        merge(&mut old, &json!({"behavior":{"refreshRate":3000}}));
+        assert_eq!(old["behavior"]["columnWidths"], json!({}));
     }
     #[test]
     fn gpu_column_shows_once_for_settings_from_before_0_8_3() {

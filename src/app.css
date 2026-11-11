@@ -227,6 +227,38 @@
 .process-table-region [data-slot="table-row"][data-pinned="true"] .tree-name {
   background: color-mix(in srgb, var(--primary) 6%, var(--card));
 }
+/* A column's right edge can be dragged to set its width (TableHeader). The
+   handle is invisible; a thin mark shows only while it is hovered or
+   dragged, so the table keeps no column lines. */
+.process-table-region .col-resize {
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 8px;
+  height: 100%;
+  cursor: col-resize;
+  touch-action: none;
+  z-index: 1;
+}
+.process-table-region .col-resize::after {
+  content: "";
+  position: absolute;
+  top: 8px;
+  bottom: 8px;
+  right: 3px;
+  width: 2px;
+  border-radius: 1px;
+  transition: background-color 120ms;
+}
+.process-table-region .col-resize:hover::after,
+.process-table-region .col-resize[data-active]::after {
+  background: var(--primary);
+}
+html[data-resizing],
+html[data-resizing] * {
+  cursor: col-resize !important;
+  user-select: none;
+}
 /* A dot grip in a summary card's title marks that the card can be dragged
    into a new order. It sits in line at the card's content edge, so its left
    edge lines up with the values below. */

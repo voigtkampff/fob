@@ -27,11 +27,7 @@ import { mkdirSync, writeFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { createServer } from "vite";
 import { en, zh } from "../../../../src/lib/i18n/strings.js";
-import {
-  columnWidth,
-  nameMaxWidth,
-  nameMinWidth,
-} from "../../../../src/lib/utils/table-layout.js";
+import { columnWidth } from "../../../../src/lib/utils/table-layout.js";
 
 const idOf = (strings, label) =>
   ({
@@ -203,9 +199,9 @@ try {
   // cell sits under its header.
   const table = () =>
     evaluate(`(() => {
-      const ths = [...document.querySelectorAll('thead tr th')];
+      const ths = [...document.querySelectorAll('thead tr th:not(.col-filler)')];
       const row = document.querySelector('tbody tr');
-      const tds = [...row.children];
+      const tds = [...row.children].filter((td) => !td.classList.contains('col-filler'));
       return {
         labels: ths.map((th) => th.textContent.trim()),
         sorted: ths.map((th) => th.getAttribute('aria-sort')).join(),
@@ -214,12 +210,13 @@ try {
         nameWidth: ths[0].getBoundingClientRect().width,
         widths: Object.fromEntries(ths.map((th) => [th.textContent.trim(), th.getBoundingClientRect().width])),
         actionsClass: ths.at(-1).className,
+        filler: document.querySelector('thead th.col-filler')?.getBoundingClientRect().width ?? -1,
         fill: Math.round(document.querySelector('.process-table-region').getBoundingClientRect().right - ths.at(-1).getBoundingClientRect().right),
         animations: document.getAnimations().filter((a) => a.id === 'reorder').length,
       };
     })()`);
   const th = (label) =>
-    `[...document.querySelectorAll('thead tr th')].find((th) => th.textContent.trim() === ${JSON.stringify(label)})`;
+    `[...document.querySelectorAll('thead tr th:not(.col-filler)')].find((th) => th.textContent.trim() === ${JSON.stringify(label)})`;
   const cardOrder = (sel) =>
     evaluate(
       `[...document.querySelector(${JSON.stringify(sel)}).children].map((c) => c.querySelector('${sel === ".resource-grid" ? "[id^=resource-trigger-]" : ".card-head"}')?.${sel === ".resource-grid" ? "id.replace('resource-trigger-', '')" : "textContent.trim().split(/\\\\s+/)[0]"} ?? '?')`,
@@ -229,24 +226,23 @@ try {
     const s = lang === "zh" ? zh : en;
     const label = (col) => s[`col.${col}`];
     const at = (what) => `${lang}: ${what}`;
-    // Every data column (between the name and actions columns) has one
-    // width, within 1 px of rounding.
-    const equalData = (t, where) => {
-      const w = Object.values(t.widths)
-        .slice(1, -1)
-        .map((x) => Math.round(x * 10) / 10);
+    // Every data column keeps its own content width (or the one set by
+    // hand), within 1 px of rounding.
+    const ownWidths = (t, where, tree = false, manual = {}) => {
+      const w = Object.fromEntries(
+        Object.entries(t.widths)
+          .slice(1, -1)
+          .map(([l, x]) => [idOf(s, l), Math.round(x * 10) / 10]),
+      );
+      const off = Object.entries(w).filter(
+        ([id, x]) => Math.abs(x - (manual[id] ?? columnWidth(id, tree))) > 1,
+      );
       check(
-        Math.max(...w) - Math.min(...w) <= 1,
-        at(`${where}: data columns not one width ${w}`),
+        off.length === 0,
+        at(`${where}: columns off their width ${JSON.stringify(off)}`),
       );
       return w;
     };
-    const widestMin = (t) =>
-      Math.max(
-        ...Object.keys(t.widths)
-          .slice(1, -1)
-          .map((l) => columnWidth(idOf(s, l))),
-      );
     await viewport(1920, 1000);
     await send("Page.navigate", { url: `${base}/main-page-panel.html` });
     await evaluate("sessionStorage.clear()");
@@ -254,8 +250,8 @@ try {
 
     const grips = () =>
       evaluate(`(() => {
-        const ths = [...document.querySelectorAll('thead tr th')];
-        const tds = [...document.querySelector('tbody tr').children];
+        const ths = [...document.querySelectorAll('thead tr th:not(.col-filler)')];
+        const tds = [...document.querySelector('tbody tr').children].filter((td) => !td.classList.contains('col-filler'));
         const pseudo = (el) => getComputedStyle(el, '::before').content;
         const cards = [...document.querySelectorAll('.resource-grid > *')];
         const rule = (el) => getComputedStyle(el).boxShadow;
@@ -373,30 +369,37 @@ try {
       return { cut: text.scrollWidth > text.clientWidth, title: !!text.closest('[title]')?.getAttribute('title')?.includes('Very Long') };
     })()`);
     check(
-      t.nameWidth <= nameMaxWidth(false) + 1,
-      at(
-        `name column ${t.nameWidth}px wide at 1920, over ${nameMaxWidth(false)}`,
-      ),
+      Math.abs(t.nameWidth - 460) <= 1,
+      at(`name column ${t.nameWidth}px wide at 1920, not 460`),
     );
     check(
       long.cut && long.title,
       at(`long name not cut with a tooltip ${JSON.stringify(long)}`),
     );
     check(t.aligned, at("header and body columns out of line at 1920"));
-    const dataWidths = equalData(t, "1920");
+    const dataWidths = ownWidths(t, "1920");
     check(
       t.actionsClass.includes("actions-heading") &&
         Math.abs(t.fill) <= 1 &&
-        Math.min(...dataWidths) > widestMin(t),
+        t.filler > 100,
       at(
-        `actions not at the right edge (${t.fill}px) or data columns did not grow ${dataWidths}`,
+        `actions not at the right edge (${t.fill}px) or no empty room before them (${t.filler}px)`,
       ),
+    );
+    // Every header label fits its column (Chinese and English).
+    const cutHeads = await evaluate(
+      `[...document.querySelectorAll('thead th button')].filter((b) => b.scrollWidth > b.clientWidth + 0.5).map((b) => b.textContent.trim())`,
+    );
+    check(
+      cutHeads.length === 0,
+      at(`cut header labels ${cutHeads.join(" | ")}`),
     );
     report.push({
       lang,
       step: "wide",
       nameWidth: t.nameWidth,
       dataWidths,
+      filler: t.filler,
       long,
     });
     await shot(`${lang}-1920-flat.png`);
@@ -637,7 +640,7 @@ try {
     report.push({
       lang,
       step: "pid-hidden",
-      dataWidths: equalData(t, "PID hidden"),
+      dataWidths: ownWidths(t, "PID hidden"),
     });
     await shot(`${lang}-1920-pid-hidden.png`);
     await editSaved(
@@ -681,8 +684,15 @@ try {
       at(`tree view order: ${t.labels.join(" | ")}`),
     );
     check(
-      t.nameWidth <= nameMaxWidth(true) + 1,
-      at(`tree name column ${t.nameWidth}px`),
+      Math.abs(t.nameWidth - 560) <= 1,
+      at(`tree name column ${t.nameWidth}px, not 560`),
+    );
+    const cutTree = await evaluate(
+      `[...document.querySelectorAll('thead th button')].filter((b) => b.scrollWidth > b.clientWidth + 0.5).map((b) => b.textContent.trim())`,
+    );
+    check(
+      cutTree.length === 0,
+      at(`cut tree header labels ${cutTree.join(" | ")}`),
     );
     report.push({
       lang,
@@ -694,7 +704,7 @@ try {
     report.push({
       lang,
       step: "tree-widths",
-      dataWidths: equalData(t, "tree"),
+      dataWidths: ownWidths(t, "tree", true),
     });
     await shot(`${lang}-1920-tree.png`);
     await editSaved(`(c) => { c.behavior.processView = 'flat'; }`);
@@ -890,6 +900,183 @@ try {
       at(`bad dashboard cards: ${dashBad.join(" / ")}`),
     );
 
+    {
+      // Column widths by hand: drag a column's right edge.
+      await viewport(1920, 1000);
+      await open(lang, "processes");
+      const orderBefore = (await saved()).columnOrder ?? [];
+      const statusId = "status";
+      const own = columnWidth(statusId);
+      const edge = (l) =>
+        evaluate(
+          `(() => { const th = ${th(l)}; const e = th?.querySelector('.col-resize'); if (!e) return null; const r = e.getBoundingClientRect(); const cue = getComputedStyle(e, '::after'); return { x: r.x + r.width / 2, y: r.y + r.height / 2, w: r.width, right: th.getBoundingClientRect().right, cue: cue.opacity === '0' || cue.backgroundColor === 'rgba(0, 0, 0, 0)' ? 'hidden' : 'shown', active: e.hasAttribute('data-active'), cursor: getComputedStyle(e).cursor }; })()`,
+        );
+      const statusLabel = label(statusId);
+      const widthOf = async (l) => (await table()).widths[l];
+      let e0 = await edge(statusLabel);
+      check(
+        !!e0 &&
+          e0.w >= 6 &&
+          e0.w <= 10 &&
+          Math.abs(e0.x + e0.w / 2 - e0.right) <= 1 &&
+          e0.cue === "hidden" &&
+          e0.cursor === "col-resize",
+        at(`resize edge ${JSON.stringify(e0)}`),
+      );
+      await mouse("mouseMoved", e0.x, e0.y);
+      await sleep(150);
+      const hovered = await edge(statusLabel);
+      check(
+        hovered.cue === "shown",
+        at(`no cue on hovering the edge ${JSON.stringify(hovered)}`),
+      );
+      await shot(`${lang}-1920-resize-hover.png`);
+      await mouse("mouseMoved", 5, 5);
+      await sleep(150);
+      check(
+        (await edge(statusLabel)).cue === "hidden",
+        at("edge cue stays after leaving"),
+      );
+      const unsized = await table();
+      await evaluate(
+        `(() => { window.__saves = 0; const set = sessionStorage.setItem.bind(sessionStorage); sessionStorage.setItem = (k, v) => { if (k === 'preview-config') window.__saves++; set(k, v); }; })()`,
+      );
+      // Esc cancels.
+      await drag(e0, { x: e0.x + 80, y: e0.y }, { hold: true });
+      let live = await table();
+      const during = await edge(statusLabel);
+      check(
+        Math.abs(live.widths[statusLabel] - (own + 80)) <= 1 &&
+          live.aligned &&
+          during.active &&
+          during.cue === "shown",
+        at(`live resize ${live.widths[statusLabel]} ${JSON.stringify(during)}`),
+      );
+      await shot(`${lang}-1920-resize-drag.png`);
+      await press("Escape", "Escape");
+      await mouse("mouseReleased", e0.x + 80, e0.y);
+      await sleep(150);
+      live = await table();
+      check(
+        Math.abs(live.widths[statusLabel] - own) <= 1 &&
+          (await evaluate("window.__saves")) === 0 &&
+          !(await saved()).columnWidths?.status,
+        at(`Esc did not cancel the resize ${live.widths[statusLabel]}`),
+      );
+      // Drag and release: one save, only this column changes, no sort or reorder.
+      await drag(e0, { x: e0.x + 80, y: e0.y }, { hold: true });
+      check(
+        (await evaluate("window.__saves")) === 0,
+        at("saved unsized the edge was released"),
+      );
+      await mouse("mouseReleased", e0.x + 80, e0.y);
+      await sleep(250);
+      const after = await table();
+      const savedW = (await saved()).columnWidths ?? {};
+      const others = Object.keys(unsized.widths).filter(
+        (l) => l !== statusLabel && l !== label("name"),
+      );
+      check(
+        (await evaluate("window.__saves")) === 1 &&
+          savedW.status === own + 80 &&
+          Math.abs(after.widths[statusLabel] - (own + 80)) <= 1 &&
+          others.every(
+            (l) => Math.abs(after.widths[l] - unsized.widths[l]) <= 1,
+          ) &&
+          after.labels.join() === unsized.labels.join() &&
+          after.sorted === unsized.sorted &&
+          after.cells.join() === unsized.cells.join() &&
+          after.aligned,
+        at(
+          `resize: saves ${await evaluate("window.__saves")}, ${JSON.stringify(savedW)}, labels ${after.labels.join("|")}, sort ${after.sorted}`,
+        ),
+      );
+      report.push({
+        lang,
+        step: "resize",
+        own,
+        saved: savedW,
+        filler: after.filler,
+      });
+      // Kept after reload, a reorder, hide and show, tree view, and a narrow window.
+      await open(lang, "processes");
+      check(
+        Math.abs((await widthOf(statusLabel)) - (own + 80)) <= 1,
+        at("hand width lost on reload"),
+      );
+      const pidHead = await center(
+        `${th(label("pid"))}.querySelector('button')`,
+      );
+      const userHead = await center(th(label("user")));
+      await drag(pidHead, { x: userHead.x, y: pidHead.y }, { steps: 10 });
+      await sleep(400);
+      let moved = await table();
+      check(
+        moved.labels.indexOf(label("pid")) >
+          unsized.labels.indexOf(label("pid")) &&
+          Math.abs(moved.widths[statusLabel] - (own + 80)) <= 1 &&
+          Math.abs(moved.widths[label("pid")] - columnWidth("pid")) <= 1,
+        at(
+          `hand width after a reorder ${moved.labels.join("|")} ${moved.widths[statusLabel]}`,
+        ),
+      );
+      await editSaved(
+        `(c) => { c.appearance.columnVisibility.status = false; }`,
+      );
+      await open(lang, "processes");
+      await editSaved(
+        `(c) => { c.appearance.columnVisibility.status = true; c.behavior.processView = 'tree'; }`,
+      );
+      await open(lang, "processes");
+      check(
+        Math.abs((await widthOf(statusLabel)) - (own + 80)) <= 1,
+        at("hand width lost after hide, show and tree view"),
+      );
+      await editSaved(`(c) => { c.behavior.processView = 'flat'; }`);
+      await viewport(1024, 760);
+      await open(lang, "processes");
+      check(
+        Math.abs((await widthOf(statusLabel)) - (own + 80)) <= 1,
+        at("hand width lost in a narrow window"),
+      );
+      await viewport(1920, 1000);
+      await open(lang, "processes");
+      // Double-click the edge: back to the automatic width, the saved key gone.
+      e0 = await edge(statusLabel);
+      for (const clickCount of [1, 2]) {
+        await send("Input.dispatchMouseEvent", {
+          type: "mousePressed",
+          x: e0.x,
+          y: e0.y,
+          button: "left",
+          buttons: 1,
+          clickCount,
+        });
+        await send("Input.dispatchMouseEvent", {
+          type: "mouseReleased",
+          x: e0.x,
+          y: e0.y,
+          button: "left",
+          buttons: 0,
+          clickCount,
+        });
+      }
+      await sleep(250);
+      const reset = await table();
+      check(
+        Math.abs(reset.widths[statusLabel] - own) <= 1 &&
+          !("status" in ((await saved()).columnWidths ?? {})) &&
+          reset.sorted === moved.sorted,
+        at(
+          `double-click did not reset ${reset.widths[statusLabel]} ${JSON.stringify((await saved()).columnWidths)}`,
+        ),
+      );
+      // Put the column order back for the checks below.
+      await editSaved(
+        `(c) => { c.behavior.columnOrder = ${JSON.stringify(orderBefore)}; }`,
+      );
+    }
+
     // Narrow window: name at its narrowest, the table scrolls sideways, cards wrap.
     await viewport(1024, 760);
     await open(lang, "processes");
@@ -898,19 +1085,14 @@ try {
       `(() => { const r = document.querySelector('thead').closest('[data-slot="table-container"], .overflow-auto, .overflow-x-auto') ?? document.querySelector('table').parentElement; const tops = new Set([...document.querySelector('.resource-grid').children].map((c) => Math.round(c.getBoundingClientRect().top))); return { scrolls: r.scrollWidth > r.clientWidth, rows: tops.size }; })()`,
     );
     check(
-      Math.abs(t.nameWidth - nameMinWidth(false)) <= 1 &&
+      Math.abs(t.nameWidth - 180) <= 1 &&
+        t.filler <= 0.5 &&
         narrow.scrolls &&
         t.aligned,
       at(`1024: name ${t.nameWidth}px, ${JSON.stringify(narrow)}`),
     );
     report.push({ lang, step: "narrow", nameWidth: t.nameWidth, ...narrow });
-    const narrowData = equalData(t, "1024");
-    check(
-      Math.abs(narrowData[0] - widestMin(t)) <= 1,
-      at(
-        `1024: data columns ${narrowData[0]}px, not their shared minimum ${widestMin(t)}`,
-      ),
-    );
+    const narrowData = ownWidths(t, "1024");
     report.push({ lang, step: "narrow-widths", dataWidths: narrowData });
     await shot(`${lang}-1024-flat.png`);
     await evaluate("document.querySelectorAll('nav.tabs button')[0].click()");
@@ -924,9 +1106,11 @@ try {
   await viewport(1920, 1000);
   await open("en", "processes");
   const rmFrom = await center(
-    `[...document.querySelectorAll('thead tr th')][3].querySelector('button')`,
+    `[...document.querySelectorAll('thead tr th:not(.col-filler)')][3].querySelector('button')`,
   );
-  const rmTo = await center(`[...document.querySelectorAll('thead tr th')][1]`);
+  const rmTo = await center(
+    `[...document.querySelectorAll('thead tr th:not(.col-filler)')][1]`,
+  );
   await drag(rmFrom, { x: rmTo.left + 4, y: rmTo.y }, { hold: true });
   const rm = await evaluate(
     "({ animations: document.getAnimations().filter((a) => a.id === 'reorder').length, lifted: !!document.querySelector('th[data-dragging]') })",

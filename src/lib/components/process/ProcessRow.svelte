@@ -109,7 +109,8 @@
                 : ""}>{process[column.id] ?? "—"}</span
           >{/if}
       </div></Table.Cell
-    >{/each}<ActionButtons
+    >{/each}<Table.Cell class="col-filler p-0" aria-hidden="true"
+  ></Table.Cell><ActionButtons
     {process}
     {isPinned}
     {onTogglePin}

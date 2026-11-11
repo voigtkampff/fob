@@ -277,7 +277,11 @@ export function dragReorder(node, options) {
       if (Math.hypot(e.clientX - press.x, e.clientY - press.y) < THRESHOLD)
         return;
       const box = layoutBox(press.el);
-      const layer = o.cells ? null : liftCopy(node, press.el);
+      // Without the popover API (an older WebView2) a card lifts in place.
+      const layer =
+        o.cells || !("showPopover" in HTMLElement.prototype)
+          ? null
+          : liftCopy(node, press.el);
       drag = { start: box, move: null, busy: false, last: e, layer };
       /** @type {HTMLElement} */ for (const el of group(press))
         if (layer) el.dataset.dragSlot = "";

@@ -41,11 +41,20 @@ zh and en, at 1920 and 1024 px. It fails unless:
   after the drop, and the next click opens its details;
 - both card orders survive a reload; saved orders with unknown, repeated and
   missing ids still show every column and card once;
-- at 1920 px the name column is at most its widest, a long name is cut with a
-  tooltip, every data column has one width (within 1 px; also with PID hidden
-  and in tree view) and the actions column ends at the right edge; at 1024 px
-  the name column is at its narrowest, the data columns share their common
-  minimum and the table scrolls;
+- at 1920 px the name column is 460 px (560 px in tree view), a long name is
+  cut with a tooltip, every data column keeps its own content width
+  (`columnWidth` in `utils/table-layout.js`, within 1 px; also with PID
+  hidden and in tree view), the room left over stays empty before the
+  actions column, which ends at the right edge, and no header label is cut;
+  at 1024 px the name column is at its narrowest, nothing is left empty and
+  the table scrolls;
+- dragging a column's right edge (an 8 px zone with no visible mark until
+  hovered) widens only that column while the other columns, the order, the
+  sort and the rows stay put; nothing is saved until release, then exactly
+  once; Escape mid drag puts the width back and saves nothing; the width
+  survives a reload, a column reorder, hiding and showing the column, tree
+  view and a 1024 px window; a double-click on the edge drops the saved width
+  and the column returns to its automatic width;
 - with reduced motion a drag still lifts the item but nothing slides;
 - every summary card shows a dot grip whose left edge is within 1 px of the
   value below it, fully opaque on hover, in dark and light themes; column
@@ -65,7 +74,8 @@ stays inside the table's own scroll area by design.
 
 It writes `<lang>-1920-*.png`, `<lang>-1024-*.png` and `ui-reorder.json`.
 `scripts/layout-order.test.mjs` covers the order helpers, the card ids the
-settings file accepts, and how `columnWidths` gives every data column one
-width. Mocked readings in a
+settings file accepts, how `columnLayout` fits the columns (own widths,
+the name and other long text columns growing to a cap, the rest empty) and
+how widths set by hand win and are cleaned when read back. Mocked readings in a
 browser only; real drags in WebView2, display scaling and the packaged
 settings file need a Windows run.
