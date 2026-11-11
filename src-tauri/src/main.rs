@@ -80,6 +80,7 @@ fn main() {
         .manage(std::sync::Mutex::new(companion::CompanionState::default()))
         .on_window_event(companion::window_event)
         .invoke_handler(tauri::generate_handler![
+            ui::window::set_main_backdrop,
             preferences::read_preferences,
             preferences::update_preferences,
             desktop::open_settings,

@@ -1,5 +1,5 @@
 import { emit, listen } from "@tauri-apps/api/event";
-import { isTauri } from "@tauri-apps/api/core";
+import { invoke, isTauri } from "@tauri-apps/api/core";
 import { writable } from "svelte/store";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { themes } from "$lib/definitions/themes";
@@ -19,6 +19,12 @@ function applyTheme(theme: Theme) {
     void getCurrentWindow()
       .setTheme(dark ? "dark" : "light")
       .catch(() => {});
+  // Only Glassy shows the main window's backdrop; the others get one that
+  // costs no live blur (ui/window.rs).
+  if (isTauri() && getCurrentWindow().label === "main")
+    void invoke("set_main_backdrop", { glass: theme.name === "glassy" }).catch(
+      () => {},
+    );
   for (const [name, value] of Object.entries({
     ...theme.colors,
     ...themeTokens(theme.colors, { name: theme.name }),
