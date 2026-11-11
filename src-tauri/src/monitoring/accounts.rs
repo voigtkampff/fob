@@ -2,14 +2,18 @@
 //!
 //! On Windows sysinfo reports a process's owner as a SID string such as
 //! `S-1-5-18`. Task Manager shows the account name instead: SYSTEM, LOCAL
-//! SERVICE, NETWORK SERVICE or the user's name. Each distinct SID is looked
-//! up once, the first time a process with that owner appears, and the answer
-//! is kept for the rest of the run, so a refresh never waits on a lookup for
-//! an owner it has seen and a churn of short-lived processes costs nothing.
-//! A SID that maps to no account, or whose lookup fails, keeps its SID text.
-//! Nothing about a lookup is logged.
+//! SERVICE, NETWORK SERVICE or the user's name. A lookup can be slow (a
+//! domain account asks the domain controller), so it never runs on the
+//! refresh path: the first time a SID is seen it is queued for one
+//! background worker and the SID itself is shown until the name arrives.
+//! Each SID is looked up once and the answer kept for the rest of the run,
+//! failures included, so repeated owners and a churn of short-lived
+//! processes cost one map lookup each. A SID that maps to no account, or
+//! whose lookup fails, keeps its SID text. Nothing about a lookup is logged.
 
 use std::collections::HashMap;
+use std::sync::mpsc::{sync_channel, SyncSender};
+use std::sync::{Arc, Mutex, PoisonError};
 
 /// Why a SID shows as its own text.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -22,32 +26,75 @@ pub enum Unresolved {
 
 pub type Lookup = fn(&str) -> Result<String, Unresolved>;
 
+/// SIDs waiting for the worker; a SID that finds the queue full is tried
+/// again on a later refresh.
+const QUEUE: usize = 64;
+
+/// SID text to what the owner column shows; `None` while the lookup waits.
+type Shown = Arc<Mutex<HashMap<String, Option<String>>>>;
+
 #[derive(Debug)]
 pub struct AccountNames {
-    /// SID text to what the owner column shows, failures included.
-    shown: HashMap<String, String>,
+    shown: Shown,
+    /// Started with the first lookup; `None` until then or if the worker
+    /// thread could not start (owners then stay SIDs).
+    queue: Option<SyncSender<String>>,
+    started: bool,
     lookup: Lookup,
 }
 
 impl AccountNames {
     pub fn new(lookup: Lookup) -> Self {
         Self {
-            shown: HashMap::new(),
+            shown: Arc::default(),
+            queue: None,
+            started: false,
             lookup,
         }
     }
 
-    /// What the owner column shows for `sid`.
+    /// What the owner column shows for `sid` now. Never waits for a lookup.
     pub fn name(&mut self, sid: &str) -> String {
-        if let Some(shown) = self.shown.get(sid) {
-            return shown.clone();
+        let shown = Arc::clone(&self.shown);
+        let mut shown = shown.lock().unwrap_or_else(PoisonError::into_inner);
+        match shown.get(sid) {
+            Some(Some(name)) => return name.clone(),
+            Some(None) => return sid.to_string(),
+            None => {}
         }
-        let shown = (self.lookup)(sid)
-            .ok()
-            .filter(|n| !n.is_empty())
-            .unwrap_or_else(|| sid.to_string());
-        self.shown.insert(sid.to_string(), shown.clone());
-        shown
+        if self
+            .queue()
+            .is_some_and(|queue| queue.try_send(sid.to_string()).is_ok())
+        {
+            shown.insert(sid.to_string(), None);
+        }
+        sid.to_string()
+    }
+
+    fn queue(&mut self) -> Option<&SyncSender<String>> {
+        if !self.started {
+            self.started = true;
+            let (send, receive) = sync_channel::<String>(QUEUE);
+            let shown = Arc::clone(&self.shown);
+            let lookup = self.lookup;
+            self.queue = std::thread::Builder::new()
+                .name("fob-accounts".into())
+                .spawn(move || {
+                    for sid in receive {
+                        let name = lookup(&sid)
+                            .ok()
+                            .filter(|n| !n.is_empty())
+                            .unwrap_or_else(|| sid.clone());
+                        shown
+                            .lock()
+                            .unwrap_or_else(PoisonError::into_inner)
+                            .insert(sid, Some(name));
+                    }
+                })
+                .ok()
+                .map(|_| send);
+        }
+        self.queue.as_ref()
     }
 }
 
@@ -128,15 +175,11 @@ unsafe extern "system" {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::cell::Cell;
-
-    thread_local! {
-        static CALLS: Cell<usize> = const { Cell::new(0) };
-    }
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    use std::time::{Duration, Instant};
 
     /// Generic accounts only: well-known SIDs and a made-up user.
-    fn fake(sid: &str) -> Result<String, Unresolved> {
-        CALLS.with(|c| c.set(c.get() + 1));
+    fn answer(sid: &str) -> Result<String, Unresolved> {
         match sid {
             "S-1-5-18" => Ok("SYSTEM".into()),
             "S-1-5-19" => Ok("LOCAL SERVICE".into()),
@@ -148,37 +191,95 @@ mod tests {
         }
     }
 
+    /// What `sid` shows once its lookup has finished.
+    pub(crate) fn settled(names: &mut AccountNames, sid: &str) -> String {
+        let until = Instant::now() + Duration::from_secs(5);
+        loop {
+            let pending = names
+                .shown
+                .lock()
+                .unwrap()
+                .get(sid)
+                .is_none_or(Option::is_none);
+            if !pending || Instant::now() > until {
+                return names.name(sid);
+            }
+            std::thread::sleep(Duration::from_millis(5));
+        }
+    }
+
     #[test]
     fn system_accounts_and_users_show_their_names() {
-        let mut names = AccountNames::new(fake);
-        assert_eq!(names.name("S-1-5-18"), "SYSTEM");
-        assert_eq!(names.name("S-1-5-19"), "LOCAL SERVICE");
-        assert_eq!(names.name("S-1-5-20"), "NETWORK SERVICE");
-        assert_eq!(
-            names.name("S-1-5-21-1000000001-1000000002-1000000003-1001"),
-            "sample-user"
-        );
+        let mut names = AccountNames::new(answer);
+        for (sid, name) in [
+            ("S-1-5-18", "SYSTEM"),
+            ("S-1-5-19", "LOCAL SERVICE"),
+            ("S-1-5-20", "NETWORK SERVICE"),
+            (
+                "S-1-5-21-1000000001-1000000002-1000000003-1001",
+                "sample-user",
+            ),
+        ] {
+            names.name(sid);
+            assert_eq!(settled(&mut names, sid), name);
+        }
     }
 
     #[test]
     fn a_sid_without_a_name_shows_the_sid() {
-        let mut names = AccountNames::new(fake);
-        let gone = "S-1-5-21-1000000001-1000000002-1000000003-1999";
-        assert_eq!(names.name(gone), gone);
-        let blank = "S-1-5-21-1000000001-1000000002-1000000003-1002";
-        assert_eq!(names.name(blank), blank);
-        assert_eq!(names.name("not-a-sid"), "not-a-sid");
+        let mut names = AccountNames::new(answer);
+        for sid in [
+            "S-1-5-21-1000000001-1000000002-1000000003-1999",
+            "S-1-5-21-1000000001-1000000002-1000000003-1002",
+            "not-a-sid",
+        ] {
+            names.name(sid);
+            assert_eq!(settled(&mut names, sid), sid);
+        }
+    }
+
+    #[test]
+    fn a_slow_lookup_never_holds_up_a_refresh() {
+        static CALLS: AtomicUsize = AtomicUsize::new(0);
+        fn slow(sid: &str) -> Result<String, Unresolved> {
+            CALLS.fetch_add(1, Ordering::SeqCst);
+            std::thread::sleep(Duration::from_millis(400));
+            answer(sid)
+        }
+        let mut names = AccountNames::new(slow);
+        let started = Instant::now();
+        for _ in 0..100 {
+            assert_eq!(names.name("S-1-5-18"), "S-1-5-18");
+        }
+        assert!(
+            started.elapsed() < Duration::from_millis(200),
+            "refreshes waited {:?}",
+            started.elapsed()
+        );
+        assert_eq!(settled(&mut names, "S-1-5-18"), "SYSTEM");
+        assert_eq!(CALLS.load(Ordering::SeqCst), 1);
     }
 
     #[test]
     fn each_sid_is_looked_up_once_even_when_it_fails() {
-        CALLS.with(|c| c.set(0));
-        let mut names = AccountNames::new(fake);
+        static CALLS: AtomicUsize = AtomicUsize::new(0);
+        fn counted(sid: &str) -> Result<String, Unresolved> {
+            CALLS.fetch_add(1, Ordering::SeqCst);
+            answer(sid)
+        }
+        let mut names = AccountNames::new(counted);
+        let gone = "S-1-5-21-1000000001-1000000002-1000000003-1999";
         for _ in 0..50 {
             names.name("S-1-5-18");
-            names.name("S-1-5-21-1000000001-1000000002-1000000003-1999");
+            names.name(gone);
         }
-        assert_eq!(CALLS.with(Cell::get), 2);
+        settled(&mut names, "S-1-5-18");
+        settled(&mut names, gone);
+        for _ in 0..50 {
+            names.name("S-1-5-18");
+            names.name(gone);
+        }
+        assert_eq!(CALLS.load(Ordering::SeqCst), 2);
     }
 
     #[cfg(windows)]
@@ -202,6 +303,7 @@ mod tests {
     #[test]
     fn elsewhere_the_user_id_is_shown_as_is() {
         let mut names = AccountNames::default();
-        assert_eq!(names.name("1000"), "1000");
+        names.name("1000");
+        assert_eq!(settled(&mut names, "1000"), "1000");
     }
 }
