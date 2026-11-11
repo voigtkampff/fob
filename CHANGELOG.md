@@ -7,6 +7,11 @@
 - Only one Fob runs at a time. Starting Fob again, from a shortcut, the Start menu or the login item, brings the running Fob's main window forward instead: from the tray, from the taskbar when minimized, or simply to the front, keeping its size and maximized state. Two launches at the same moment leave one Fob. After Fob quits it starts normally again. This holds per Windows sign-in session, and Fob still never asks for administrator rights to run
 - After Windows' display scale changes while Fob runs (for example 100% to 150% and back), the main window now redraws its page at the new scale by itself instead of staying blank or garbled until its edges were dragged. This also happens when the window comes back from the tray after a change. Saved size, theme and layout are kept; the 迷你窗口 (mini window) and the status bar are unchanged
 - The display scale fix is a candidate: it has not yet been tried on Windows with a real scale change, so it is not confirmed
+- An NVIDIA card's GPU % now comes, everywhere Fob shows it (the 迷你窗口 (mini window) included), from the same Windows reading as the GPU % column in 进程 (Processes): the card's busiest engine (3D, Copy, Video and so on) over the same refresh. Before, it came from the NVIDIA driver, which counts only the graphics and compute pipe over its last second or less, so the card could read well above every process. The card now also lists its engine loads like other GPUs. Temperature, power, fan, clock and memory still come from the NVIDIA driver
+- The driver's own GPU % is used only when the Windows reading is unavailable, and the GPU detail's note says which source the number comes from. Two cards with the same name keep the driver's number, since Windows' reading cannot be matched to one of them by name
+- A process's GPU % is still its own busiest engine, and the card's GPU % is the busiest engine of all processes together, so process values are not meant to add up to the card's value
+- Windows engine readings that Windows marks as new since the last refresh are no longer skipped
+- The GPU changes were checked by unit tests with made-up readings; a check on Windows with a real NVIDIA card is still pending
 - The bundled sensor helper is unchanged at 0.8.2
 
 ## 0.8.7

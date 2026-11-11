@@ -178,7 +178,7 @@ unsafe fn counter_values(counter: PDH_HCOUNTER) -> Option<Vec<(String, f64)>> {
     Some(
         items
             .iter()
-            .filter(|i| i.FmtValue.CStatus == 0)
+            .filter(|i| engine_counters::usable_status(i.FmtValue.CStatus))
             .map(|i| {
                 (
                     i.szName.to_string().unwrap_or_default(),
