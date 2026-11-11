@@ -4,6 +4,9 @@
 
 - In every theme except 玻璃 (Glassy), the main window's backdrop is now Mica instead of Acrylic. Only Glassy lets the backdrop show through; the other themes cover it with an opaque page, and Acrylic's live blur of what is behind the window is GPU work Windows does while the window is active. Glassy keeps Acrylic. On Windows 11 the title bar may look slightly different in the other themes. Windows versions without Mica keep Acrylic as before
 - Whether this lowers the desktop window manager's GPU use with Fob in front has not been measured yet; a test on Windows is pending
+- Only one Fob runs at a time. Starting Fob again, from a shortcut, the Start menu or the login item, brings the running Fob's main window forward instead: from the tray, from the taskbar when minimized, or simply to the front, keeping its size and maximized state. Two launches at the same moment leave one Fob. After Fob quits it starts normally again. This holds per Windows sign-in session, and Fob still never asks for administrator rights to run
+- After Windows' display scale changes while Fob runs (for example 100% to 150% and back), the main window now redraws its page at the new scale by itself instead of staying blank or garbled until its edges were dragged. This also happens when the window comes back from the tray after a change. Saved size, theme and layout are kept; the 迷你窗口 (mini window) and the status bar are unchanged
+- The display scale fix is a candidate: it has not yet been tried on Windows with a real scale change, so it is not confirmed
 - The bundled sensor helper is unchanged at 0.8.2
 
 ## 0.8.7
