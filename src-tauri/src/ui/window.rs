@@ -37,34 +37,86 @@ impl MainBackdrop {
 /// theme is Glassy (`set_main_backdrop`).
 #[cfg(target_os = "windows")]
 pub fn setup_window_effects(window: &WebviewWindow) -> Result<(), Box<dyn std::error::Error>> {
-    apply_main_backdrop(window, MainBackdrop::Mica)?;
+    apply_main_backdrop(window, MainBackdrop::Mica).ok_or("no window backdrop")?;
     Ok(())
 }
 
-#[cfg(target_os = "windows")]
-static MAIN_BACKDROP: std::sync::Mutex<Option<MainBackdrop>> = std::sync::Mutex::new(None);
+/// Turns a material on or off on the main window.
+#[cfg_attr(not(target_os = "windows"), allow(dead_code))]
+pub trait Materials {
+    fn apply(&mut self, material: MainBackdrop) -> bool;
+    fn clear(&mut self, material: MainBackdrop);
+}
 
-/// Before Windows 11 there is no Mica; those windows keep Acrylic, as before.
-#[cfg(target_os = "windows")]
-pub fn apply_main_backdrop(
-    window: &WebviewWindow,
-    backdrop: MainBackdrop,
-) -> Result<(), window_vibrancy::Error> {
-    let mut current = MAIN_BACKDROP.lock().unwrap_or_else(|e| e.into_inner());
-    if *current == Some(backdrop) {
-        return Ok(());
+/// The material the page asked for and the one actually on the window
+/// (Mica falls back to Acrylic before Windows 11).
+#[cfg_attr(not(target_os = "windows"), allow(dead_code))]
+#[derive(Debug, Default)]
+pub struct BackdropState {
+    requested: Option<MainBackdrop>,
+    applied: Option<MainBackdrop>,
+}
+
+#[cfg_attr(not(target_os = "windows"), allow(dead_code))]
+impl BackdropState {
+    /// Before Windows 11 22H2 the two materials are separate switches
+    /// (DWMWA_MICA_EFFECT and the accent policy), so the old one is cleared
+    /// before the new one goes on; from 22H2 both set one attribute.
+    pub fn set(
+        &mut self,
+        want: MainBackdrop,
+        materials: &mut impl Materials,
+    ) -> Option<MainBackdrop> {
+        if self.requested == Some(want) {
+            return self.applied;
+        }
+        if let Some(old) = self.applied.take() {
+            materials.clear(old);
+        }
+        self.applied = if materials.apply(want) {
+            Some(want)
+        } else if want == MainBackdrop::Mica && materials.apply(MainBackdrop::Acrylic) {
+            Some(MainBackdrop::Acrylic)
+        } else {
+            None
+        };
+        self.requested = Some(want);
+        self.applied
     }
-    let acrylic = || apply_acrylic(window, Some((0, 0, 25, 125)));
-    match backdrop {
-        MainBackdrop::Acrylic => acrylic()?,
-        MainBackdrop::Mica => {
-            if window_vibrancy::apply_mica(window, None).is_err() {
-                acrylic()?;
-            }
+}
+
+#[cfg(target_os = "windows")]
+struct Native<'a>(&'a WebviewWindow);
+
+#[cfg(target_os = "windows")]
+impl Materials for Native<'_> {
+    fn apply(&mut self, material: MainBackdrop) -> bool {
+        match material {
+            MainBackdrop::Acrylic => apply_acrylic(self.0, Some((0, 0, 25, 125))).is_ok(),
+            MainBackdrop::Mica => window_vibrancy::apply_mica(self.0, None).is_ok(),
         }
     }
-    *current = Some(backdrop);
-    Ok(())
+    fn clear(&mut self, material: MainBackdrop) {
+        let _ = match material {
+            MainBackdrop::Acrylic => window_vibrancy::clear_acrylic(self.0),
+            MainBackdrop::Mica => window_vibrancy::clear_mica(self.0),
+        };
+    }
+}
+
+#[cfg(target_os = "windows")]
+static MAIN_BACKDROP: std::sync::Mutex<BackdropState> = std::sync::Mutex::new(BackdropState {
+    requested: None,
+    applied: None,
+});
+
+/// Returns the material now on the window, if any.
+#[cfg(target_os = "windows")]
+pub fn apply_main_backdrop(window: &WebviewWindow, want: MainBackdrop) -> Option<MainBackdrop> {
+    MAIN_BACKDROP
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .set(want, &mut Native(window))
 }
 
 /// The main window's page applied a theme; `glass` is the Glassy theme.
@@ -76,8 +128,8 @@ pub async fn set_main_backdrop(app: tauri::AppHandle, glass: bool) -> Result<(),
         let handle = app.clone();
         app.run_on_main_thread(move || {
             if let Some(window) = handle.get_webview_window("main") {
-                if let Err(e) = apply_main_backdrop(&window, MainBackdrop::for_page(glass)) {
-                    eprintln!("main backdrop: {e}");
+                if apply_main_backdrop(&window, MainBackdrop::for_page(glass)).is_none() {
+                    eprintln!("main backdrop: none applied");
                 }
             }
         })
@@ -193,6 +245,82 @@ mod tests {
         assert!(
             theme.contains("invoke(\"set_main_backdrop\", { glass: theme.name === \"glassy\" })")
         );
+    }
+    /// A window that records calls; `mica` is whether Mica exists here.
+    struct Fake {
+        mica: bool,
+        acrylic: bool,
+        on: Vec<super::MainBackdrop>,
+        calls: Vec<String>,
+    }
+    impl super::Materials for Fake {
+        fn apply(&mut self, m: super::MainBackdrop) -> bool {
+            self.calls.push(format!("apply {m:?}"));
+            let ok = match m {
+                super::MainBackdrop::Mica => self.mica,
+                super::MainBackdrop::Acrylic => self.acrylic,
+            };
+            if ok {
+                self.on.push(m);
+            }
+            ok
+        }
+        fn clear(&mut self, m: super::MainBackdrop) {
+            self.calls.push(format!("clear {m:?}"));
+            self.on.retain(|x| *x != m);
+        }
+    }
+    fn fake(mica: bool, acrylic: bool) -> Fake {
+        Fake {
+            mica,
+            acrylic,
+            on: vec![],
+            calls: vec![],
+        }
+    }
+    #[test]
+    fn switching_themes_leaves_exactly_one_material_on() {
+        use super::{BackdropState, MainBackdrop::*};
+        let mut w = fake(true, true);
+        let mut s = BackdropState::default();
+        for (want, glass) in [
+            (Mica, false),
+            (Acrylic, true),
+            (Mica, false),
+            (Acrylic, true),
+        ] {
+            assert_eq!(
+                s.set(super::MainBackdrop::for_page(glass), &mut w),
+                Some(want)
+            );
+            assert_eq!(w.on, vec![want], "only {want:?} is on");
+        }
+    }
+    #[test]
+    fn asking_again_for_the_same_material_does_nothing() {
+        use super::{BackdropState, MainBackdrop::*};
+        let mut w = fake(true, true);
+        let mut s = BackdropState::default();
+        s.set(Mica, &mut w);
+        let before = w.calls.len();
+        for _ in 0..5 {
+            assert_eq!(s.set(Mica, &mut w), Some(Mica));
+        }
+        assert_eq!(w.calls.len(), before);
+    }
+    #[test]
+    fn without_mica_the_window_keeps_acrylic_as_before() {
+        use super::{BackdropState, MainBackdrop::*};
+        let mut w = fake(false, true);
+        let mut s = BackdropState::default();
+        assert_eq!(s.set(Mica, &mut w), Some(Acrylic));
+        assert_eq!(s.set(Acrylic, &mut w), Some(Acrylic));
+        assert_eq!(s.set(Mica, &mut w), Some(Acrylic));
+        assert_eq!(w.on, vec![Acrylic]);
+        // Neither material: nothing on, and no panic.
+        let mut bare = fake(false, false);
+        assert_eq!(BackdropState::default().set(Mica, &mut bare), None);
+        assert!(bare.on.is_empty());
     }
     #[test]
     fn backdrop_defaults_to_acrylic() {

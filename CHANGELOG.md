@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.8.8
+
+- In every theme except 玻璃 (Glassy), the main window's backdrop is now Mica instead of Acrylic. Only Glassy lets the backdrop show through; the other themes cover it with an opaque page, and Acrylic's live blur of what is behind the window is GPU work Windows does while the window is active. Glassy keeps Acrylic. On Windows 11 the title bar may look slightly different in the other themes. Windows versions without Mica keep Acrylic as before
+- Whether this lowers the desktop window manager's GPU use with Fob in front has not been measured yet; a test on Windows is pending
+- The bundled sensor helper is unchanged at 0.8.2
+
 ## 0.8.7
 
 - SATA disks attached directly to the motherboard now show what the drive reports in its standard ATA statistics: temperature, life used (the drive's estimate, which can pass 100%), data written and read, power-on time and power cycles. Fob reads them without administrator rights and does not read vendor SMART attributes
