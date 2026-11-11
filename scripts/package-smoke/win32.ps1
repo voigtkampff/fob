@@ -50,7 +50,8 @@ function Window($h) {
 switch ($Action) {
   "windows" { ConvertTo-Json -InputObject @([W]::Of([uint32]$Arg) | ForEach-Object { Window $_ }) -Depth 4 -Compress }
   "client-origin" { $p = New-Object W+POINT; [void][W]::ClientToScreen([IntPtr][int64]$Arg, [ref]$p); @{ x = $p.X; y = $p.Y } | ConvertTo-Json -Compress }
-  "cursor" { $x, $y = $Arg -split ","; [W]::SetCursorPos([int]$x, [int]$y) | ConvertTo-Json }
+  # Windows sends no mouse move when the cursor is already there, so step off first.
+  "cursor" { $x, $y = $Arg -split ","; [void][W]::SetCursorPos([int]$x + 3, [int]$y); Start-Sleep -Milliseconds 50; [W]::SetCursorPos([int]$x, [int]$y) | ConvertTo-Json }
   "close" { [W]::PostMessage([IntPtr][int64]$Arg, 0x0010, [IntPtr]::Zero, [IntPtr]::Zero) | ConvertTo-Json }
   "window-shot" { $b = [W]::Print([IntPtr][int64]$Arg); $b.Save($Out); @{ width = $b.Width; height = $b.Height } | ConvertTo-Json -Compress }
   "screen-shot" {
