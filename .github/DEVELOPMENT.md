@@ -47,8 +47,8 @@ fob.exe twice with fresh standard settings, in English and in Chinese:
 Screenshots and JSON results are in the `package-smoke-*` artifact. The runner
 has virtual SAS or NVMe disks at 96 DPI and runs as an administrator, so the
 run says nothing about SATA readings, display scaling, UAC or the sensor helper.
-Its disks show only the Windows status row, so warning values and long rows
-are checked on mocked readings in the browser preview only.
+Its disks report no warnings and no long values, so warning values and
+wrapped rows are checked on mocked readings in the browser preview only.
 
 The sensor helper keeps its own version (`sensors-helper/src/winperf-sensors.csproj`).
 While it stays the same, `sensors-helper/build.sh` must produce the released
