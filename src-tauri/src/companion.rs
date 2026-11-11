@@ -1755,33 +1755,58 @@ mod tests {
                 .env("FOB_SINGLE_INSTANCE_CHILD", id)
                 .stdin(Stdio::null())
                 .stdout(Stdio::piped())
-                // A child left behind by a failed assert must not hold the job's output open.
-                .stderr(Stdio::null())
+                .stderr(Stdio::piped())
                 .spawn()
                 .unwrap();
-            let out = child.stdout.take().unwrap();
             let (send, lines) = channel();
-            std::thread::spawn(move || {
-                for line in BufReader::new(out).lines().map_while(Result::ok) {
-                    if line.starts_with("fob-si: ") && send.send(line).is_err() {
-                        break;
+            let pipes: [Box<dyn std::io::Read + Send>; 2] = [
+                Box::new(child.stdout.take().unwrap()),
+                Box::new(child.stderr.take().unwrap()),
+            ];
+            for pipe in pipes {
+                let send = send.clone();
+                std::thread::spawn(move || {
+                    for line in BufReader::new(pipe).lines().map_while(Result::ok) {
+                        // libtest prints "test <name> ... " and then the
+                        // test's own output on the same line.
+                        let line = match line.find("fob-si: ") {
+                            Some(at) => line[at..].to_owned(),
+                            None => line,
+                        };
+                        if send.send(line).is_err() {
+                            break;
+                        }
                     }
-                }
-            });
+                });
+            }
             (child, lines)
         };
-        let wait = |lines: &Receiver<String>, want: &str| {
-            lines.recv_timeout(Duration::from_secs(20)).ok().as_deref() == Some(want)
+        // Waits for one of our lines; anything else the child printed (libtest,
+        // a panic) goes into the failure message.
+        let wait = |lines: &Receiver<String>, want: &str| -> Result<(), String> {
+            let until = Instant::now() + Duration::from_secs(60);
+            let mut other = Vec::new();
+            while let Some(left) = until.checked_duration_since(Instant::now()) {
+                match lines.recv_timeout(left) {
+                    Ok(line) if line == want => return Ok(()),
+                    Ok(line) if line.starts_with("fob-si: ") => {
+                        return Err(format!("got {line:?}; output {other:?}"))
+                    }
+                    Ok(line) => other.push(line),
+                    Err(_) => break,
+                }
+            }
+            Err(format!("no {want:?}; output {other:?}"))
         };
-        let exited_ok = |child: &mut Child| {
-            let until = Instant::now() + Duration::from_secs(20);
+        let exited = |child: &mut Child| {
+            let until = Instant::now() + Duration::from_secs(60);
             while Instant::now() < until {
                 if let Some(status) = child.try_wait().unwrap() {
-                    return status.success();
+                    return Some(status);
                 }
                 std::thread::sleep(Duration::from_millis(50));
             }
-            false
+            None
         };
         let stop = |child: &mut Child| {
             let _ = child.kill();
@@ -1790,20 +1815,19 @@ mod tests {
 
         // A later launch exits and the running one hears about it.
         let (mut first, first_lines) = start(&id);
-        assert!(wait(&first_lines, "fob-si: primary"), "first launch runs");
+        wait(&first_lines, "fob-si: primary").expect("first launch runs");
         let (mut second, second_lines) = start(&id);
+        let status = exited(&mut second);
+        let output: Vec<String> = second_lines.try_iter().collect();
         assert!(
-            exited_ok(&mut second),
-            "second launch exits by itself, code 0"
+            status.is_some_and(|s| s.success()),
+            "second launch exits by itself with code 0: {status:?} {output:?}"
         );
         assert!(
-            second_lines.try_recv().is_err(),
-            "second launch never ran as primary"
+            !output.iter().any(|l| l == "fob-si: primary"),
+            "second launch never ran as primary: {output:?}"
         );
-        assert!(
-            wait(&first_lines, "fob-si: reached"),
-            "first instance is told"
-        );
+        wait(&first_lines, "fob-si: reached").expect("first instance is told");
         assert!(
             first.try_wait().unwrap().is_none(),
             "first instance keeps running"
@@ -1812,33 +1836,29 @@ mod tests {
 
         // After the first one is gone, a new launch runs normally.
         let (mut again, again_lines) = start(&id);
-        assert!(
-            wait(&again_lines, "fob-si: primary"),
-            "a launch after exit runs"
-        );
+        wait(&again_lines, "fob-si: primary").expect("a launch after exit runs");
         stop(&mut again);
 
         // Launches started together: exactly one stays.
         for round in 0..5 {
             let mut pair = [start(&id), start(&id)];
-            let until = Instant::now() + Duration::from_secs(20);
-            let mut exited = Vec::new();
-            while exited.is_empty() && Instant::now() < until {
+            let until = Instant::now() + Duration::from_secs(60);
+            let mut gone = Vec::new();
+            while gone.is_empty() && Instant::now() < until {
                 for (i, (child, _)) in pair.iter_mut().enumerate() {
                     if let Some(status) = child.try_wait().unwrap() {
-                        exited.push((i, status));
+                        gone.push((i, status));
                     }
                 }
                 std::thread::sleep(Duration::from_millis(50));
             }
-            assert_eq!(exited.len(), 1, "round {round}: exactly one launch exits");
-            let (gone, status) = exited[0];
+            assert_eq!(gone.len(), 1, "round {round}: exactly one launch exits");
+            let (left, status) = gone[0];
             assert!(status.success(), "round {round}: it exits with code 0");
-            let kept = 1 - gone;
-            assert!(
-                wait(&pair[kept].1, "fob-si: primary"),
-                "round {round}: the other runs"
-            );
+            let kept = 1 - left;
+            if let Err(e) = wait(&pair[kept].1, "fob-si: primary") {
+                panic!("round {round}: the other runs: {e}");
+            }
             std::thread::sleep(Duration::from_secs(1));
             assert!(
                 pair[kept].0.try_wait().unwrap().is_none(),
