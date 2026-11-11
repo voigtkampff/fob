@@ -66,95 +66,133 @@
           {d.volumes.length ? d.volumes.join(" · ") : $t("dh.noLetter")}
         </div>
         <dl>
-          <dt>{$t("dh.windows")}</dt>
-          {#if d.windows.kind === "ok"}
-            <dd
-              class:bad={d.windows.health === "warning" ||
-                d.windows.health === "unhealthy"}
-            >
-              {$t(
-                `dh.health.${d.windows.health}`,
-              )}{#each d.windows.operational.filter((o) => o.kind !== "ok") as o}<span
-                  class:bad={operationalBad(o)}
-                  >{" · "}{o.kind === "other"
-                    ? $t("dh.op.other", { v: o.code })
-                    : $t(`dh.op.${o.kind}`)}</span
-                >{/each}
-            </dd>
-          {:else if d.windows.kind === "not_reported"}
-            <dd class="muted">{$t("dh.windowsNotReported")}</dd>
-          {:else}
-            <dd class="muted">
-              {$t("dh.windowsFailed", { v: hex(d.windows.code) })}
-            </dd>
-          {/if}
+          <div class="metric">
+            <dt>{$t("dh.windows")}</dt>
+            {#if d.windows.kind === "ok"}
+              <dd
+                class:bad={d.windows.health === "warning" ||
+                  d.windows.health === "unhealthy"}
+              >
+                {$t(
+                  `dh.health.${d.windows.health}`,
+                )}{#each d.windows.operational.filter((o) => o.kind !== "ok") as o}<span
+                    class:bad={operationalBad(o)}
+                    >{" · "}{o.kind === "other"
+                      ? $t("dh.op.other", { v: o.code })
+                      : $t(`dh.op.${o.kind}`)}</span
+                  >{/each}
+              </dd>
+            {:else if d.windows.kind === "not_reported"}
+              <dd class="muted">{$t("dh.windowsNotReported")}</dd>
+            {:else}
+              <dd class="muted">
+                {$t("dh.windowsFailed", { v: hex(d.windows.code) })}
+              </dd>
+            {/if}
+          </div>
           {#if d.nvme.kind === "ok"}
             {@const log = d.nvme.log}
-            <dt>{$t("dh.temp")}</dt>
-            <dd>
-              {log.temperature_c == null ? "—" : `${log.temperature_c} °C`}
-            </dd>
-            <dt title={$t("dh.usedNote")}>{$t("dh.used")}</dt>
-            <dd title={$t("dh.usedNote")}>{log.percent_used}%</dd>
-            <dt>{$t("dh.spare")}</dt>
-            <dd>
-              {log.available_spare == null
-                ? "—"
-                : log.spare_threshold == null
-                  ? `${log.available_spare}%`
-                  : $t("dh.spareValue", {
-                      v: `${log.available_spare}%`,
-                      t: `${log.spare_threshold}%`,
-                    })}
-            </dd>
-            <dt>{$t("dh.written")}</dt>
-            <dd>{formatDecimalBytes(log.data_written_bytes)}</dd>
-            <dt>{$t("dh.read")}</dt>
-            <dd>{formatDecimalBytes(log.data_read_bytes)}</dd>
-            <dt>{$t("dh.powerOn")}</dt>
-            <dd>{$t("dh.hours", { n: formatCount(log.power_on_hours) })}</dd>
-            <dt>{$t("dh.cycles")}</dt>
-            <dd>{formatCount(log.power_cycles)}</dd>
-            <dt>{$t("dh.unsafe")}</dt>
-            <dd>{formatCount(log.unsafe_shutdowns)}</dd>
-            <dt>{$t("dh.mediaErrors")}</dt>
-            <dd class:bad={log.media_errors > 0}>
-              {formatCount(log.media_errors)}
-            </dd>
-            <dt>{$t("dh.errorLog")}</dt>
-            <dd>{formatCount(log.error_log_entries)}</dd>
-            {#if log.warning_temp_minutes > 0}
-              <dt>{$t("dh.hotMinutes")}</dt>
+            <div class="metric">
+              <dt>{$t("dh.temp")}</dt>
               <dd>
-                {$t("dh.minutes", { n: formatCount(log.warning_temp_minutes) })}
+                {log.temperature_c == null ? "—" : `${log.temperature_c} °C`}
               </dd>
+            </div>
+            <div class="metric">
+              <dt title={$t("dh.usedNote")}>{$t("dh.used")}</dt>
+              <dd title={$t("dh.usedNote")}>{log.percent_used}%</dd>
+            </div>
+            <div class="metric">
+              <dt>{$t("dh.spare")}</dt>
+              <dd>
+                {log.available_spare == null
+                  ? "—"
+                  : log.spare_threshold == null
+                    ? `${log.available_spare}%`
+                    : $t("dh.spareValue", {
+                        v: `${log.available_spare}%`,
+                        t: `${log.spare_threshold}%`,
+                      })}
+              </dd>
+            </div>
+            <div class="metric">
+              <dt>{$t("dh.written")}</dt>
+              <dd>{formatDecimalBytes(log.data_written_bytes)}</dd>
+            </div>
+            <div class="metric">
+              <dt>{$t("dh.read")}</dt>
+              <dd>{formatDecimalBytes(log.data_read_bytes)}</dd>
+            </div>
+            <div class="metric">
+              <dt>{$t("dh.powerOn")}</dt>
+              <dd>{$t("dh.hours", { n: formatCount(log.power_on_hours) })}</dd>
+            </div>
+            <div class="metric">
+              <dt>{$t("dh.cycles")}</dt>
+              <dd>{formatCount(log.power_cycles)}</dd>
+            </div>
+            <div class="metric">
+              <dt>{$t("dh.unsafe")}</dt>
+              <dd>{formatCount(log.unsafe_shutdowns)}</dd>
+            </div>
+            <div class="metric">
+              <dt>{$t("dh.mediaErrors")}</dt>
+              <dd class:bad={log.media_errors > 0}>
+                {formatCount(log.media_errors)}
+              </dd>
+            </div>
+            <div class="metric">
+              <dt>{$t("dh.errorLog")}</dt>
+              <dd>{formatCount(log.error_log_entries)}</dd>
+            </div>
+            {#if log.warning_temp_minutes > 0}
+              <div class="metric">
+                <dt>{$t("dh.hotMinutes")}</dt>
+                <dd>
+                  {$t("dh.minutes", {
+                    n: formatCount(log.warning_temp_minutes),
+                  })}
+                </dd>
+              </div>
             {/if}
           {/if}
           {#if d.ata.kind === "ok"}
             {@const s = d.ata.stats}
             {#if s.temperature_c != null}
-              <dt>{$t("dh.temp")}</dt>
-              <dd>{s.temperature_c} °C</dd>
+              <div class="metric">
+                <dt>{$t("dh.temp")}</dt>
+                <dd>{s.temperature_c} °C</dd>
+              </div>
             {/if}
             {#if s.percent_used != null}
-              <dt title={$t("dh.usedNote")}>{$t("dh.used")}</dt>
-              <dd title={$t("dh.usedNote")}>{s.percent_used}%</dd>
+              <div class="metric">
+                <dt title={$t("dh.usedNote")}>{$t("dh.used")}</dt>
+                <dd title={$t("dh.usedNote")}>{s.percent_used}%</dd>
+              </div>
             {/if}
             {#if s.data_written_bytes != null}
-              <dt>{$t("dh.written")}</dt>
-              <dd>{formatDecimalBytes(s.data_written_bytes)}</dd>
+              <div class="metric">
+                <dt>{$t("dh.written")}</dt>
+                <dd>{formatDecimalBytes(s.data_written_bytes)}</dd>
+              </div>
             {/if}
             {#if s.data_read_bytes != null}
-              <dt>{$t("dh.read")}</dt>
-              <dd>{formatDecimalBytes(s.data_read_bytes)}</dd>
+              <div class="metric">
+                <dt>{$t("dh.read")}</dt>
+                <dd>{formatDecimalBytes(s.data_read_bytes)}</dd>
+              </div>
             {/if}
             {#if s.power_on_hours != null}
-              <dt>{$t("dh.powerOn")}</dt>
-              <dd>{$t("dh.hours", { n: formatCount(s.power_on_hours) })}</dd>
+              <div class="metric">
+                <dt>{$t("dh.powerOn")}</dt>
+                <dd>{$t("dh.hours", { n: formatCount(s.power_on_hours) })}</dd>
+              </div>
             {/if}
             {#if s.power_cycles != null}
-              <dt>{$t("dh.cycles")}</dt>
-              <dd>{formatCount(s.power_cycles)}</dd>
+              <div class="metric">
+                <dt>{$t("dh.cycles")}</dt>
+                <dd>{formatCount(s.power_cycles)}</dd>
+              </div>
             {/if}
           {/if}
         </dl>
@@ -234,14 +272,44 @@
     margin: 4px 0 0;
     font-size: 12px;
   }
+  /* A subgrid row spans the column gap, so hovering the empty middle still
+     pairs the far-apart label and value. */
+  .metric {
+    display: grid;
+    grid-column: 1 / -1;
+    grid-template-columns: subgrid;
+    align-items: start;
+  }
+  dt,
+  dd {
+    border-radius: 3px;
+  }
   dt {
+    justify-self: start;
     color: var(--muted-foreground);
   }
   dd {
+    justify-self: end;
     margin: 0;
     text-align: right;
     font-variant-numeric: tabular-nums;
     overflow-wrap: anywhere;
+  }
+  /* The shadow pads the chip without moving text. */
+  .metric:hover > :is(dt, dd) {
+    color: var(--background);
+    background: var(--foreground);
+    box-shadow: 0 0 0 2px var(--foreground);
+  }
+  .metric:hover > dd .bad {
+    color: inherit;
+  }
+  /* Peach fill fails contrast in some light palettes, so a warning value keeps
+     the contrast chip and shows its warning as a peach ring. */
+  .metric:hover > dd:is(.bad, :has(.bad)) {
+    box-shadow:
+      0 0 0 2px var(--foreground),
+      0 0 0 3.5px var(--peach);
   }
   .bad {
     color: var(--peach);

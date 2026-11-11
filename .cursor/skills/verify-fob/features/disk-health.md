@@ -30,6 +30,33 @@ only the warning fixture has alerts, no label and value overlap, nothing is
 clipped or past the panel edge, and no Chinese text has 。. It writes
 `disk-health-<tag>-<lang>-<state>-<scale>.png` and `disk-health-<tag>.json`.
 
+## Row hover (mocked readings)
+
+```bash
+npm run build
+node .cursor/skills/verify-fob/bin/disk-health-hover.mjs /workspace/scratch/verify/evidence hover
+```
+
+Hovering a metric row (label, the empty middle or value) gives only that
+row's label and value text-sized chips in the theme's foreground color with
+background-colored text, so far-apart pairs are easy to match. A warning
+value keeps the same chip with a peach ring, because a peach fill misses
+4.5:1 in some light palettes. Each row is a subgrid `div` inside the `dl`,
+so the gap between the columns belongs to the row. The check moves a CDP
+pointer to each row's label, middle and value, then away, and fails unless
+exactly that row's two chips paint, no box moves, text on each chip is at
+least 4.5:1, a chip contrasts with the panel at 3:1, no chip fills the row,
+warning values (and only those) get the ring, nothing has a pointer cursor
+or a tab stop, and the chips clear on leave. It covers every theme on the
+`warning` fixture, then zh and en, `ok`, `warning`, `errors` and `long`,
+emulated device scales 1 and 1.5, and panel widths 980 (the app's cap),
+560 and 300 (narrower than the app allows, where English values wrap), in
+catppuccin and githubLight. It writes
+`disk-health-hover-<tag>-<theme>-<lang>-<state>-<width>.png` with one row
+hovered, and `disk-health-hover-<tag>.json`. The same checks
+(`scripts/package-smoke/hover.mjs`) run in the Windows package smoke with
+the real cursor.
+
 ## Storage side panel (mocked readings)
 
 ```bash
