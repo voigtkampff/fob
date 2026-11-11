@@ -1,6 +1,10 @@
 <script lang="ts">
   import type { Process, Column, ProcessTreeRow } from "$lib/types";
-  import { tableWidth, columnWidths } from "$lib/utils/table-layout.js";
+  import {
+    columnLayout,
+    manualWidths,
+    tableWidth,
+  } from "$lib/utils/table-layout.js";
   import { previewOrder } from "$lib/utils/layout-order.js";
   import { TableHeader, ProcessRow } from "$lib/components";
   import { processIdentity } from "$lib/utils/process-tree.js";
@@ -29,11 +33,23 @@
     target: string,
     after: boolean,
   ) => void = () => {};
-  export let onStepColumn: (id: string, step: -1 | 1) => void = () => {};
+
+  /** Widths set by dragging a column's edge (behavior.columnWidths). */
+  export let savedWidths: unknown = {};
+  export let onResizeColumn: (id: string, width: number) => void = () => {};
+  export let onResetColumn: (id: string) => void = () => {};
 
   let regionWidth = 0;
+  let resizing: { id: string; width: number } | null = null;
   $: tree = viewMode === "tree";
-  $: widths = columnWidths(columns, tree, regionWidth);
+  $: manual = {
+    ...manualWidths(
+      savedWidths,
+      columns.map((c) => c.id),
+    ),
+    ...(resizing ? { [resizing.id]: resizing.width } : {}),
+  };
+  $: ({ widths, filler } = columnLayout(columns, tree, regionWidth, manual));
   // A header drag in progress shows its landing order in the header and the
   // rows alike; the saved order changes only on release.
   let move: { id: string; target: string; after: boolean } | null = null;
@@ -81,14 +97,17 @@
       }
     }}
   >
-    <Table.Root style={`width:max(100%,${tableWidth(columns, tree)}px)`}
+    <Table.Root style={`width:max(100%,${tableWidth(columns, tree, manual)}px)`}
       ><TableHeader
         columns={shownColumns}
         {sortConfig}
         {onToggleSort}
         {onMoveColumn}
-        {onStepColumn}
         {widths}
+        {filler}
+        onResizePreview={(next) => (resizing = next)}
+        {onResizeColumn}
+        {onResetColumn}
         onPreviewColumn={(next) => (move = next)}
         treeView={tree}
       /><Table.Body
@@ -112,7 +131,7 @@
             {onKillProcess}
           />{:else}<Table.Row
             ><Table.Cell
-              colspan={columns.filter((c) => c.visible).length + 1}
+              colspan={columns.filter((c) => c.visible).length + 2}
               class="h-48 text-center"
               ><Search class="mx-auto mb-3 size-6 text-muted-foreground" />
               <p class="text-sm font-medium">

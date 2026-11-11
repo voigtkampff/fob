@@ -85,8 +85,8 @@ try {
     await new Promise((r) => setTimeout(r, 100));
   const table = () =>
     evaluate(`(() => {
-    const heads = [...document.querySelectorAll('thead th')].map((th) => th.textContent.trim());
-    const rows = [...document.querySelectorAll('tbody tr')].map((tr) => [...tr.children].map((td) => ({ text: td.textContent.trim(), title: td.querySelector('[title]')?.getAttribute('title') ?? null })));
+    const heads = [...document.querySelectorAll('thead th:not(.col-filler)')].map((th) => th.textContent.trim());
+    const rows = [...document.querySelectorAll('tbody tr')].map((tr) => [...tr.children].filter((td) => !td.classList.contains('col-filler')).map((td) => ({ text: td.textContent.trim(), title: td.querySelector('[title]')?.getAttribute('title') ?? null })));
     const region = document.querySelector('.process-table-region');
     return { heads, rows, scrollWidth: region.scrollWidth, clientWidth: region.clientWidth };
   })()`);

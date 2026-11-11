@@ -4,6 +4,7 @@ import { mockIPC, mockWindows } from "@tauri-apps/api/mocks";
 import Page from "../../src/routes/+page.svelte";
 import { REPLIES, stats } from "./disk-health-fixtures.js";
 import { DEFAULT_CONFIG } from "../../src/lib/definitions/settings";
+import { mergePreferences } from "../../src/lib/utils/settings-patch.js";
 
 const params = new URLSearchParams(location.search);
 const lang = params.get("lang") === "zh" ? "zh" : "en";
@@ -21,8 +22,8 @@ let config = stored ?? {
 let revision = 1;
 const MB = 1024 * 1024;
 const now = Math.floor(Date.now() / 1000);
-/** @type {(pid: number, ppid: number, name: string, cpu: number, mem: number) => import("../../src/lib/types").Process} */
-const proc = (pid, ppid, name, cpu, mem) => ({
+/** @type {(pid: number, ppid: number, name: string, cpu: number, mem: number, user?: string) => import("../../src/lib/types").Process} */
+const proc = (pid, ppid, name, cpu, mem, user = "sample-user") => ({
   pid,
   ppid,
   name,
@@ -30,7 +31,7 @@ const proc = (pid, ppid, name, cpu, mem) => ({
   gpu_usage: 0,
   memory_usage: mem * MB,
   status: "Running",
-  user: "S-1-5-21",
+  user,
   command: name,
   environ: [],
   root: "",
@@ -46,8 +47,8 @@ const proc = (pid, ppid, name, cpu, mem) => ({
 // ?procs: generic mocked processes, a long name and a three level family.
 const processes = params.has("procs")
   ? [
-      proc(4, 0, "System", 0.3, 1),
-      proc(100, 4, "Example.Host.exe", 6.5, 320),
+      proc(4, 0, "System", 0.3, 1, "SYSTEM"),
+      proc(100, 4, "Example.Host.exe", 6.5, 320, "LOCAL SERVICE"),
       proc(101, 100, "Example.Worker.exe", 3.2, 210),
       proc(102, 101, "Example.Renderer.exe", 1.1, 120),
       proc(
@@ -56,6 +57,8 @@ const processes = params.has("procs")
         "Example Very Long Process Name Used For Column Width Checks Service Host.exe",
         0.8,
         90,
+        // An owner with no account keeps its (made-up) SID.
+        "S-1-5-21-1000000001-1000000002-1000000003-1999",
       ),
       proc(300, 4, "Editor.exe", 12.4, 840),
       proc(301, 4, "Browser.exe", 4.2, 1500),
@@ -100,16 +103,9 @@ Object.defineProperty(window, "healthTimers", { value: () => health.size });
 mockWindows("main");
 /** Patches carry only the changed leaves; arrays replace whole. */
 /** @type {(base: any, patch: any) => any} */
-const merge = (base, patch) =>
-  Object.fromEntries(
-    [...new Set([...Object.keys(base), ...Object.keys(patch)])].map((key) => {
-      const next = patch[key];
-      if (next === undefined) return [key, base[key]];
-      const nested =
-        next && typeof next === "object" && !Array.isArray(next) && base[key];
-      return [key, nested ? merge(base[key], next) : next];
-    }),
-  );
+// The native side merges a patch the same way (preferences.rs `merge`),
+// replacing column widths whole.
+const merge = mergePreferences;
 // @ts-expect-error The test transport deliberately returns concrete fixture values.
 mockIPC(async (command, args) => {
   if (command === "read_preferences") return { config, revision, ready: true };

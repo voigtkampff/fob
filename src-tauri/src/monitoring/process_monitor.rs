@@ -3,6 +3,7 @@
 //! This module handles monitoring and managing system processes, including
 //! collecting process information and managing process lifecycle.
 
+use super::accounts::AccountNames;
 use super::io_rates::{IoRates, IoTotals};
 use super::{ProcessData, ProcessInfo, ProcessStaticInfo};
 use std::collections::HashMap;
@@ -26,6 +27,8 @@ pub struct ProcessMonitor {
     process_cache: HashMap<(u32, u64), ProcessStaticInfo>,
     /// Previous I/O counters, for disk speed per process.
     io: IoRates,
+    /// Owner names by SID, looked up once per owner.
+    accounts: AccountNames,
 }
 
 impl ProcessMonitor {
@@ -34,6 +37,7 @@ impl ProcessMonitor {
         Self {
             process_cache: HashMap::new(),
             io: IoRates::default(),
+            accounts: AccountNames::default(),
         }
     }
 
@@ -141,6 +145,7 @@ impl ProcessMonitor {
                 )
             }),
         );
+        let accounts = &mut self.accounts;
         let infos: Vec<ProcessInfo> = processes
             .into_iter()
             .map(|data| {
@@ -150,7 +155,8 @@ impl ProcessMonitor {
                     .or_insert_with(|| ProcessStaticInfo {
                         name: data.name.clone(),
                         command: String::new(),
-                        // As before: the owner seen first is kept for the process.
+                        // The owner seen first is kept for the process; one
+                        // whose token cannot be read shows a dash.
                         user: data.user_id.clone().unwrap_or_else(|| "-".to_string()),
                         environ: Vec::new().into(),
                     });
@@ -176,7 +182,13 @@ impl ProcessMonitor {
                     cpu_usage: data.cpu_usage,
                     memory_usage: data.memory,
                     status: Self::format_status(data.status),
-                    user: cached.user.clone(),
+                    // The account name once its background lookup is done;
+                    // the SID until then.
+                    user: if cached.user == "-" {
+                        cached.user.clone()
+                    } else {
+                        accounts.name(&cached.user)
+                    },
                     command: cached.command.clone(),
                     threads: None,
                     environ: cached.environ.clone(),
@@ -334,6 +346,58 @@ mod tests {
         assert_eq!(back[0].name, "next.exe");
         assert_eq!(back[0].command, "");
         assert!(back[0].environ.is_empty());
+    }
+
+    #[test]
+    fn owners_show_account_names_looked_up_once_per_sid() {
+        use std::sync::atomic::{AtomicUsize, Ordering};
+        static CALLS: AtomicUsize = AtomicUsize::new(0);
+        fn slow(sid: &str) -> Result<String, crate::monitoring::accounts::Unresolved> {
+            CALLS.fetch_add(1, Ordering::SeqCst);
+            std::thread::sleep(Duration::from_millis(300));
+            match sid {
+                "S-1-5-18" => Ok("SYSTEM".into()),
+                _ => Err(crate::monitoring::accounts::Unresolved::NoAccount),
+            }
+        }
+        let mut monitor = ProcessMonitor::new();
+        monitor.accounts = AccountNames::new(slow);
+        let owned = |pid, sid: &str| {
+            let mut p = data(pid, pid as u64, "svc", None);
+            p.user_id = Some(sid.into());
+            p
+        };
+        let gone = "S-1-5-21-1000000001-1000000002-1000000003-1999";
+        // The first refresh does not wait: it shows the SIDs.
+        let started = Instant::now();
+        let first = build(&mut monitor, vec![owned(1, "S-1-5-18"), owned(2, gone)]);
+        assert!(started.elapsed() < Duration::from_millis(150));
+        assert_eq!(
+            [first[0].user.as_str(), first[1].user.as_str()],
+            ["S-1-5-18", gone]
+        );
+        // Processes come and go; once the names are in, the same owners show
+        // them and are not looked up again.
+        let until = Instant::now() + Duration::from_secs(5);
+        let mut pid = 3;
+        let later = loop {
+            let later = build(
+                &mut monitor,
+                vec![owned(pid, "S-1-5-18"), owned(pid + 100, gone)],
+            );
+            pid += 1;
+            if (later[0].user == "SYSTEM" && CALLS.load(Ordering::SeqCst) == 2)
+                || Instant::now() > until
+            {
+                break later;
+            }
+            std::thread::sleep(Duration::from_millis(20));
+        };
+        assert_eq!(
+            [later[0].user.as_str(), later[1].user.as_str()],
+            ["SYSTEM", gone]
+        );
+        assert_eq!(CALLS.load(Ordering::SeqCst), 2);
     }
 
     #[test]

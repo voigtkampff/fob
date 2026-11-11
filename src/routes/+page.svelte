@@ -41,8 +41,8 @@
     PROCESS_CARDS,
     moveNextTo,
     normalizeOrder,
-    stepOrder,
   } from "$lib/utils/layout-order.js";
+  import { manualWidths } from "$lib/utils/table-layout.js";
   import type { Process } from "$lib/types";
   import {
     buildProcessTree,
@@ -127,6 +127,12 @@
   ) {
     settingsStore.updateConfig({
       behavior: { ...$settingsStore.behavior, [key]: order },
+    });
+  }
+  const ALL_COLUMN_IDS = column_definitions.map((col) => col.id as string);
+  function saveWidths(widths: Record<string, number>) {
+    settingsStore.updateConfig({
+      behavior: { ...$settingsStore.behavior, columnWidths: widths },
     });
   }
   $: columnOrder = normalizeOrder(
@@ -465,14 +471,24 @@
               "columnOrder",
               moveNextTo(columnOrder, id, target, after),
             )}
-          onStepColumn={(id, step) =>
-            saveOrder(
-              "columnOrder",
-              stepOrder(
-                columnOrder,
-                id,
-                step,
-                columns.filter((col) => col.visible).map((col) => col.id),
+          savedWidths={$settingsStore.behavior.columnWidths}
+          onResizeColumn={(id, width) =>
+            saveWidths({
+              ...manualWidths(
+                $settingsStore.behavior.columnWidths,
+                ALL_COLUMN_IDS,
+              ),
+              [id]: width,
+            })}
+          onResetColumn={(id) =>
+            saveWidths(
+              Object.fromEntries(
+                Object.entries(
+                  manualWidths(
+                    $settingsStore.behavior.columnWidths,
+                    ALL_COLUMN_IDS,
+                  ),
+                ).filter(([key]) => key !== id),
               ),
             )}
           onTogglePin={processStore.togglePin}

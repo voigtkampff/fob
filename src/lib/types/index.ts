@@ -175,6 +175,8 @@ export interface AppConfig {
     processView?: "flat" | "tree";
     /** Process columns after the name column, by id (utils/layout-order.js). */
     columnOrder?: string[];
+    /** Column widths set by dragging a column's edge, by column id. */
+    columnWidths?: Record<string, number>;
     /** Card order of the Dashboard tab and the Processes tab's stats row. */
     dashboardCards?: string[];
     processCards?: string[];

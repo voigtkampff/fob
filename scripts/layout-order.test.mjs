@@ -7,14 +7,14 @@ import {
   moveNextTo,
   normalizeOrder,
   previewOrder,
-  stepOrder,
 } from "../src/lib/utils/layout-order.js";
 import {
   actionsWidth,
+  columnLayout,
   columnWidth,
-  columnWidths,
-  nameMaxWidth,
-  nameMinWidth,
+  manualMax,
+  manualMin,
+  manualWidths,
   tableWidth,
 } from "../src/lib/utils/table-layout.js";
 
@@ -40,14 +40,11 @@ test("a saved order keeps its known ids once and puts missing ones back by their
   }
 });
 
-test("moving next to a target and stepping skip hidden ids", () => {
+test("moving next to a target", () => {
   assert.deepEqual(moveNextTo(D, "a", "c", true), ["b", "c", "a", "d"]);
   assert.deepEqual(moveNextTo(D, "d", "a", false), ["d", "a", "b", "c"]);
   assert.deepEqual(moveNextTo(D, "a", "a", true), D);
   assert.deepEqual(moveNextTo(D, "a", "x", true), D);
-  assert.deepEqual(stepOrder(D, "a", 1, ["a", "c", "d"]), ["b", "c", "a", "d"]);
-  assert.deepEqual(stepOrder(D, "d", 1), D);
-  assert.deepEqual(stepOrder(D, "a", -1), D);
 });
 
 test("card ids match the ones the settings file accepts", () => {
@@ -86,49 +83,91 @@ test("every process column can be saved in columnOrder", () => {
   assert.deepEqual(config.behavior.columnOrder, []);
 });
 
-test("the name column grows to its widest and every other column gets the same width", () => {
-  const columns = [
-    "name",
-    "pid",
-    "cpu_usage",
-    "memory_usage",
-    "user",
-    "ppid",
-  ].map((id) => ({ id, visible: id !== "ppid" }));
-  for (const tree of [false, true]) {
-    const min = tableWidth(columns, tree);
-    const widest = columnWidth("memory_usage", tree);
-    const at = (region) => columnWidths(columns, tree, region);
-    assert.deepEqual(Object.keys(at(0)), [
-      "name",
-      "pid",
-      "cpu_usage",
-      "memory_usage",
-      "user",
-    ]);
-    assert.equal(min, actionsWidth + nameMinWidth(tree) + 4 * widest);
-    assert.deepEqual(at(min - 50), {
-      name: nameMinWidth(tree),
-      pid: widest,
-      cpu_usage: widest,
-      memory_usage: widest,
-      user: widest,
-    });
-    assert.equal(at(min + 40).name, nameMinWidth(tree) + 40);
-    assert.equal(at(min + 40).pid, widest);
-    for (const region of [min + 400, 1920, 2561, 3840]) {
-      const w = at(region);
-      const sum = Object.values(w).reduce((a, b) => a + b, actionsWidth);
-      assert.equal(sum, region, `fills ${region}`);
-      assert.equal(w.name, nameMaxWidth(tree));
-      const data = [w.pid, w.cpu_usage, w.memory_usage, w.user];
-      assert.ok(Math.max(...data) - Math.min(...data) <= 1, `equal ${data}`);
-      assert.ok(Math.min(...data) >= widest);
-    }
-  }
-  assert.deepEqual(columnWidths([{ id: "name", visible: true }], false, 900), {
-    name: 900 - actionsWidth,
+const cols = (ids, hidden = []) =>
+  ids.map((id) => ({ id, visible: !hidden.includes(id) }));
+const total = ({ widths, filler }) =>
+  Object.values(widths).reduce((a, b) => a + b, actionsWidth + filler);
+
+test("short columns keep their content width; spare room goes to the name, then stays empty", () => {
+  const columns = cols(
+    ["name", "pid", "cpu_usage", "memory_usage", "user", "ppid"],
+    ["ppid"],
+  );
+  const own = {
+    pid: columnWidth("pid"),
+    cpu_usage: columnWidth("cpu_usage"),
+    memory_usage: columnWidth("memory_usage"),
+    user: columnWidth("user"),
+  };
+  const min = tableWidth(columns);
+  assert.equal(min, actionsWidth + 180 + 72 + 80 + 96 + 130);
+  // Narrow: everything at its own width, nothing empty, the region scrolls.
+  assert.deepEqual(columnLayout(columns, false, min - 300), {
+    widths: { name: 180, ...own },
+    filler: 0,
   });
+  // A little room: the name column takes it.
+  const some = columnLayout(columns, false, min + 50);
+  assert.deepEqual(some, { widths: { name: 230, ...own }, filler: 0 });
+  // Wide: the name column stops at 460, the rest stays empty before actions.
+  for (const region of [1280, 1920, 3840]) {
+    const wide = columnLayout(columns, false, region);
+    assert.deepEqual(wide.widths, { name: 460, ...own });
+    assert.equal(total(wide), region, `fills ${region}`);
+  }
+});
+
+test("long text columns grow in turn and tree view widens its own columns", () => {
+  const columns = cols(["name", "pid", "command", "user"]);
+  const at = (region) => columnLayout(columns, false, region).widths;
+  const min = tableWidth(columns);
+  assert.equal(at(min + 100).name, 280);
+  assert.equal(at(min + 100).command, 200);
+  assert.equal(at(min + 400).name, 460);
+  assert.equal(at(min + 400).command, 320);
+  assert.equal(at(4000).command, 520);
+  const tree = columnLayout(cols(["name", "cpu_usage"]), true, 0).widths;
+  assert.deepEqual(tree, { name: 280, cpu_usage: 105 });
+  assert.equal(columnLayout(cols(["name"]), true, 4000).widths.name, 560);
+});
+
+test("a width set by hand wins for its column and leaves the others alone", () => {
+  const columns = cols(["name", "pid", "status", "user"]);
+  const auto = columnLayout(columns, false, 1920);
+  const pid = columnLayout(columns, false, 1920, { pid: 200 });
+  assert.equal(pid.widths.pid, 200);
+  assert.equal(pid.widths.status, auto.widths.status);
+  assert.equal(pid.widths.user, auto.widths.user);
+  assert.equal(total(pid), 1920);
+  // A hand-set name column no longer grows; the room stays empty.
+  const name = columnLayout(columns, false, 1920, { name: 220 });
+  assert.equal(name.widths.name, 220);
+  assert.equal(total(name), 1920);
+  // Wider than the window: nothing grows and the region scrolls.
+  const wide = columnLayout(columns, false, 600, { user: 900 });
+  assert.equal(wide.filler, 0);
+  assert.equal(tableWidth(columns, false, { user: 900 }) > 600, true);
+});
+
+test("saved widths keep known ids with finite numbers, rounded and clamped", () => {
+  const ids = ["name", "pid", "user", "command"];
+  assert.deepEqual(
+    manualWidths(
+      {
+        name: 300.6,
+        pid: -20,
+        command: 99999,
+        user: "wide",
+        unknown: 200,
+        ppid: NaN,
+      },
+      ids,
+    ),
+    { name: 301, pid: manualMin, command: manualMax },
+  );
+  assert.deepEqual(manualWidths({ pid: Infinity, user: null }, ids), {});
+  for (const bad of [undefined, null, 5, "x", [120]])
+    assert.deepEqual(manualWidths(bad, ids), {});
 });
 
 test("a drag in progress shows its landing order and drops back without one", () => {

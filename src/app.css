@@ -227,12 +227,44 @@
 .process-table-region [data-slot="table-row"][data-pinned="true"] .tree-name {
   background: color-mix(in srgb, var(--primary) 6%, var(--card));
 }
-/* A dot grip marks what can be dragged into a new order: movable column
-   headers (drawn here) and summary cards (a span in the card's title). */
-.drag-grip,
-.process-table-region th[data-movable]:not(.text-right)::before,
-.process-table-region th[data-movable].text-right > button::before {
+/* A column's right edge can be dragged to set its width (TableHeader). The
+   handle is invisible; a thin mark shows only while it is hovered or
+   dragged, so the table keeps no column lines. */
+.process-table-region .col-resize {
   position: absolute;
+  top: 0;
+  right: 0;
+  width: 8px;
+  height: 100%;
+  cursor: col-resize;
+  touch-action: none;
+  z-index: 1;
+}
+.process-table-region .col-resize::after {
+  content: "";
+  position: absolute;
+  top: 8px;
+  bottom: 8px;
+  right: 3px;
+  width: 2px;
+  border-radius: 1px;
+  transition: background-color 120ms;
+}
+.process-table-region .col-resize:hover::after,
+.process-table-region .col-resize[data-active]::after {
+  background: var(--primary);
+}
+html[data-resizing],
+html[data-resizing] * {
+  cursor: col-resize !important;
+  user-select: none;
+}
+/* A dot grip in a summary card's title marks that the card can be dragged
+   into a new order. It sits in line at the card's content edge, so its left
+   edge lines up with the values below. */
+.drag-grip {
+  display: inline-block;
+  flex-shrink: 0;
   width: 6px;
   height: 10px;
   background-image: radial-gradient(
@@ -245,56 +277,30 @@
   color: var(--muted-foreground);
   opacity: 0.45;
   transition: opacity 120ms;
+  cursor: grab;
 }
-/* Next to the label: at the cell's left edge for left-aligned headers, just
-   before the label for right-aligned (number) ones. */
-.process-table-region th[data-movable]:not(.text-right)::before,
-.process-table-region th[data-movable].text-right > button::before {
-  content: "";
-  top: calc(50% - 5px);
-  pointer-events: none;
-}
-.process-table-region th[data-movable]:not(.text-right)::before {
-  left: 2px;
-}
-.process-table-region th[data-movable].text-right > button {
-  position: relative;
-  overflow: visible;
-}
-.process-table-region th[data-movable].text-right > button::before {
-  left: -6px;
-}
-.process-table-region th[data-movable]:hover::before,
-.process-table-region th[data-movable]:focus-within::before,
-.process-table-region th[data-dragging]::before,
-.process-table-region th[data-movable]:hover > button::before,
-.process-table-region th[data-movable]:focus-within > button::before,
-.process-table-region th[data-dragging] > button::before,
 .drag-grip:hover,
 :hover > .sc-title > .drag-grip,
 :focus-visible .drag-grip,
 :hover > .card-head > .drag-grip,
+:hover > .card-head > .label > .drag-grip,
 [data-dragging] .drag-grip {
   opacity: 1;
   color: var(--foreground);
 }
-.drag-grip {
-  cursor: grab;
-}
-.resource-grid.movable > [data-slot="card"] {
-  position: relative;
-}
-.resource-grid.movable .drag-grip {
-  left: 4px;
-  top: 19px;
-}
 /* Reordering (utils/drag-reorder.js): the dragged item lifts above its
-   neighbours and follows the pointer (the action sets translate). */
+   neighbours and follows the pointer (a header cell in place, a card as a
+   copy in the top layer). */
 [data-dragging] {
   z-index: 6;
   box-shadow:
     0 10px 28px -8px rgb(0 0 0 / 0.5),
     0 0 0 1px color-mix(in srgb, var(--primary) 55%, transparent);
+}
+/* A lifted card is drawn as a copy in the top layer; its own slot stays
+   empty until the drop. */
+[data-drag-slot] {
+  opacity: 0;
 }
 td[data-dragging] {
   position: relative;
