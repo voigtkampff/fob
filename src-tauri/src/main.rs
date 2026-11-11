@@ -13,6 +13,7 @@ mod disk_health;
 mod gpu;
 mod hotkey;
 mod i18n;
+mod main_window;
 mod mft_records;
 mod mft_wire;
 mod monitoring;
@@ -67,6 +68,7 @@ fn main() {
         })
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_os::init())
+        .plugin(main_window::plugin())
         .plugin(hotkey::plugin())
         .manage(hotkey::HotkeyState::default())
         .manage(AppState::new())

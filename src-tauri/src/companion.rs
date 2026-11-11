@@ -1181,6 +1181,9 @@ pub fn window_event(window: &tauri::Window, event: &WindowEvent) {
     }
     match (window.label(), event) {
         ("overview", WindowEvent::Moved(_)) => moved(app),
+        ("main", WindowEvent::Resized(_) | WindowEvent::Moved(_)) => {
+            crate::main_window::changed(app)
+        }
         (crate::overlay::LABEL, WindowEvent::Moved(_)) => crate::overlay::moved(app),
         (crate::overlay::LABEL, WindowEvent::CloseRequested { api, .. }) => {
             api.prevent_close();
