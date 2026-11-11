@@ -1177,12 +1177,18 @@ pub fn reveal_main(app: &AppHandle) -> Result<(), String> {
         .ok_or("Main window unavailable")?;
     window.unminimize().map_err(|e| e.to_string())?;
     window.show().map_err(|e| e.to_string())?;
+    crate::main_window::fit_webview(&window, crate::main_window::Fit::Shown);
     window.set_focus().map_err(|e| e.to_string())
 }
 pub fn window_event(window: &tauri::Window, event: &WindowEvent) {
     let app = window.app_handle();
     if let WindowEvent::ScaleFactorChanged { .. } = event {
         crate::window_icon::apply(window);
+        if window.label() == crate::main_window::LABEL {
+            if let Some(main) = app.get_webview_window(crate::main_window::LABEL) {
+                crate::main_window::fit_webview(&main, crate::main_window::Fit::ScaleChanged);
+            }
+        }
     }
     match (window.label(), event) {
         ("overview", WindowEvent::Moved(_)) => moved(app),
