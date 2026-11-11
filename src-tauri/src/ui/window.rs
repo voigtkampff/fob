@@ -239,7 +239,8 @@ mod tests {
         assert_eq!(MainBackdrop::for_page(true), MainBackdrop::Acrylic);
         assert_eq!(MainBackdrop::for_page(false), MainBackdrop::Mica);
         // Glassy is the one theme whose page lets the backdrop show.
-        let css = include_str!("../../../src/app.css");
+        // Windows checkouts may use CRLF, so compare with line endings removed.
+        let css = include_str!("../../../src/app.css").replace('\r', "");
         assert!(css.contains("[data-theme=\"glassy\"] body {\n  background: transparent;"));
         let theme = include_str!("../../../src/lib/stores/theme.ts");
         assert!(
