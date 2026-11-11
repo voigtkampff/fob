@@ -12,10 +12,9 @@ Fob was called winperf before. The Rust crate and some internal names still
 use `winperf`. Everything that ships is called Fob: `fob.exe`,
 `fob-sensors.exe`, and `fob-mft.exe`.
 
-Current version: 0.8.4 (see [CHANGELOG.md](CHANGELOG.md)). The Windows
-package `fob-v0.8.4-x86_64-windows.zip` is on the
-[v0.8.4 release page](https://github.com/voigtkampff/fob/releases/tag/v0.8.4).
-To build from source instead, see
+Download a package from the
+[latest release page](https://github.com/voigtkampff/fob/releases/latest).
+On that page, choose the Windows zip. To build from source instead, see
 [Build the Windows package](#build-the-windows-package).
 
 > Screenshots: to be added. The `screenshot.png`, `screenshot-light.png`,
@@ -75,7 +74,9 @@ Not done: battery, health score, and speed test.
 
 Fob is a portable folder. It has no installer.
 
-1. Extract `fob-v<version>-x86_64-windows.zip`.
+1. Download the Windows zip from the
+   [latest release page](https://github.com/voigtkampff/fob/releases/latest)
+   and extract it.
 2. Keep the `sensors` and `PawnIO` folders next to `fob.exe`.
 3. Run `fob.exe`.
 

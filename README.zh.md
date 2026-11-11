@@ -10,10 +10,9 @@ Fob 是面向 Windows 10 和 11（x64）的性能监视器。它是 Abdenasser �
 Fob 此前名为 winperf。Rust crate 和部分内部名称仍使用 `winperf`。
 随包发布的程序都叫 Fob：`fob.exe`、`fob-sensors.exe` 和 `fob-mft.exe`。
 
-当前版本：0.8.4（见 [CHANGELOG.md](CHANGELOG.md)）。Windows 压缩包
-`fob-v0.8.4-x86_64-windows.zip` 在
-[v0.8.4 发布页](https://github.com/voigtkampff/fob/releases/tag/v0.8.4)。
-要从源码构建，见[构建 Windows 压缩包](#构建-windows-压缩包)。
+压缩包在[最新发布页](https://github.com/voigtkampff/fob/releases/latest)。
+在该页选择 Windows 压缩包。要从源码构建，见
+[构建 Windows 压缩包](#构建-windows-压缩包)。
 
 > 截图：待补。本仓库中的 `screenshot.png`、`screenshot-light.png` 和
 > `docs/screenshots/` 里的图片是 NeoHtop 的，不是 Fob 的。
@@ -61,7 +60,7 @@ Fob 此前名为 winperf。Rust crate 和部分内部名称仍使用 `winperf`�
 
 Fob 是一个便携文件夹，没有安装程序。
 
-1. 解压 `fob-v<version>-x86_64-windows.zip`。
+1. 从[最新发布页](https://github.com/voigtkampff/fob/releases/latest)下载并解压 Windows 压缩包。
 2. 将 `sensors` 和 `PawnIO` 文件夹保留在 `fob.exe` 旁边。
 3. 运行 `fob.exe`。
 
