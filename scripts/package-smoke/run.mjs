@@ -3,6 +3,7 @@
 import { execFileSync, spawn } from "node:child_process";
 import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import { checkDiskHover } from "./hover.mjs";
 
 const [fobDir, out] = process.argv.slice(2);
 const PORT = 9222;
@@ -119,11 +120,12 @@ async function cdp() {
         });
       return true;
     };
-    const shot = async (name) =>
+    const shot = async (name, clip) =>
       writeFileSync(
         join(out, name),
         Buffer.from(
-          (await send("Page.captureScreenshot", { format: "png" })).result.data,
+          (await send("Page.captureScreenshot", { format: "png", clip })).result
+            .data,
           "base64",
         ),
       );
@@ -212,6 +214,111 @@ async function waitExit(tag, how, child, exit, ms) {
   }
 }
 
+async function openDiskDetail(tag, page) {
+  const opened =
+    (await page.click("#resource-trigger-storage")) &&
+    (await until(
+      () =>
+        page.evaluate(
+          "!!document.querySelector('[data-slot=\"sheet-content\"]')",
+        ),
+      8000,
+    ));
+  if (tag === "en") {
+    check("en: storage card opens its side panel", opened);
+    await page.shot("en-storage-panel.png");
+  }
+  const detail =
+    opened &&
+    (await page.click(
+      '[data-slot="sheet-content"] button:has(.lucide-heart-pulse)',
+    )) &&
+    (await until(
+      () => page.evaluate("!!document.getElementById('disk-health-title')"),
+      8000,
+    ));
+  check(`${tag}: the panel's disk health link opens the Disk detail`, detail);
+  return until(
+    () =>
+      page.evaluate(`(() => {
+      const p = document.querySelector('.panel.health');
+      if (!p || (p.innerText.includes('Reading disk health') && !p.querySelector('.disk'))) return null;
+      const disks = [...p.querySelectorAll('.disk')];
+      if (!disks.length && !p.querySelector('.note')) return null;
+      return { heading: document.querySelector('main .head h2')?.textContent.trim(), disks: disks.map((d) => d.innerText.replace(/\\s+/g, ' ').trim()), notes: [...p.querySelectorAll(':scope > .note')].map((n) => n.textContent.trim()), text: p.innerText };
+    })()`),
+    90000,
+    1000,
+  );
+}
+
+// Moves the real Windows cursor over each metric row of the Disk detail and
+// checks what the packaged WebView2 painted, in the theme now applied.
+async function hoverRows(tag, run, theme) {
+  const { page, window } = run;
+  await page.evaluate(
+    "window.__smokePointer = null; addEventListener('mousemove', (e) => { window.__smokePointer = [e.clientX, e.clientY]; }, true); true",
+  );
+  const scale = await page.evaluate("devicePixelRatio");
+  const origin = native("client-origin", window.hwnd);
+  const missed = [];
+  const pointTo = async (x, y) => {
+    native(
+      "cursor",
+      `${Math.round(origin.x + x * scale)},${Math.round(origin.y + y * scale)}`,
+    );
+    const at = await until(
+      () =>
+        page.evaluate(
+          `(() => { const p = window.__smokePointer; return p && Math.abs(p[0] - ${x}) <= 2 && Math.abs(p[1] - ${y}) <= 2 ? p : null; })()`,
+        ),
+      3000,
+      100,
+    );
+    if (!at) missed.push([x, y, await page.evaluate("window.__smokePointer")]);
+  };
+  const applied = await page.evaluate("document.documentElement.dataset.theme");
+  const result = await checkDiskHover({ evaluate: page.evaluate, pointTo });
+  run.hover = {
+    ...(run.hover ?? {}),
+    [theme]: { applied, scale, origin, missed, ...result },
+  };
+  check(
+    `${tag}/${theme}: the ${theme} theme is applied`,
+    applied === theme,
+    applied,
+  );
+  check(
+    `${tag}/${theme}: the Windows cursor reached every label, gap and value it was moved to`,
+    result.count > 0 && missed.length === 0,
+    missed.slice(0, 3),
+  );
+  check(
+    `${tag}/${theme}: hovering each disk metric row's label, gap or value paints only that row's label and value chips, at 4.5:1 or more, without moving anything, and leaving clears them`,
+    result.pass,
+    result.results.map(({ row, label, value, msg, chips }) => ({
+      row,
+      label,
+      value,
+      msg,
+      chips,
+    })),
+  );
+  const info = await page.evaluate("window.__diskHover.row(0)");
+  await pointTo(...info.points.gap);
+  await sleep(300);
+  const panel = await page.evaluate(
+    "(() => { const r = document.querySelector('.panel.health').getBoundingClientRect(); return { x: r.x + scrollX, y: r.y + scrollY, width: r.width, height: r.height, scale: 1 }; })()",
+  );
+  await page.shot(`${tag}-hover-${theme}-panel.png`, panel);
+  native(
+    "window-shot",
+    window.hwnd,
+    join(out, `${tag}-hover-${theme}-window.png`),
+  );
+  await pointTo(...info.outside);
+}
+
 mkdirSync(out, { recursive: true });
 report.runner = {
   os: execFileSync(
@@ -262,40 +369,7 @@ try {
   });
   const { page, window } = first.run;
   if (page) {
-    check(
-      "en: storage card opens its side panel",
-      (await page.click("#resource-trigger-storage")) &&
-        (await until(
-          () =>
-            page.evaluate(
-              "!!document.querySelector('[data-slot=\"sheet-content\"]')",
-            ),
-          8000,
-        )),
-    );
-    await page.shot("en-storage-panel.png");
-    check(
-      "en: the panel's disk health link opens the Disk detail",
-      (await page.click(
-        '[data-slot="sheet-content"] button:has(.lucide-heart-pulse)',
-      )) &&
-        (await until(
-          () => page.evaluate("!!document.getElementById('disk-health-title')"),
-          8000,
-        )),
-    );
-    const health = await until(
-      () =>
-        page.evaluate(`(() => {
-      const p = document.querySelector('.panel.health');
-      if (!p || (p.innerText.includes('Reading disk health') && !p.querySelector('.disk'))) return null;
-      const disks = [...p.querySelectorAll('.disk')];
-      if (!disks.length && !p.querySelector('.note')) return null;
-      return { heading: document.querySelector('main .head h2')?.textContent.trim(), disks: disks.map((d) => d.innerText.replace(/\\s+/g, ' ').trim()), notes: [...p.querySelectorAll(':scope > .note')].map((n) => n.textContent.trim()), text: p.innerText };
-    })()`),
-      90000,
-      1000,
-    );
+    const health = await openDiskDetail("en", page);
     first.run.health = health;
     check(
       "en: Disk detail lists at least one physical disk read on this machine",
@@ -308,6 +382,23 @@ try {
     );
     await page.shot("en-disk-detail.png");
     native("window-shot", window.hwnd, join(out, "en-disk-detail-window.png"));
+    for (const theme of ["catppuccin", "githubLight", "glassy"]) {
+      if (theme !== "catppuccin") {
+        await page.evaluate(
+          `localStorage.setItem("theme", ${JSON.stringify(theme)}); location.reload(); true`,
+        );
+        await sleep(1500);
+        await until(
+          () =>
+            page.evaluate(
+              "!!document.querySelector('#resource-trigger-storage')",
+            ),
+          20000,
+        );
+        await openDiskDetail(`en/${theme}`, page);
+      }
+      await hoverRows("en", first.run, theme);
+    }
     native("close", window.hwnd);
     await sleep(3000);
     const after = native("windows", first.child.pid).find(
@@ -339,6 +430,12 @@ try {
   });
   if (second.run.page) {
     const page = second.run.page;
+    second.run.health = await openDiskDetail("zh", page);
+    check(
+      "zh: Disk detail lists at least one physical disk",
+      second.run.health?.disks.length >= 1,
+    );
+    await hoverRows("zh", second.run, "catppuccin");
     check(
       "zh: the title bar menu opens",
       (await page.click('button[aria-label="Fob 菜单"]')) &&
