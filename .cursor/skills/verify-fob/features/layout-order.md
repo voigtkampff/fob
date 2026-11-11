@@ -41,13 +41,19 @@ zh and en, at 1920 and 1024 px. It fails unless:
 - both card orders survive a reload; saved orders with unknown, repeated and
   missing ids still show every column and card once;
 - at 1920 px the name column is at most its widest, a long name is cut with a
-  tooltip, the other columns share the rest evenly (within 1 px) and the
-  actions column ends at the right edge; at 1024 px the name column is at its
-  narrowest and the table scrolls;
-- with reduced motion a drag still lifts the item but nothing slides.
+  tooltip, every data column has one width (within 1 px; also with PID hidden
+  and in tree view) and the actions column ends at the right edge; at 1024 px
+  the name column is at its narrowest, the data columns share their common
+  minimum and the table scrolls;
+- with reduced motion a drag still lifts the item but nothing slides;
+- movable headers and all summary cards show a dot grip (none on the name and
+  actions columns), fully opaque on hover, in dark and light themes, with the
+  drag hint in their tooltips; the grip takes no focus and a Dashboard card
+  drags from it.
 
 It writes `<lang>-1920-*.png`, `<lang>-1024-*.png` and `ui-reorder.json`.
 `scripts/layout-order.test.mjs` covers the order helpers, the card ids the
-settings file accepts, and how `columnWidths` shares spare width. Mocked readings in a
+settings file accepts, and how `columnWidths` gives every data column one
+width. Mocked readings in a
 browser only; real drags in WebView2, display scaling and the packaged
 settings file need a Windows run.

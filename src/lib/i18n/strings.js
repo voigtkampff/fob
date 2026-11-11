@@ -262,9 +262,8 @@ export const en = {
   "col.familyRamTitle":
     "Memory of the process and all its children; shared memory may count twice",
   "col.sortBy": "Sort by {v}",
-  "col.moveHint": "Drag, or press Alt+←/→, to move this column",
-  "layout.moveCard":
-    "Drag the title, or press Alt+arrow keys, to move this card",
+  "col.moveHint": "Drag to reorder, or press Alt+←/→",
+  "layout.moveCard": "Drag to reorder, or press Alt+arrow keys",
   "col.actions": "Actions",
   "col.viewOptions": "View options",
   "col.view": "View",
@@ -982,8 +981,8 @@ export const zh = {
   "col.familyCpuTitle": "此进程及其所有子进程的 CPU 合计，与任务管理器一致",
   "col.familyRamTitle": "此进程及其所有子进程的内存合计，共享内存可能重复计算",
   "col.sortBy": "按{v}排序",
-  "col.moveHint": "拖动或按 Alt+←/→ 调整列顺序",
-  "layout.moveCard": "拖动标题或按 Alt+方向键调整卡片顺序",
+  "col.moveHint": "拖动调整顺序，或按 Alt+←/→",
+  "layout.moveCard": "拖动调整顺序，或按 Alt+方向键",
   "col.actions": "操作",
   "col.viewOptions": "视图选项",
   "col.view": "视图",

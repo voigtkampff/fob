@@ -134,19 +134,20 @@ test("the name column gives way before the table scrolls under the actions colum
     ([id, visible]) => ({ id, visible }),
   );
   for (const tree of [false, true]) {
-    const others = visible
-      .filter((c) => c.visible && c.id !== "name")
-      .reduce((sum, c) => sum + columnWidth(c.id, tree), 0);
+    const others = visible.filter((c) => c.visible && c.id !== "name");
+    const widest = Math.max(...others.map((c) => columnWidth(c.id, tree)));
     assert.equal(columnWidth("name", tree), nameMinWidth(tree));
+    // Every data column shares the widest data column's minimum.
     assert.equal(
       tableWidth(visible, tree),
-      actionsWidth + others + nameMinWidth(tree),
+      actionsWidth + others.length * widest + nameMinWidth(tree),
     );
-    // The default columns fit a 1920 px screen at 100% and 125% scaling.
-    assert.ok(tableWidth(visible, tree) <= 1920 / 1.25, `tree ${tree}`);
+    // The default columns fit a 1920 px screen at 100% scaling; at 125%
+    // (1536 CSS px) the equal widths scroll sideways a little.
+    assert.ok(tableWidth(visible, tree) <= 1920, `tree ${tree}`);
   }
-  assert.equal(tableWidth(visible), 1367);
-  assert.equal(tableWidth(visible, true), 1447);
+  assert.equal(tableWidth(visible), 1662);
+  assert.equal(tableWidth(visible, true), 1742);
 });
 
 test("column labels say 硬盘 and Disk in both languages", () => {

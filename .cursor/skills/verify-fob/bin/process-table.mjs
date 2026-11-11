@@ -92,7 +92,7 @@ try {
   })()`);
   const click = async (label) => {
     const box = await evaluate(
-      `(() => { const b = [...document.querySelectorAll('thead th button')].find((b) => b.textContent.trim() === ${JSON.stringify(label)}); const r = b.getBoundingClientRect(); return { x: r.x + r.width / 2, y: r.y + r.height / 2 }; })()`,
+      `(() => { const b = [...document.querySelectorAll('thead th button')].find((b) => b.textContent.trim() === ${JSON.stringify(label)}); b.scrollIntoView({ block: 'nearest', inline: 'center' }); const r = b.getBoundingClientRect(); return { x: r.x + r.width / 2, y: r.y + r.height / 2 }; })()`,
     );
     for (const type of ["mouseMoved", "mousePressed", "mouseReleased"])
       await send("Input.dispatchMouseEvent", {

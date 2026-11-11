@@ -9,6 +9,9 @@
 //   others already stand in the order it would land in (header and body
 //   cells together), and nothing is saved until release; with reduced
 //   motion they jump instead of sliding;
+// - movable headers and every summary card show a dot grip (none on the name
+//   and actions columns), stronger on hover, with a short drag hint in the
+//   tooltip, and a Dashboard card drags from its grip;
 // - Processes and Dashboard summary cards drag by their title, the drag opens
 //   nothing and the next click still does;
 // - all three orders survive a reload, and bad saved orders (unknown,
@@ -29,9 +32,14 @@ import {
 } from "../../../../src/lib/utils/table-layout.js";
 
 const idOf = (strings, label) =>
+  ({
+    [strings["col.familyCpu"]]: "cpu_usage",
+    [strings["col.familyRam"]]: "memory_usage",
+  })[label] ??
   Object.keys(strings)
     .find((k) => k.startsWith("col.") && strings[k] === label)
-    ?.slice(4) ?? label;
+    ?.slice(4) ??
+  label;
 
 const [out = "/workspace/scratch/verify/evidence/ui-reorder"] =
   process.argv.slice(2);
@@ -219,10 +227,108 @@ try {
     const s = lang === "zh" ? zh : en;
     const label = (col) => s[`col.${col}`];
     const at = (what) => `${lang}: ${what}`;
+    // Every data column (between the name and actions columns) has one
+    // width, within 1 px of rounding.
+    const equalData = (t, where) => {
+      const w = Object.values(t.widths)
+        .slice(1, -1)
+        .map((x) => Math.round(x * 10) / 10);
+      check(
+        Math.max(...w) - Math.min(...w) <= 1,
+        at(`${where}: data columns not one width ${w}`),
+      );
+      return w;
+    };
+    const widestMin = (t) =>
+      Math.max(
+        ...Object.keys(t.widths)
+          .slice(1, -1)
+          .map((l) => columnWidth(idOf(s, l))),
+      );
     await viewport(1920, 1000);
     await send("Page.navigate", { url: `${base}/main-page-panel.html` });
     await evaluate("sessionStorage.clear()");
     await open(lang, "processes");
+
+    const grips = () =>
+      evaluate(`(() => {
+        const ths = [...document.querySelectorAll('thead tr th')];
+        const pseudo = (th) => getComputedStyle(th.classList.contains('text-right') && th.querySelector('button') || th, '::before');
+        const cards = [...document.querySelectorAll('.resource-grid > *')];
+        return {
+          headers: ths.map((th) => pseudo(th).content !== 'none'),
+          headerHints: ths.slice(1, -1).every((th) => th.querySelector('button').title.endsWith(${JSON.stringify(s["col.moveHint"])})),
+          hovered: ths.map((th) => pseudo(th).opacity),
+          cards: cards.map((c) => !!c.querySelector('.sc-title > .drag-grip[aria-hidden="true"]')),
+          cardHints: cards.every((c) => c.querySelector('.sc-title').title === ${JSON.stringify(s["layout.moveCard"])}),
+          cardTitleHints: cards.every((c) => c.querySelector('.sc-title .truncate').title.endsWith(${JSON.stringify(s["layout.moveCard"])})),
+          focusable: document.querySelectorAll('.drag-grip[tabindex]').length,
+        };
+      })()`);
+    const g = await grips();
+    check(
+      g.headers[0] === false &&
+        g.headers.at(-1) === false &&
+        g.headers.slice(1, -1).every(Boolean) &&
+        g.headerHints,
+      at(`header grips or hints wrong ${JSON.stringify(g.headers)}`),
+    );
+    check(
+      g.cards.length === 7 &&
+        g.cards.every(Boolean) &&
+        g.cardHints &&
+        g.cardTitleHints &&
+        !g.focusable,
+      at(`card grips or hints wrong ${JSON.stringify(g)}`),
+    );
+    const ram = await center(th(label("memory_usage")));
+    const memCard = await center(
+      "document.querySelector('#resource-trigger-memory').closest('.resource-grid > *')",
+    );
+    await mouse("mouseMoved", ram.x, ram.y);
+    await sleep(200);
+    const ramIndex = (await table()).labels.indexOf(label("memory_usage"));
+    const hoverHead = (await grips()).hovered;
+    check(
+      Number(hoverHead[ramIndex]) === 1 && Number(hoverHead[1]) < 1,
+      at(`hovered header grip not stronger ${hoverHead}`),
+    );
+    const clipGrip = async (name) =>
+      writeFileSync(
+        `${out}/${name}`,
+        Buffer.from(
+          (
+            await send("Page.captureScreenshot", {
+              format: "png",
+              clip: { x: 0, y: 90, width: 1200, height: 420, scale: 1.5 },
+            })
+          ).result.data,
+          "base64",
+        ),
+      );
+    await clipGrip(`${lang}-1920-grips-header-hover.png`);
+    await mouse("mouseMoved", memCard.x, memCard.y);
+    await sleep(200);
+    check(
+      (await evaluate(
+        "getComputedStyle(document.querySelector('#resource-trigger-memory').closest('.resource-grid > *').querySelector('.drag-grip')).opacity",
+      )) === "1",
+      at("hovered card grip not stronger"),
+    );
+    await clipGrip(`${lang}-1920-grips-card-hover.png`);
+    if (lang === "zh") {
+      await evaluate("localStorage.setItem('theme', 'githubLight')");
+      await open(lang, "processes");
+      await mouse("mouseMoved", ram.x, ram.y);
+      await sleep(200);
+      check(
+        (await grips()).headers.slice(1, -1).every(Boolean),
+        at("no header grips in the light theme"),
+      );
+      await clipGrip(`${lang}-1920-grips-light.png`);
+      await evaluate("localStorage.removeItem('theme')");
+      await open(lang, "processes");
+    }
 
     // Width at full screen.
     let t = await table();
@@ -242,19 +348,22 @@ try {
       at(`long name not cut with a tooltip ${JSON.stringify(long)}`),
     );
     check(t.aligned, at("header and body columns out of line at 1920"));
-    const extras = Object.entries(t.widths)
-      .slice(1, -1)
-      .map(([l, w]) => Math.round(w - columnWidth(idOf(s, l))));
+    const dataWidths = equalData(t, "1920");
     check(
       t.actionsClass.includes("actions-heading") &&
         Math.abs(t.fill) <= 1 &&
-        Math.max(...extras) - Math.min(...extras) <= 1 &&
-        Math.min(...extras) > 0,
+        Math.min(...dataWidths) > widestMin(t),
       at(
-        `actions not at the right edge (${t.fill}px) or spare width not shared evenly ${extras}`,
+        `actions not at the right edge (${t.fill}px) or data columns did not grow ${dataWidths}`,
       ),
     );
-    report.push({ lang, step: "wide", nameWidth: t.nameWidth, extras, long });
+    report.push({
+      lang,
+      step: "wide",
+      nameWidth: t.nameWidth,
+      dataWidths,
+      long,
+    });
     await shot(`${lang}-1920-flat.png`);
 
     // Drag CPU onto the left half of PID: CPU becomes the first column after the name.
@@ -433,6 +542,11 @@ try {
         t.labels[1] === label("cpu_usage"),
       at(`hidden PID: ${t.labels.join(" | ")}`),
     );
+    report.push({
+      lang,
+      step: "pid-hidden",
+      dataWidths: equalData(t, "PID hidden"),
+    });
     await shot(`${lang}-1920-pid-hidden.png`);
     await editSaved(
       `(c) => { c.appearance.columnVisibility.pid = true; c.behavior.processView = 'tree'; }`,
@@ -484,6 +598,11 @@ try {
       labels: t.labels,
       nameWidth: t.nameWidth,
       rows: tree,
+    });
+    report.push({
+      lang,
+      step: "tree-widths",
+      dataWidths: equalData(t, "tree"),
     });
     await shot(`${lang}-1920-tree.png`);
     await editSaved(`(c) => { c.behavior.processView = 'flat'; }`);
@@ -554,8 +673,18 @@ try {
     const dash0 = await evaluate(
       `[...${grid}.children].map((c) => c.querySelector('.card-head')?.textContent.trim())`,
     );
+    // Started on the grip itself, which sits in the card's padding.
     const head = await center(
-      `${grid}.children[0].querySelector('.card-head')`,
+      `${grid}.children[0].querySelector('.card-head > .drag-grip')`,
+    );
+    check(
+      (await evaluate(
+        `document.querySelectorAll('.card-head > .drag-grip[aria-hidden="true"]').length`,
+      )) === dash0.length &&
+        (await evaluate(
+          `${grid}.children[0].querySelector('.card-head').title`,
+        )) === s["layout.moveCard"],
+      at("dashboard card grips or hints missing"),
     );
     const third = await center(`${grid}.children[2]`);
     await drag(head, { x: third.right - 8, y: third.y }, { hold: true });
@@ -663,6 +792,14 @@ try {
       at(`1024: name ${t.nameWidth}px, ${JSON.stringify(narrow)}`),
     );
     report.push({ lang, step: "narrow", nameWidth: t.nameWidth, ...narrow });
+    const narrowData = equalData(t, "1024");
+    check(
+      Math.abs(narrowData[0] - widestMin(t)) <= 1,
+      at(
+        `1024: data columns ${narrowData[0]}px, not their shared minimum ${widestMin(t)}`,
+      ),
+    );
+    report.push({ lang, step: "narrow-widths", dataWidths: narrowData });
     await shot(`${lang}-1024-flat.png`);
     await evaluate("document.querySelectorAll('nav.tabs button')[0].click()");
     await sleep(400);

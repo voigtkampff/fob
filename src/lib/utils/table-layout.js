@@ -1,15 +1,15 @@
 /** Stable column widths keep long optional fields readable through
  * deliberate horizontal scrolling.
  * Widths for a given window come from columnWidths: the name column grows
- * to nameMaxWidth, then the other columns share the rest. The name column
- * shrinks to nameMinWidth before the table scrolls sideways. A table a
- * little wider than the window would otherwise hide the end of the last
+ * to nameMaxWidth, then the other columns share the rest equally. The name
+ * column shrinks to nameMinWidth before the table scrolls sideways. A table
+ * a little wider than the window would otherwise hide the end of the last
  * column under the sticky actions column, which reads as values running
  * into the buttons.
- * Number columns take their width from the kind of value they show, so
- * columns of one kind line up. Each width fits the widest zh or en header
- * of its kind, sort arrow included, and the longest value, with at least
- * 5 px to spare for font differences on Windows. */
+ * columnWidth is each column's own minimum, from the kind of value it
+ * shows; the shared data column width is the widest of these. Each fits the
+ * widest zh or en header of its kind, sort arrow included, and the longest
+ * value, with at least 5 px to spare for font differences on Windows. */
 const kindWidths = {
   id: 100,
   percent: 105,
@@ -41,26 +41,35 @@ export const nameMinWidth = (tree = false) => (tree ? 280 : 200);
  * adds 10 levels of 16 px indent, the 24 px expander and the family count. */
 export const nameMaxWidth = (tree = false) => (tree ? 560 : 330);
 /** Width of each visible column for a table region of the given width.
- * The name column grows first, up to nameMaxWidth; whatever is left is
- * shared evenly by the other visible columns, so the table always fills the
- * region. Below the minimum width nothing shrinks further and the region
- * scrolls sideways.
+ * Every column but the name column gets the same width, at least the widest
+ * of their own minimums (columnWidth), so headers and values fit in all of
+ * them. The name column grows first, up to nameMaxWidth; the rest is shared
+ * equally (within 1 px of rounding) so the table fills the region. Below the
+ * minimum width nothing shrinks further and the region scrolls sideways.
  * @param {{id:string,visible:boolean}[]} columns @param {boolean} tree @param {number} region
  * @returns {Record<string, number>} */
 export function columnWidths(columns, tree, region) {
-  const shown = columns.filter((c) => c.visible);
+  const others = columns.filter((c) => c.visible && c.id !== "name");
   const spare = Math.max(0, Math.floor(region - tableWidth(columns, tree)));
-  const name = Math.min(nameMaxWidth(tree) - nameMinWidth(tree), spare);
-  const others = shown.filter((c) => c.id !== "name");
-  const each = others.length ? Math.floor((spare - name) / others.length) : 0;
-  const extra = others.length ? spare - name - each * others.length : 0;
-  return Object.fromEntries(
-    shown.map((c) => [
-      c.id,
-      c.id === "name"
-        ? nameMinWidth(tree) + name + (others.length ? 0 : spare - name)
-        : columnWidth(c.id, tree) + each + (others.indexOf(c) < extra ? 1 : 0),
-    ]),
+  const grow = others.length
+    ? Math.min(nameMaxWidth(tree) - nameMinWidth(tree), spare)
+    : spare;
+  const total = others.length * dataWidth(columns, tree) + spare - grow;
+  const each = others.length ? Math.floor(total / others.length) : 0;
+  const extra = total - each * others.length;
+  return Object.fromEntries([
+    ["name", nameMinWidth(tree) + grow],
+    ...others.map((c, i) => [c.id, each + (i < extra ? 1 : 0)]),
+  ]);
+}
+/** The one width every visible column but the name column starts from.
+ * @param {{id:string,visible:boolean}[]} columns @param {boolean} tree */
+export function dataWidth(columns, tree = false) {
+  return Math.max(
+    0,
+    ...columns
+      .filter((c) => c.visible && c.id !== "name")
+      .map((c) => columnWidth(c.id, tree)),
   );
 }
 /** Width of the sticky actions column (w-28). */
@@ -74,10 +83,6 @@ export function columnWidth(id, tree = false) {
 /** Narrowest the table gets before it scrolls sideways.
  * @param {{id:string,visible:boolean}[]} columns @param {boolean} tree */
 export function tableWidth(columns, tree = false) {
-  return (
-    actionsWidth +
-    columns
-      .filter((c) => c.visible)
-      .reduce((sum, c) => sum + columnWidth(c.id, tree), 0)
-  );
+  const others = columns.filter((c) => c.visible && c.id !== "name").length;
+  return actionsWidth + nameMinWidth(tree) + others * dataWidth(columns, tree);
 }

@@ -43,9 +43,10 @@ scrolled to the end when it does not), or the table scrolls sideways while
 the window is at least its minimum width, or the name column is wider than
 its widest (`nameMaxWidth` in `utils/table-layout.js`: 330 px, 560 px in tree
 view, room for the truncated name plus icons and the deepest indent). The
-name column takes the space left up to that widest and narrows to 200 px
-(280 px in tree view) before the table scrolls; any width beyond is shared
-evenly by the other visible columns (`columnWidths`).
+other visible columns all have one width (`columnWidths`): at least the
+widest of their own minimums, so the default set needs 1662 px (1742 px in
+tree view) before it stops scrolling sideways. Beyond that the name column
+grows to its widest first, then the data columns share the rest equally.
 It writes `columns-<tag>-<lang>-<view>-<set>-<width>[-right].png` and
 `columns-<tag>.json` with each column's width, header need and value need,
 the table's minimum width and the gap to the actions column.

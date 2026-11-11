@@ -252,6 +252,8 @@
               class="card-head"
               title={onReorder ? $t("layout.moveCard") : undefined}
             >
+              {#if onReorder}<span class="drag-grip" aria-hidden="true"
+                ></span>{/if}
               <span class="label"><Cpu class="size-3.5" />CPU</span>
               <span class="chip">{$t("dash.threads", { n: cores.length })}</span
               >
@@ -307,6 +309,8 @@
               class="card-head"
               title={onReorder ? $t("layout.moveCard") : undefined}
             >
+              {#if onReorder}<span class="drag-grip" aria-hidden="true"
+                ></span>{/if}
               <span class="label"><Gauge class="size-3.5" />GPU</span>
               {#if gpu.name}<span class="chip ellipsis" title={gpu.name}
                   >{gpu.name}</span
@@ -353,6 +357,8 @@
               class="card-head"
               title={onReorder ? $t("layout.moveCard") : undefined}
             >
+              {#if onReorder}<span class="drag-grip" aria-hidden="true"
+                ></span>{/if}
               <span class="label"
                 ><MemoryStick class="size-3.5" />{$t("dash.memory")}</span
               >
@@ -398,6 +404,8 @@
               class="card-head"
               title={onReorder ? $t("layout.moveCard") : undefined}
             >
+              {#if onReorder}<span class="drag-grip" aria-hidden="true"
+                ></span>{/if}
               <span class="label"
                 ><HardDrive class="size-3.5" />{$t("dash.freeSpace")}</span
               >
@@ -438,6 +446,8 @@
               class="card-head"
               title={onReorder ? $t("layout.moveCard") : undefined}
             >
+              {#if onReorder}<span class="drag-grip" aria-hidden="true"
+                ></span>{/if}
               <span class="label"
                 ><Globe class="size-3.5" />{$t("dash.network")}</span
               >
@@ -487,6 +497,8 @@
               class="card-head"
               title={onReorder ? $t("layout.moveCard") : undefined}
             >
+              {#if onReorder}<span class="drag-grip" aria-hidden="true"
+                ></span>{/if}
               <span class="label"
                 ><Thermometer class="size-3.5" />{$t("dash.temp")}</span
               >
@@ -668,6 +680,13 @@
   }
   .movable .card-head {
     cursor: grab;
+  }
+  .movable > .card {
+    position: relative;
+  }
+  .movable .drag-grip {
+    left: 5px;
+    top: 17px;
   }
   .card-head {
     display: flex;

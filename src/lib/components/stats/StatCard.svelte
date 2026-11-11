@@ -5,6 +5,8 @@
   import type { Snippet } from "svelte";
   import * as Card from "$lib/components/ui/card/index.js";
   import { Badge } from "$lib/components/ui/badge/index.js";
+  import { getContext } from "svelte";
+  import { t } from "$lib/i18n";
   let {
     title,
     color = "",
@@ -24,17 +26,23 @@
     middle?: Snippet;
     band?: Snippet;
   } = $props();
+  const movable = getContext<boolean | undefined>("movable-cards") ?? false;
 </script>
 
 <Card.Root size="sm" class="stat-card">
   <div class="sc-head">
-    <span class="sc-title"
-      ><Badge
+    <span class="sc-title" title={movable ? $t("layout.moveCard") : undefined}
+      >{#if movable}<span class="drag-grip" aria-hidden="true"
+        ></span>{/if}<Badge
         variant="secondary"
         class={`sc-icon size-5 shrink-0 rounded-md border-0 p-0 [&>svg]:size-3! ${color ? "bg-primary/10 text-primary" : "bg-muted text-muted-foreground"}`}
         style={color ? `--primary:${color}` : ""}
         aria-hidden="true">{@render icon()}</Badge
-      ><span class="truncate" {title}>{title}</span></span
+      ><span
+        class="truncate"
+        title={movable ? `${title}\n${$t("layout.moveCard")}` : title}
+        >{title}</span
+      ></span
     >
     {#if badge}<Badge
         variant="secondary"
