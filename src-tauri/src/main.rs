@@ -51,6 +51,11 @@ fn main() {
     }
 
     tauri::Builder::default()
+        // First plugin: a second launch exits here, before any window, helper
+        // or hotkey of its own exists, and brings the running Fob forward.
+        .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
+            let _ = companion::reveal_main(app);
+        }))
         .setup(|app| {
             let window = app.get_webview_window("main").unwrap();
             ui::setup_window_effects(&window).expect("Failed to apply window effects");

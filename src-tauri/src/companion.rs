@@ -1166,11 +1166,16 @@ pub fn toggle_main(app: &AppHandle) {
 }
 pub fn open_main(app: &AppHandle) -> Result<(), String> {
     hide(app);
+    let _ = app.emit_to("main", "open-page", "processes");
+    reveal_main(app)
+}
+/// Bring the main window back as it was left (tray, minimized, maximized or
+/// normal) without changing its page or size.
+pub fn reveal_main(app: &AppHandle) -> Result<(), String> {
     let window = app
         .get_webview_window("main")
         .ok_or("Main window unavailable")?;
     window.unminimize().map_err(|e| e.to_string())?;
-    let _ = app.emit_to("main", "open-page", "processes");
     window.show().map_err(|e| e.to_string())?;
     window.set_focus().map_err(|e| e.to_string())
 }
@@ -1679,6 +1684,164 @@ mod tests {
             (zh.overlay, zh.show_mini, zh.open_full),
             ("状态栏", "迷你窗口", "完整窗口")
         );
+    }
+    #[test]
+    fn a_second_launch_exits_first_and_brings_back_the_main_window_as_left() {
+        let main = include_str!("main.rs");
+        let first = main.find(".plugin(").unwrap();
+        assert!(main[first..].starts_with(".plugin(tauri_plugin_single_instance::init("));
+        assert!(first < main.find(".setup(|app|").unwrap());
+        assert!(main[first..first + 200].contains("companion::reveal_main(app)"));
+        let me = include_str!("companion.rs");
+        let reveal = &me[me.find("pub fn reveal_main").unwrap()..];
+        let reveal = &reveal[..reveal.find("\n}").unwrap()];
+        assert!(reveal.contains("unminimize()") && reveal.contains("set_focus()"));
+        for changes_layout in ["open-page", "set_size", "set_position", "maximize()"] {
+            assert!(!reveal.contains(changes_layout), "{changes_layout}");
+        }
+        let windows =
+            include_str!("../vendor/tauri-plugin-single-instance/src/platform_impl/windows.rs");
+        let existing = &windows[windows.find("ERROR_ALREADY_EXISTS {").unwrap()..];
+        let existing = &existing[..existing.find("} else {").unwrap()];
+        assert!(existing.contains("for _ in 0..40"));
+        assert!(existing.contains("AllowSetForegroundWindow(pid)"));
+        assert!(existing.contains("SendMessageTimeoutW("));
+        // The exit sits after the `if !hwnd.is_null()` block: a missed window still exits.
+        let exit = existing.rfind("std::process::exit(0)").unwrap();
+        assert!(exit > existing.rfind("SendMessageTimeoutW(").unwrap());
+        assert_eq!(existing.matches("std::process::exit(0)").count(), 1);
+    }
+    /// Real processes on Windows: the test binary relaunches itself as a
+    /// minimal Tauri app (MockRuntime) with the same single-instance plugin.
+    #[cfg(target_os = "windows")]
+    #[test]
+    fn only_one_instance_runs_and_a_later_launch_reaches_it() {
+        use std::io::{BufRead, BufReader};
+        use std::process::{Child, Command, Stdio};
+        use std::sync::mpsc::{channel, Receiver};
+        const NAME: &str = "companion::tests::only_one_instance_runs_and_a_later_launch_reaches_it";
+        if let Ok(id) = std::env::var("FOB_SINGLE_INSTANCE_CHILD") {
+            let mut context = tauri::test::mock_context(tauri::test::noop_assets());
+            context.config_mut().identifier = id;
+            let _app = tauri::test::mock_builder()
+                .plugin(tauri_plugin_single_instance::init(|_, _, _| {
+                    println!("fob-si: reached");
+                }))
+                .build(context)
+                .unwrap();
+            println!("fob-si: primary");
+            unsafe {
+                use windows::Win32::UI::WindowsAndMessaging::{
+                    DispatchMessageW, GetMessageW, TranslateMessage, MSG,
+                };
+                let mut msg = MSG::default();
+                while GetMessageW(&mut msg, None, 0, 0).as_bool() {
+                    let _ = TranslateMessage(&msg);
+                    DispatchMessageW(&msg);
+                }
+            }
+            std::process::exit(0);
+        }
+        let id = format!("com.hcb.fob.single-instance-test-{}", std::process::id());
+        let start = |id: &str| -> (Child, Receiver<String>) {
+            let mut child = Command::new(std::env::current_exe().unwrap())
+                .args([NAME, "--exact", "--nocapture", "--test-threads=1"])
+                .env("FOB_SINGLE_INSTANCE_CHILD", id)
+                .stdin(Stdio::null())
+                .stdout(Stdio::piped())
+                // A child left behind by a failed assert must not hold the job's output open.
+                .stderr(Stdio::null())
+                .spawn()
+                .unwrap();
+            let out = child.stdout.take().unwrap();
+            let (send, lines) = channel();
+            std::thread::spawn(move || {
+                for line in BufReader::new(out).lines().map_while(Result::ok) {
+                    if line.starts_with("fob-si: ") && send.send(line).is_err() {
+                        break;
+                    }
+                }
+            });
+            (child, lines)
+        };
+        let wait = |lines: &Receiver<String>, want: &str| {
+            lines.recv_timeout(Duration::from_secs(20)).ok().as_deref() == Some(want)
+        };
+        let exited_ok = |child: &mut Child| {
+            let until = Instant::now() + Duration::from_secs(20);
+            while Instant::now() < until {
+                if let Some(status) = child.try_wait().unwrap() {
+                    return status.success();
+                }
+                std::thread::sleep(Duration::from_millis(50));
+            }
+            false
+        };
+        let stop = |child: &mut Child| {
+            let _ = child.kill();
+            let _ = child.wait();
+        };
+
+        // A later launch exits and the running one hears about it.
+        let (mut first, first_lines) = start(&id);
+        assert!(wait(&first_lines, "fob-si: primary"), "first launch runs");
+        let (mut second, second_lines) = start(&id);
+        assert!(
+            exited_ok(&mut second),
+            "second launch exits by itself, code 0"
+        );
+        assert!(
+            second_lines.try_recv().is_err(),
+            "second launch never ran as primary"
+        );
+        assert!(
+            wait(&first_lines, "fob-si: reached"),
+            "first instance is told"
+        );
+        assert!(
+            first.try_wait().unwrap().is_none(),
+            "first instance keeps running"
+        );
+        stop(&mut first);
+
+        // After the first one is gone, a new launch runs normally.
+        let (mut again, again_lines) = start(&id);
+        assert!(
+            wait(&again_lines, "fob-si: primary"),
+            "a launch after exit runs"
+        );
+        stop(&mut again);
+
+        // Launches started together: exactly one stays.
+        for round in 0..5 {
+            let mut pair = [start(&id), start(&id)];
+            let until = Instant::now() + Duration::from_secs(20);
+            let mut exited = Vec::new();
+            while exited.is_empty() && Instant::now() < until {
+                for (i, (child, _)) in pair.iter_mut().enumerate() {
+                    if let Some(status) = child.try_wait().unwrap() {
+                        exited.push((i, status));
+                    }
+                }
+                std::thread::sleep(Duration::from_millis(50));
+            }
+            assert_eq!(exited.len(), 1, "round {round}: exactly one launch exits");
+            let (gone, status) = exited[0];
+            assert!(status.success(), "round {round}: it exits with code 0");
+            let kept = 1 - gone;
+            assert!(
+                wait(&pair[kept].1, "fob-si: primary"),
+                "round {round}: the other runs"
+            );
+            std::thread::sleep(Duration::from_secs(1));
+            assert!(
+                pair[kept].0.try_wait().unwrap().is_none(),
+                "round {round}: and stays"
+            );
+            for (child, _) in &mut pair {
+                stop(child);
+            }
+        }
     }
     #[test]
     fn a_move_someone_else_made_is_a_drag_pinned_or_not() {

@@ -33,6 +33,12 @@ tauri-plugin-global-shortcut = "=2.2.0"
 window-vibrancy = "0.5.2"
 rayon = "1.10.0"
 tauri-plugin-window-state = "~2.2.0"
+# 2.2.x is the last line that accepts tauri 2.1 (2.3 needs tauri 2.6).
+tauri-plugin-single-instance = "~2.2.4"
+
+[dev-dependencies]
+# MockRuntime for the Windows single-instance test (companion.rs).
+tauri = { version = "2.1.1", features = ["test"] }
 
 [features]
 default = [ "custom-protocol" ]
@@ -68,3 +74,8 @@ windows = { version = "0.62.2", features = ["Win32_Graphics_Dxgi", "Win32_Graphi
 # (vendor/global-hotkey/src/platform_impl/windows/mod.rs).
 [patch.crates-io]
 global-hotkey = { path = "vendor/global-hotkey" }
+# Fob 0.8.8: tauri-plugin-single-instance 2.2.4 (the last line for tauri 2.1)
+# with upstream's later Windows fixes (vendor/tauri-plugin-single-instance/
+# src/platform_impl/windows.rs): wait for the first instance's window during
+# a concurrent start, always exit, hand over the foreground, time out.
+tauri-plugin-single-instance = { path = "vendor/tauri-plugin-single-instance" }
