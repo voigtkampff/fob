@@ -17,6 +17,7 @@
 - Processes columns are as wide as their values and header need, so short values such as PID, CPU % and GPU % sit close together instead of being spread across the window. On a wide window 进程名称 (Process Name) grows to fit long names, then 命令行 (Command) when shown, and any room left over stays empty before the actions column. With the default columns the table fits without scrolling sideways from about 1262 px, so a 1920 px screen at 125% scaling no longer scrolls
 - A column's width can be set by dragging the right edge of its header. The edge shows a thin mark only on hover and while dragging, Esc cancels a drag, and a double-click on the edge returns the column to its automatic width. Resizing never sorts or moves a column, and the widths are saved with the other settings
 - The ordering and width changes were checked in a browser preview at 1024 and 1920 px in Chinese and English; dragging in the Windows app, display scaling and saving in the installed app are still pending
+- The main window opens again at the size and position it had when Fob last closed, and maximized if it was. Minimizing or hiding it to the tray keeps the last normal size, and a size is also saved shortly after each resize, so shutting Windows down with Fob in the tray keeps it. A position on a screen that is no longer connected is left to Windows. Before, the main window always opened at its default size. Checked by unit tests only; a restart of the Windows app is still pending
 - The bundled sensor helper is unchanged at 0.8.2
 
 ## 0.8.6
