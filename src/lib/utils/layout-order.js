@@ -68,3 +68,10 @@ export function stepOrder(order, id, step, shown = order) {
   const neighbour = visible[visible.indexOf(id) + step];
   return neighbour ? moveNextTo(order, id, neighbour, step > 0) : order;
 }
+
+/** The order a drag in progress would land in; the saved order without one.
+ * @param {string[]} order @param {{ id: string, target: string, after: boolean } | null} move
+ * @returns {string[]} */
+export function previewOrder(order, move) {
+  return move ? moveNextTo(order, move.id, move.target, move.after) : order;
+}

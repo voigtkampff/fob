@@ -44,8 +44,8 @@ the window is at least its minimum width, or the name column is wider than
 its widest (`nameMaxWidth` in `utils/table-layout.js`: 330 px, 560 px in tree
 view, room for the truncated name plus icons and the deepest indent). The
 name column takes the space left up to that widest and narrows to 200 px
-(280 px in tree view) before the table scrolls; any width beyond goes to an
-empty spacer cell after the actions column.
+(280 px in tree view) before the table scrolls; any width beyond is shared
+evenly by the other visible columns (`columnWidths`).
 It writes `columns-<tag>-<lang>-<view>-<set>-<width>[-right].png` and
 `columns-<tag>.json` with each column's width, header need and value need,
 the table's minimum width and the gap to the actions column.

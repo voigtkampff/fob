@@ -1,6 +1,7 @@
 <script lang="ts">
   import type { Process, Column, ProcessTreeRow } from "$lib/types";
-  import { tableWidth, nameWidth } from "$lib/utils/table-layout.js";
+  import { tableWidth, columnWidths } from "$lib/utils/table-layout.js";
+  import { previewOrder } from "$lib/utils/layout-order.js";
   import { TableHeader, ProcessRow } from "$lib/components";
   import { processIdentity } from "$lib/utils/process-tree.js";
   import { Button } from "$lib/components/ui/button/index.js";
@@ -32,7 +33,14 @@
 
   let regionWidth = 0;
   $: tree = viewMode === "tree";
-  $: nameColumnWidth = nameWidth(columns, tree, regionWidth);
+  $: widths = columnWidths(columns, tree, regionWidth);
+  // A header drag in progress shows its landing order in the header and the
+  // rows alike; the saved order changes only on release.
+  let move: { id: string; target: string; after: boolean } | null = null;
+  $: shownColumns = previewOrder(
+    columns.map((c) => c.id),
+    move,
+  ).map((id) => columns.find((c) => c.id === id)!);
 
   $: rows =
     viewMode === "tree"
@@ -75,17 +83,18 @@
   >
     <Table.Root style={`width:max(100%,${tableWidth(columns, tree)}px)`}
       ><TableHeader
-        {columns}
+        columns={shownColumns}
         {sortConfig}
         {onToggleSort}
         {onMoveColumn}
         {onStepColumn}
-        nameWidth={nameColumnWidth}
+        {widths}
+        onPreviewColumn={(next) => (move = next)}
         treeView={tree}
       /><Table.Body
         >{#each rows as row (row.key)}<ProcessRow
             process={row.process}
-            {columns}
+            columns={shownColumns}
             tree={viewMode === "tree" ? row : null}
             expansionLocked={searchActive}
             {onToggleExpand}
@@ -103,7 +112,7 @@
             {onKillProcess}
           />{:else}<Table.Row
             ><Table.Cell
-              colspan={columns.filter((c) => c.visible).length + 2}
+              colspan={columns.filter((c) => c.visible).length + 1}
               class="h-48 text-center"
               ><Search class="mx-auto mb-3 size-6 text-muted-foreground" />
               <p class="text-sm font-medium">

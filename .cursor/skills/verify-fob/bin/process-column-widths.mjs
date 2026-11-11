@@ -122,7 +122,7 @@ try {
           const px = (el, prop) => parseFloat(getComputedStyle(el)[prop]) || 0;
           const textWidth = (el) => { const w = document.createTreeWalker(el, NodeFilter.SHOW_TEXT); let l = Infinity, r = -Infinity; for (let n; (n = w.nextNode());) { if (!n.textContent.trim()) continue; const g = document.createRange(); g.selectNodeContents(n); const b = g.getBoundingClientRect(); l = Math.min(l, b.left); r = Math.max(r, b.right); } return r > l ? r - l : 0; };
           const right = (el) => { const r = document.createRange(); r.selectNodeContents(el); return Math.max(...[...r.getClientRects()].map((x) => x.right)); };
-          const heads = [...document.querySelectorAll('thead th:not(.table-spacer)')];
+          const heads = [...document.querySelectorAll('thead th')];
           const rows = [...document.querySelectorAll('tbody tr')];
           return heads.map((th, i) => {
             const button = th.querySelector('button');
@@ -156,10 +156,9 @@ try {
           );
           // Gap between the last data column's text and the sticky actions
           // column in every row and the header; negative means it runs under.
-          // The last cell of each row is the spacer that takes spare width.
           const actionsGap = () =>
             evaluate(
-              `(() => { const rows = [...document.querySelectorAll('tbody tr, thead tr')]; return Math.round(Math.min(...rows.map((tr) => { const last = tr.children[tr.children.length - 3]; const ink = [...last.querySelectorAll('svg')].map((e) => e.getBoundingClientRect().right); const w = document.createTreeWalker(last, NodeFilter.SHOW_TEXT); for (let n; (n = w.nextNode());) if (n.textContent.trim()) { const g = document.createRange(); g.selectNodeContents(n); ink.push(g.getBoundingClientRect().right); } return tr.children[tr.children.length - 2].getBoundingClientRect().left - Math.max(...ink); }))); })()`,
+              `(() => { const rows = [...document.querySelectorAll('tbody tr, thead tr')]; return Math.round(Math.min(...rows.map((tr) => { const last = tr.children[tr.children.length - 2]; const ink = [...last.querySelectorAll('svg')].map((e) => e.getBoundingClientRect().right); const w = document.createTreeWalker(last, NodeFilter.SHOW_TEXT); for (let n; (n = w.nextNode());) if (n.textContent.trim()) { const g = document.createRange(); g.selectNodeContents(n); ink.push(g.getBoundingClientRect().right); } return tr.lastElementChild.getBoundingClientRect().left - Math.max(...ink); }))); })()`,
             );
           const fits = region.scrollWidth <= region.clientWidth;
           const restGap = await actionsGap();

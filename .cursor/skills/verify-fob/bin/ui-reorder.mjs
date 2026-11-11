@@ -5,13 +5,17 @@
 //   together, the name column stays first, the actions column takes no drop,
 //   a short click still sorts, Escape cancels without sorting, Alt+Arrow
 //   moves the focused header, hidden columns and tree view keep their place;
+// - while a header or card is dragged it lifts and follows the pointer, the
+//   others already stand in the order it would land in (header and body
+//   cells together), and nothing is saved until release; with reduced
+//   motion they jump instead of sliding;
 // - Processes and Dashboard summary cards drag by their title, the drag opens
 //   nothing and the next click still does;
 // - all three orders survive a reload, and bad saved orders (unknown,
 //   repeated, missing ids) still show every card and column once;
-// - at 1920 px the name column stops at its widest and the rest goes after
-//   the actions column; at 1024 px the name column is at its narrowest and
-//   the table scrolls sideways.
+// - at 1920 px the name column stops at its widest, the other columns share
+//   the rest evenly and the actions column ends at the right edge; at 1024
+//   px the name column is at its narrowest and the table scrolls sideways.
 // Mocked readings in headless Chrome only; this is not Windows evidence.
 import { spawn } from "node:child_process";
 import { mkdirSync, writeFileSync } from "node:fs";
@@ -19,9 +23,15 @@ import { fileURLToPath } from "node:url";
 import { createServer } from "vite";
 import { en, zh } from "../../../../src/lib/i18n/strings.js";
 import {
+  columnWidth,
   nameMaxWidth,
   nameMinWidth,
 } from "../../../../src/lib/utils/table-layout.js";
+
+const idOf = (strings, label) =>
+  Object.keys(strings)
+    .find((k) => k.startsWith("col.") && strings[k] === label)
+    ?.slice(4) ?? label;
 
 const [out = "/workspace/scratch/verify/evidence/ui-reorder"] =
   process.argv.slice(2);
@@ -192,8 +202,10 @@ try {
         aligned: ths.length === tds.length && ths.every((th, i) => Math.abs(th.getBoundingClientRect().left - tds[i].getBoundingClientRect().left) < 1 && Math.abs(th.getBoundingClientRect().width - tds[i].getBoundingClientRect().width) < 1),
         cells: tds.map((td) => td.textContent.trim()),
         nameWidth: ths[0].getBoundingClientRect().width,
-        lastClass: ths.at(-1).className,
-        actionsClass: ths.at(-2).className,
+        widths: Object.fromEntries(ths.map((th) => [th.textContent.trim(), th.getBoundingClientRect().width])),
+        actionsClass: ths.at(-1).className,
+        fill: Math.round(document.querySelector('.process-table-region').getBoundingClientRect().right - ths.at(-1).getBoundingClientRect().right),
+        animations: document.getAnimations().filter((a) => a.id === 'reorder').length,
       };
     })()`);
   const th = (label) =>
@@ -230,12 +242,19 @@ try {
       at(`long name not cut with a tooltip ${JSON.stringify(long)}`),
     );
     check(t.aligned, at("header and body columns out of line at 1920"));
+    const extras = Object.entries(t.widths)
+      .slice(1, -1)
+      .map(([l, w]) => Math.round(w - columnWidth(idOf(s, l))));
     check(
-      t.lastClass.includes("table-spacer") &&
-        t.actionsClass.includes("actions-heading"),
-      at("actions then spacer are not the last header cells"),
+      t.actionsClass.includes("actions-heading") &&
+        Math.abs(t.fill) <= 1 &&
+        Math.max(...extras) - Math.min(...extras) <= 1 &&
+        Math.min(...extras) > 0,
+      at(
+        `actions not at the right edge (${t.fill}px) or spare width not shared evenly ${extras}`,
+      ),
     );
-    report.push({ lang, step: "wide", nameWidth: t.nameWidth, long });
+    report.push({ lang, step: "wide", nameWidth: t.nameWidth, extras, long });
     await shot(`${lang}-1920-flat.png`);
 
     // Drag CPU onto the left half of PID: CPU becomes the first column after the name.
@@ -243,13 +262,45 @@ try {
     const cpu = await center(th(label("cpu_usage")));
     const pid = await center(th(label("pid")));
     await drag(cpu, { x: pid.left + 6, y: pid.y }, { hold: true });
-    const marker = await evaluate(
-      `(${th(label("pid"))}).dataset.drop + '|' + ((${th(label("cpu_usage"))}).dataset.dragging === '') + '|' + document.documentElement.dataset.reordering`,
+    await sleep(250);
+    const live = await table();
+    const lifted = await evaluate(`(() => {
+      const th = ${th(label("cpu_usage"))};
+      const cells = [...document.querySelectorAll('tbody td[data-col="cpu_usage"]')];
+      return {
+        dragging: th.dataset.dragging === '' && cells.every((c) => c.dataset.dragging === ''),
+        translate: th.style.translate,
+        follows: Math.round(th.getBoundingClientRect().left + th.getBoundingClientRect().width / 2),
+        cellsFollow: cells.every((c) => c.style.translate === th.style.translate),
+      };
+    })()`);
+    const midSaved = (await saved()).columnOrder ?? [];
+    check(
+      live.labels[1] === label("cpu_usage") &&
+        live.labels[2] === label("pid") &&
+        live.aligned,
+      at(
+        `neighbours did not move aside while dragging: ${live.labels.slice(0, 4).join(" | ")}`,
+      ),
     );
     check(
-      marker === "before|true|",
-      at(`no insertion marker while dragging (${marker})`),
+      lifted.dragging &&
+        lifted.cellsFollow &&
+        Math.abs(lifted.follows - (pid.left + 6)) < 30,
+      at(
+        `dragged column not lifted under the pointer ${JSON.stringify(lifted)}`,
+      ),
     );
+    check(
+      !midSaved.length,
+      at(`order saved before release ${JSON.stringify(midSaved)}`),
+    );
+    report.push({
+      lang,
+      step: "lifted",
+      labels: live.labels.slice(0, 4),
+      lifted,
+    });
     await shot(`${lang}-1920-header-dragging.png`);
     writeFileSync(
       `${out}/${lang}-1920-header-dragging-zoom.png`,
@@ -311,7 +362,7 @@ try {
     await drag(user2, { x: actions.x, y: actions.y });
     t = await table();
     check(
-      t.labels.at(-3) === label("user") &&
+      t.labels.at(-2) === label("user") &&
         t.actionsClass.includes("actions-heading") &&
         t.aligned,
       at(`drop on actions: ${t.labels.slice(-3).join(" | ")}`),
@@ -323,7 +374,13 @@ try {
     const status = await center(
       `(${th(label("status"))}).querySelector("button")`,
     );
-    await drag(status, { x: status.x + 160, y: status.y }, { hold: true });
+    await drag(status, { x: status.x + 240, y: status.y }, { hold: true });
+    await sleep(250);
+    const moving = await table();
+    check(
+      moving.labels.join() !== snap.labels.join(),
+      at("dragging Status past a neighbour moved nothing"),
+    );
     await press("Escape", "Escape");
     await mouse("mouseMoved", status.x, status.y, 1);
     await mouse("mouseReleased", status.x, status.y);
@@ -335,7 +392,7 @@ try {
     );
     check(
       !(await evaluate(
-        "!!document.querySelector('[data-drop],[data-dragging]') || 'reordering' in document.documentElement.dataset",
+        "!!document.querySelector('[data-dragging]') || [...document.querySelectorAll('th, td')].some((e) => e.style.translate) || 'reordering' in document.documentElement.dataset",
       )),
       at("drag marks left behind after Escape"),
     );
@@ -441,10 +498,26 @@ try {
       `document.querySelector('#resource-trigger-network').closest('.resource-grid > *')`,
     );
     await drag(cpuTitle, { x: net.right - 8, y: net.y }, { hold: true });
+    await sleep(250);
+    const cardsLive = await cardOrder(".resource-grid");
+    check(
+      cardsLive.indexOf("cpu") === cardsLive.indexOf("network") + 1 &&
+        (await evaluate(
+          "document.querySelector('#resource-trigger-cpu').closest('.resource-grid > *').dataset.dragging === ''",
+        )) &&
+        !((await saved()).processCards ?? []).length,
+      at(`process cards did not make room while dragging: ${cardsLive.join()}`),
+    );
     await shot(`${lang}-1920-card-dragging.png`);
     await mouse("mouseReleased", net.right - 8, net.y);
-    await sleep(250);
+    await sleep(450);
     let cards = await cardOrder(".resource-grid");
+    check(
+      (await evaluate(
+        "document.getAnimations().filter((a) => a.id === 'reorder').length",
+      )) === 0,
+      at("reorder animations still running after the drop"),
+    );
     const sheet = "!!document.querySelector('[data-slot=\"sheet-content\"]')";
     check(
       cards.indexOf("cpu") === cards.indexOf("network") + 1 &&
@@ -486,6 +559,18 @@ try {
     );
     const third = await center(`${grid}.children[2]`);
     await drag(head, { x: third.right - 8, y: third.y }, { hold: true });
+    await sleep(250);
+    const dashLive = await evaluate(
+      `[...${grid}.children].map((c) => c.querySelector('.card-head')?.textContent.trim())`,
+    );
+    check(
+      dashLive[2] === dash0[0] &&
+        (await evaluate(`${grid}.children[2].dataset.dragging === ''`)) &&
+        !((await saved()).dashboardCards ?? []).length,
+      at(
+        `dashboard cards did not make room while dragging: ${dashLive.join(" / ")}`,
+      ),
+    );
     await shot(`${lang}-1920-dashboard-dragging.png`);
     await mouse("mouseReleased", third.right - 8, third.y);
     await sleep(250);
@@ -583,6 +668,27 @@ try {
     await sleep(400);
     await shot(`${lang}-1024-dashboard.png`);
   }
+
+  await send("Emulation.setEmulatedMedia", {
+    features: [{ name: "prefers-reduced-motion", value: "reduce" }],
+  });
+  await viewport(1920, 1000);
+  await open("en", "processes");
+  const rmFrom = await center(
+    `[...document.querySelectorAll('thead tr th')][3]`,
+  );
+  const rmTo = await center(`[...document.querySelectorAll('thead tr th')][1]`);
+  await drag(rmFrom, { x: rmTo.left + 4, y: rmTo.y }, { hold: true });
+  const rm = await evaluate(
+    "({ animations: document.getAnimations().filter((a) => a.id === 'reorder').length, lifted: !!document.querySelector('th[data-dragging]') })",
+  );
+  await press("Escape", "Escape");
+  await mouse("mouseReleased", rmTo.left + 4, rmTo.y);
+  check(
+    rm.lifted && rm.animations === 0,
+    `reduced motion: neighbours still animate ${JSON.stringify(rm)}`,
+  );
+  report.push({ step: "reduced-motion", ...rm });
   ws.close();
 } catch (error) {
   problems.push(`run failed: ${error.stack ?? error}`);

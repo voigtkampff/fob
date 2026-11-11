@@ -41,6 +41,7 @@
   import {
     DASHBOARD_CARDS,
     moveNextTo,
+    previewOrder,
     stepOrder,
   } from "$lib/utils/layout-order.js";
   import {
@@ -75,6 +76,8 @@
   /** Card order; the main window can move cards (the mini window cannot). */
   export let order: string[] = DASHBOARD_CARDS;
   export let onReorder: ((order: string[]) => void) | null = null;
+  let move: { id: string; target: string; after: boolean } | null = null;
+  $: shown = previewOrder(order, move);
 
   function open(kind: DetailKind) {
     if (expandable) detail = kind;
@@ -226,15 +229,16 @@
       class:movable={!!onReorder}
       aria-label={$t("dash.cards")}
       use:dragReorder={{
-        ids: order.map((id) => (onReorder ? id : null)),
+        ids: shown.map((id) => (onReorder ? id : null)),
         handle: ".card-head",
         vertical: true,
         onMove: (id, target, after) =>
           onReorder?.(moveNextTo(order, id, target, after)),
+        onPreview: (next) => (move = next),
         onStep: (id, step) => onReorder?.(stepOrder(order, id, step)),
       }}
     >
-      {#each order as id (id)}
+      {#each shown as id (id)}
         {#if id === "cpu"}
           <div
             class="card"
