@@ -227,32 +227,33 @@
 .process-table-region [data-slot="table-row"][data-pinned="true"] .tree-name {
   background: color-mix(in srgb, var(--primary) 6%, var(--card));
 }
-/* Reordering (utils/drag-reorder.js): a bar on the side the item will land. */
-[data-drop] {
-  --drop-bar: var(--primary);
-}
-[data-drop]:not(th) {
-  position: relative;
-}
-[data-drop]::after {
-  content: "";
-  position: absolute;
-  top: 4px;
-  bottom: 4px;
-  width: 3px;
-  border-radius: 2px;
-  background: var(--drop-bar);
-  pointer-events: none;
-  z-index: 5;
-}
-[data-drop="before"]::after {
-  left: 0;
-}
-[data-drop="after"]::after {
-  right: 0;
-}
+/* Reordering (utils/drag-reorder.js): the dragged item lifts above its
+   neighbours and follows the pointer (the action sets translate). */
 [data-dragging] {
-  opacity: 0.55;
+  z-index: 6;
+  box-shadow:
+    0 10px 28px -8px rgb(0 0 0 / 0.5),
+    0 0 0 1px color-mix(in srgb, var(--primary) 55%, transparent);
+}
+td[data-dragging] {
+  position: relative;
+  box-shadow: none;
+  background: color-mix(in srgb, var(--primary) 10%, var(--card));
+}
+.process-table-region th[data-dragging] {
+  z-index: 6;
+  background: color-mix(in srgb, var(--primary) 16%, var(--card));
+}
+.resource-grid > [data-dragging],
+.grid > [data-dragging] {
+  position: relative;
+  scale: 1.03;
+}
+@media (prefers-reduced-motion: reduce) {
+  .grid > [data-dragging],
+  .resource-grid > [data-dragging] {
+    scale: none;
+  }
 }
 html[data-reordering],
 html[data-reordering] * {

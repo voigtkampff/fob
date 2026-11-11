@@ -1,5 +1,4 @@
 <script lang="ts">
-  import { columnWidth } from "$lib/utils/table-layout.js";
   import { dragReorder } from "$lib/utils/drag-reorder.js";
   import type { Process, Column } from "$lib/types";
   import { Button } from "$lib/components/ui/button/index.js";
@@ -10,26 +9,38 @@
   export let sortConfig: { field: keyof Process; direction: "asc" | "desc" };
   export let onToggleSort: (field: keyof Process) => void;
   export let treeView = false;
-  export let nameWidth: number;
+  /** Each visible column's width (columnWidths). */
+  export let widths: Record<string, number>;
   export let onMoveColumn: (id: string, target: string, after: boolean) => void;
+  export let onPreviewColumn: (
+    move: { id: string; target: string; after: boolean } | null,
+  ) => void;
   export let onStepColumn: (id: string, step: -1 | 1) => void;
   $: shown = columns.filter((c) => c.visible);
+  let row: HTMLTableRowElement | undefined;
   const MOVE_KEYS = "Alt+ArrowLeft Alt+ArrowRight"; // i18n-ignore key names
 </script>
 
 <Table.Header
-  ><!-- The name column stays first; the actions and spacer cells are not columns of data. -->
+  ><!-- The name column stays first; the actions cell is not a column of data. -->
   <tr
     data-slot="table-row"
     class="border-b"
+    bind:this={row}
     use:dragReorder={{
-      ids: [...shown.map((c) => (c.id === "name" ? null : c.id)), null, null],
+      ids: [...shown.map((c) => (c.id === "name" ? null : c.id)), null],
       onMove: onMoveColumn,
+      onPreview: onPreviewColumn,
       onStep: onStepColumn,
+      cells: (id) => [
+        ...(row
+          ?.closest("table")
+          ?.querySelectorAll<HTMLElement>(`tbody td[data-col="${id}"]`) ?? []),
+      ],
     }}
     >{#each shown as column (column.id)}<Table.Head
         class={`${column.numeric ? "text-right" : ""} ${treeView && column.id === "name" ? "tree-name" : ""} ${column.id === "name" ? "pl-4" : ""}`}
-        style={`width:${column.id === "name" ? nameWidth : columnWidth(column.id, treeView)}px`}
+        style={`width:${widths[column.id]}px`}
         aria-sort={sortConfig.field === column.id
           ? sortConfig.direction === "asc"
             ? "ascending"
@@ -62,6 +73,6 @@
         ></Table.Head
       >{/each}<Table.Head class="actions-heading w-28 pr-4 text-right"
       >{$t("col.actions")}</Table.Head
-    ><Table.Head class="table-spacer p-0" aria-hidden="true"></Table.Head></tr
+    ></tr
   ></Table.Header
 >

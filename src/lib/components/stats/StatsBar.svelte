@@ -6,6 +6,7 @@
   import {
     PROCESS_CARDS,
     moveNextTo,
+    previewOrder,
     stepOrder,
   } from "$lib/utils/layout-order.js";
   import * as Tooltip from "$lib/components/ui/tooltip/index.js";
@@ -35,6 +36,8 @@
   export let onOpenDiskHealth: () => void = () => {};
   export let order: string[] = PROCESS_CARDS;
   export let onReorder: ((order: string[]) => void) | null = null;
+  let move: { id: string; target: string; after: boolean } | null = null;
+  $: shown = previewOrder(order, move);
 </script>
 
 {#if systemStats}<Tooltip.Provider delayDuration={150}
@@ -43,15 +46,16 @@
       class:movable={!!onReorder}
       aria-label={$t("stats.aria")}
       use:dragReorder={{
-        ids: order.map((id) => (onReorder ? id : null)),
+        ids: shown.map((id) => (onReorder ? id : null)),
         handle: ".sc-title",
         vertical: true,
         onMove: (id, target, after) =>
           onReorder?.(moveNextTo(order, id, target, after)),
+        onPreview: (next) => (move = next),
         onStep: (id, step) => onReorder?.(stepOrder(order, id, step)),
       }}
     >
-      {#each order as id (id)}
+      {#each shown as id (id)}
         {#if id === "cpu"}
           <CpuPanel
             stats={systemStats}

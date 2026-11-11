@@ -21,9 +21,12 @@
 
 <Table.Row data-pinned={isPinned} data-high-usage={isHighUsage}
   >{#each columns.filter((c) => c.visible) as column (column.id)}<Table.Cell
+      data-col={column.id}
       class={`${column.numeric ? "text-right font-mono text-xs" : ""} ${column.id === "name" ? "overflow-hidden pl-4" : ""} ${tree && column.id === "name" ? "tree-name" : ""}`}
       ><div
-        class={column.id === "name" ? "" : "max-w-72 truncate"}
+        class={column.id === "name"
+          ? ""
+          : `max-w-72 truncate ${column.numeric ? "ml-auto" : ""}`}
         title={column.id === "name"
           ? undefined
           : column.nullable && process[column.id] == null
@@ -110,6 +113,5 @@
     {onTogglePin}
     {onShowDetails}
     {onKillProcess}
-  /><Table.Cell class="table-spacer p-0" aria-hidden="true"
-  ></Table.Cell></Table.Row
+  /></Table.Row
 >

@@ -6,10 +6,13 @@ import {
   PROCESS_CARDS,
   moveNextTo,
   normalizeOrder,
+  previewOrder,
   stepOrder,
 } from "../src/lib/utils/layout-order.js";
 import {
-  nameWidth,
+  actionsWidth,
+  columnWidth,
+  columnWidths,
   nameMaxWidth,
   nameMinWidth,
   tableWidth,
@@ -83,16 +86,49 @@ test("every process column can be saved in columnOrder", () => {
   assert.deepEqual(config.behavior.columnOrder, []);
 });
 
-test("the name column stays between its narrowest and widest, and the table still scrolls when the window is too narrow", () => {
-  const columns = ["name", "pid", "cpu_usage", "memory_usage"].map((id) => ({
-    id,
-    visible: true,
-  }));
+test("the name column grows to its widest, then the other columns share what is left evenly", () => {
+  const columns = ["name", "pid", "cpu_usage", "memory_usage", "ppid"].map(
+    (id) => ({ id, visible: id !== "ppid" }),
+  );
   for (const tree of [false, true]) {
     const min = tableWidth(columns, tree);
-    assert.equal(nameWidth(columns, tree, 0), nameMinWidth(tree));
-    assert.equal(nameWidth(columns, tree, min - 50), nameMinWidth(tree));
-    assert.equal(nameWidth(columns, tree, min + 40), nameMinWidth(tree) + 40);
-    assert.equal(nameWidth(columns, tree, 3840), nameMaxWidth(tree));
+    const base = Object.fromEntries(
+      ["pid", "cpu_usage", "memory_usage"].map((id) => [
+        id,
+        columnWidth(id, tree),
+      ]),
+    );
+    const at = (region) => columnWidths(columns, tree, region);
+    assert.deepEqual(Object.keys(at(0)), [
+      "name",
+      "pid",
+      "cpu_usage",
+      "memory_usage",
+    ]);
+    assert.deepEqual(at(min - 50), { name: nameMinWidth(tree), ...base });
+    assert.equal(at(min + 40).name, nameMinWidth(tree) + 40);
+    assert.equal(at(min + 40).pid, base.pid);
+    for (const region of [1920, 2561, 3840]) {
+      const w = at(region);
+      const sum = Object.values(w).reduce((a, b) => a + b, actionsWidth);
+      assert.equal(sum, region, `fills ${region}`);
+      assert.equal(w.name, nameMaxWidth(tree));
+      const extras = Object.keys(base).map((id) => w[id] - base[id]);
+      assert.ok(extras.every((e) => e > 0));
+      assert.ok(
+        Math.max(...extras) - Math.min(...extras) <= 1,
+        `even ${extras}`,
+      );
+    }
   }
+});
+
+test("a drag in progress shows its landing order and drops back without one", () => {
+  assert.deepEqual(previewOrder(D, { id: "a", target: "c", after: true }), [
+    "b",
+    "c",
+    "a",
+    "d",
+  ]);
+  assert.deepEqual(previewOrder(D, null), D);
 });
