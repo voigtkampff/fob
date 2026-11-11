@@ -36,6 +36,13 @@
   } from "$lib/components/index";
   import { themeStore, settingsStore, processStore } from "$lib/stores/index";
   import { column_definitions } from "$lib/definitions/columns";
+  import {
+    DASHBOARD_CARDS,
+    PROCESS_CARDS,
+    moveNextTo,
+    normalizeOrder,
+    stepOrder,
+  } from "$lib/utils/layout-order.js";
   import type { Process } from "$lib/types";
   import {
     buildProcessTree,
@@ -112,7 +119,32 @@
     status: { values: [], enabled: false },
   };
 
-  $: columns = column_definitions.map((col) => ({
+  const [nameColumn, ...movableColumns] = column_definitions;
+  const COLUMN_IDS = movableColumns.map((col) => col.id as string);
+  function saveOrder(
+    key: "columnOrder" | "dashboardCards" | "processCards",
+    order: string[],
+  ) {
+    settingsStore.updateConfig({
+      behavior: { ...$settingsStore.behavior, [key]: order },
+    });
+  }
+  $: columnOrder = normalizeOrder(
+    $settingsStore.behavior.columnOrder,
+    COLUMN_IDS,
+  );
+  $: dashboardCards = normalizeOrder(
+    $settingsStore.behavior.dashboardCards,
+    DASHBOARD_CARDS,
+  );
+  $: processCards = normalizeOrder(
+    $settingsStore.behavior.processCards,
+    PROCESS_CARDS,
+  );
+  $: columns = [
+    nameColumn,
+    ...columnOrder.map((id) => movableColumns.find((col) => col.id === id)!),
+  ].map((col) => ({
     ...col,
     visible:
       col.required ||
@@ -359,6 +391,8 @@
         {#if systemStats}
           <Dashboard
             expandable
+            order={dashboardCards}
+            onReorder={(order) => saveOrder("dashboardCards", order)}
             bind:detail
             extra={$processStore.extra}
             {systemStats}
@@ -376,6 +410,8 @@
       <main>
         {#if systemStats}
           <StatsBar
+            order={processCards}
+            onReorder={(order) => saveOrder("processCards", order)}
             {systemStats}
             {gpus}
             capturedAt={$processStore.capturedAt}
@@ -424,6 +460,21 @@
           {searchActive}
           onToggleExpand={toggleExpansion}
           onToggleSort={processStore.toggleSort}
+          onMoveColumn={(id, target, after) =>
+            saveOrder(
+              "columnOrder",
+              moveNextTo(columnOrder, id, target, after),
+            )}
+          onStepColumn={(id, step) =>
+            saveOrder(
+              "columnOrder",
+              stepOrder(
+                columnOrder,
+                id,
+                step,
+                columns.filter((col) => col.visible).map((col) => col.id),
+              ),
+            )}
           onTogglePin={processStore.togglePin}
           onShowDetails={processStore.showProcessDetails}
           onKillProcess={processStore.confirmKillProcess}

@@ -173,6 +173,11 @@ export interface AppConfig {
     refreshRate: number;
     defaultStatusFilter: string;
     processView?: "flat" | "tree";
+    /** Process columns after the name column, by id (utils/layout-order.js). */
+    columnOrder?: string[];
+    /** Card order of the Dashboard tab and the Processes tab's stats row. */
+    dashboardCards?: string[];
+    processCards?: string[];
     /** Process column layout version (preferences.rs migrate_columns). */
     processColumns?: number;
     menuBarEnabled: boolean;

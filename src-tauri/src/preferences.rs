@@ -12,6 +12,21 @@ pub const OVERLAY_CHART_METRICS: [&str; 7] =
 pub const OVERLAY_METRICS: [&str; 9] = [
     "cpu", "cpuTemp", "gpu", "gpuTemp", "ram", "vram", "disk", "net", "power",
 ];
+/// Cards of the Dashboard tab and of the Processes tab's stats row, in their
+/// default order (DASHBOARD_CARDS and PROCESS_CARDS in src/lib/utils/layout-order.js).
+pub const DASHBOARD_CARDS: [&str; 6] = ["cpu", "gpu", "memory", "disk", "network", "temp"];
+pub const PROCESS_CARDS: [&str; 7] = [
+    "cpu", "memory", "gpu", "storage", "system", "network", "temp",
+];
+/// A saved order: distinct known ids. Missing ids are appended by the page.
+fn known_order(value: &Value, known: &[&str]) -> bool {
+    value.as_array().is_some_and(|list| {
+        let ids: Vec<_> = list.iter().filter_map(Value::as_str).collect();
+        ids.len() == list.len()
+            && ids.iter().all(|id| known.contains(id))
+            && ids.iter().enumerate().all(|(i, id)| !ids[..i].contains(id))
+    })
+}
 /// Process column layout of this version. Settings saved before 0.8.3 have
 /// none and stored GPU % as hidden, its old default, so it shows once.
 const PROCESS_COLUMNS: u64 = 2;
@@ -93,6 +108,22 @@ fn merge(config: &mut Value, patch: &Value) {
                 // Fob: mini window opacity in percent (Settings and the mini window).
                 "miniOpacity" => value.as_u64().is_some_and(|n| (0..=100).contains(&n)),
                 "processView" => matches!(value.as_str(), Some("flat" | "tree")),
+                // The process name column stays first, so it is never in the order.
+                "columnOrder" => {
+                    let known: Vec<&str> = config["appearance"]["columnVisibility"]
+                        .as_object()
+                        .map(|columns| {
+                            columns
+                                .keys()
+                                .map(String::as_str)
+                                .filter(|id| *id != "name")
+                                .collect()
+                        })
+                        .unwrap_or_default();
+                    known_order(value, &known)
+                }
+                "dashboardCards" => known_order(value, &DASHBOARD_CARDS),
+                "processCards" => known_order(value, &PROCESS_CARDS),
                 // 0.8.3 process columns; a newer number is not ours to keep.
                 "processColumns" => value.as_u64() == Some(PROCESS_COLUMNS),
                 // Fob: "" (off) or a canonical combo; set via set_hotkey.
@@ -400,6 +431,33 @@ mod tests {
         assert!(config["appearance"]["columnVisibility"]
             .get("unknown")
             .is_none());
+    }
+    #[test]
+    fn saved_orders_keep_only_distinct_known_ids() {
+        let mut config = defaults();
+        assert_eq!(config["behavior"]["columnOrder"], json!([]));
+        merge(
+            &mut config,
+            &json!({"behavior":{"columnOrder":["cpu_usage","pid"],"dashboardCards":["temp","cpu"],"processCards":["system"]}}),
+        );
+        assert_eq!(
+            config["behavior"]["columnOrder"],
+            json!(["cpu_usage", "pid"])
+        );
+        assert_eq!(config["behavior"]["dashboardCards"], json!(["temp", "cpu"]));
+        assert_eq!(config["behavior"]["processCards"], json!(["system"]));
+        for bad in [
+            json!({"behavior":{"columnOrder":["name","pid"]}}),
+            json!({"behavior":{"columnOrder":["pid","pid"]}}),
+            json!({"behavior":{"columnOrder":["unknown"]}}),
+            json!({"behavior":{"columnOrder":"pid"}}),
+            json!({"behavior":{"dashboardCards":["storage"]}}),
+            json!({"behavior":{"processCards":["disk", 3]}}),
+        ] {
+            let mut kept = config.clone();
+            merge(&mut kept, &bad);
+            assert_eq!(kept, config, "{bad}");
+        }
     }
     #[test]
     fn gpu_column_shows_once_for_settings_from_before_0_8_3() {

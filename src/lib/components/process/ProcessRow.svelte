@@ -20,7 +20,7 @@
 </script>
 
 <Table.Row data-pinned={isPinned} data-high-usage={isHighUsage}
-  >{#each columns.filter((c) => c.visible) as column}<Table.Cell
+  >{#each columns.filter((c) => c.visible) as column (column.id)}<Table.Cell
       class={`${column.numeric ? "text-right font-mono text-xs" : ""} ${column.id === "name" ? "overflow-hidden pl-4" : ""} ${tree && column.id === "name" ? "tree-name" : ""}`}
       ><div
         class={column.id === "name" ? "" : "max-w-72 truncate"}
@@ -110,5 +110,6 @@
     {onTogglePin}
     {onShowDetails}
     {onKillProcess}
-  /></Table.Row
+  /><Table.Cell class="table-spacer p-0" aria-hidden="true"
+  ></Table.Cell></Table.Row
 >

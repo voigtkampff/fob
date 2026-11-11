@@ -1,5 +1,6 @@
 <script lang="ts">
   import { columnWidth } from "$lib/utils/table-layout.js";
+  import { dragReorder } from "$lib/utils/drag-reorder.js";
   import type { Process, Column } from "$lib/types";
   import { Button } from "$lib/components/ui/button/index.js";
   import * as Table from "$lib/components/ui/table/index.js";
@@ -9,15 +10,26 @@
   export let sortConfig: { field: keyof Process; direction: "asc" | "desc" };
   export let onToggleSort: (field: keyof Process) => void;
   export let treeView = false;
+  export let nameWidth: number;
+  export let onMoveColumn: (id: string, target: string, after: boolean) => void;
+  export let onStepColumn: (id: string, step: -1 | 1) => void;
+  $: shown = columns.filter((c) => c.visible);
+  const MOVE_KEYS = "Alt+ArrowLeft Alt+ArrowRight"; // i18n-ignore key names
 </script>
 
 <Table.Header
-  ><Table.Row class="hover:bg-transparent"
-    >{#each columns.filter((c) => c.visible) as column}<Table.Head
+  ><!-- The name column stays first; the actions and spacer cells are not columns of data. -->
+  <tr
+    data-slot="table-row"
+    class="border-b"
+    use:dragReorder={{
+      ids: [...shown.map((c) => (c.id === "name" ? null : c.id)), null, null],
+      onMove: onMoveColumn,
+      onStep: onStepColumn,
+    }}
+    >{#each shown as column (column.id)}<Table.Head
         class={`${column.numeric ? "text-right" : ""} ${treeView && column.id === "name" ? "tree-name" : ""} ${column.id === "name" ? "pl-4" : ""}`}
-        style={column.id === "name"
-          ? undefined
-          : `width:${columnWidth(column.id, treeView)}px`}
+        style={`width:${column.id === "name" ? nameWidth : columnWidth(column.id, treeView)}px`}
         aria-sort={sortConfig.field === column.id
           ? sortConfig.direction === "asc"
             ? "ascending"
@@ -28,11 +40,14 @@
           size="sm"
           class={`-mx-1 h-8 max-w-[calc(100%+0.5rem)] px-1 text-xs ${sortConfig.field === column.id ? "text-primary" : "text-muted-foreground"}`}
           onclick={() => onToggleSort(column.id)}
-          title={treeView && column.id === "memory_usage"
-            ? $t("col.familyRamTitle")
-            : treeView && column.id === "cpu_usage"
-              ? $t("col.familyCpuTitle")
-              : $t("col.sortBy", { v: $t(`col.${column.id}`) })}
+          aria-keyshortcuts={column.id === "name" ? undefined : MOVE_KEYS}
+          title={`${
+            treeView && column.id === "memory_usage"
+              ? $t("col.familyRamTitle")
+              : treeView && column.id === "cpu_usage"
+                ? $t("col.familyCpuTitle")
+                : $t("col.sortBy", { v: $t(`col.${column.id}`) })
+          }${column.id === "name" ? "" : `\n${$t("col.moveHint")}`}`}
           ><span
             >{treeView && column.id === "cpu_usage"
               ? $t("col.familyCpu")
@@ -47,6 +62,6 @@
         ></Table.Head
       >{/each}<Table.Head class="actions-heading w-28 pr-4 text-right"
       >{$t("col.actions")}</Table.Head
-    ></Table.Row
+    ><Table.Head class="table-spacer p-0" aria-hidden="true"></Table.Head></tr
   ></Table.Header
 >

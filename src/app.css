@@ -154,6 +154,9 @@
 .resource-grid > [data-slot="card"] {
   min-width: 0;
 }
+.resource-grid.movable .sc-title {
+  cursor: grab;
+}
 .resource-grid [data-slot="card-header"],
 .resource-grid [data-slot="card-content"] {
   padding-inline: 12px;
@@ -223,6 +226,38 @@
 }
 .process-table-region [data-slot="table-row"][data-pinned="true"] .tree-name {
   background: color-mix(in srgb, var(--primary) 6%, var(--card));
+}
+/* Reordering (utils/drag-reorder.js): a bar on the side the item will land. */
+[data-drop] {
+  --drop-bar: var(--primary);
+}
+[data-drop]:not(th) {
+  position: relative;
+}
+[data-drop]::after {
+  content: "";
+  position: absolute;
+  top: 4px;
+  bottom: 4px;
+  width: 3px;
+  border-radius: 2px;
+  background: var(--drop-bar);
+  pointer-events: none;
+  z-index: 5;
+}
+[data-drop="before"]::after {
+  left: 0;
+}
+[data-drop="after"]::after {
+  right: 0;
+}
+[data-dragging] {
+  opacity: 0.55;
+}
+html[data-reordering],
+html[data-reordering] * {
+  cursor: grabbing !important;
+  user-select: none;
 }
 [data-theme="glassy"] body {
   background: transparent;
