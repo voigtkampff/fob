@@ -92,10 +92,20 @@ $json | ConvertTo-Json -Depth 20 | Set-Content $settings -Encoding utf8
 Phase "mini" $PhaseMin { Start-Process $FobExe | Out-Null; Start-Sleep 20; Hotkey; Start-Sleep 3 }
 # 5. Install the sensor helper (this runner is already elevated), then the main window.
 Fob | Stop-Process -Force; Start-Sleep 5
-$setup = Start-Process $FobExe -ArgumentList "--sensors-setup" -Wait -PassThru
-"sensors-setup exit $($setup.ExitCode)"
+# Fob runs PawnIO's installer with its window (the user sees it), which would
+# wait forever here; install it silently first so Fob skips that step.
+function Bounded([string]$Exe, [string[]]$Arguments, [int]$Seconds) {
+  $p = Start-Process $Exe -ArgumentList $Arguments -PassThru
+  if (-not $p.WaitForExit($Seconds * 1000)) { $p | Stop-Process -Force; return "timeout" }
+  return $p.ExitCode
+}
+$pawnio = Join-Path (Split-Path $FobExe) "PawnIO\PawnIO_setup.exe"
+if (Test-Path $pawnio) { "PawnIO silent install: $(Bounded $pawnio @("-install", "-silent") 180)" }
+"sensors-setup: $(Bounded $FobExe @("--sensors-setup") 180)"
 Start-Sleep 10
-Get-Process fob-sensors -ErrorAction SilentlyContinue | Format-Table Id, Name
+$helperUp = [bool](Get-Process fob-sensors -ErrorAction SilentlyContinue)
+"fob-sensors running: $helperUp"
+if (-not $helperUp) { Write-Warning "helper phase runs without the helper" }
 Phase "helper" $HelperMin { Start-Process $FobExe | Out-Null; Start-Sleep 15; Start-Process $FobExe | Out-Null; Start-Sleep 5 }
 Fob | Stop-Process -Force
 $jsons = "baseline", "tray", "main", "mini", "helper" | ForEach-Object { Join-Path $Out "$_.json" } | Where-Object { Test-Path $_ }
