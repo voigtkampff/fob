@@ -1466,3 +1466,7 @@ fn space_memory() {
     println!("after: rss {}", rss());
     let _ = fs::remove_dir_all(dir);
 }
+
+#[cfg(all(test, windows))]
+#[path = "space_diag.rs"]
+mod diag;

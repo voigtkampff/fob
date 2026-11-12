@@ -1,0 +1,92 @@
+name: Space diagnostics
+
+# Manual only: Windows diagnostics for the space scan (src-tauri/src/space_diag.rs).
+# They print DIAG lines and change nothing outside their temp folders.
+on:
+  workflow_dispatch:
+    inputs:
+      iters_c:
+        description: "Stale-read iterations on C:"
+        default: "20"
+      iters_d:
+        description: "Stale-read iterations on D:"
+        default: "60"
+      recycle:
+        description: Try the Recycle Bin (1) or skip it (0)
+        default: "1"
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: 0
+
+jobs:
+  diagnostics:
+    name: Space diagnostics (windows)
+    runs-on: windows-2022
+    timeout-minutes: 150
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri -> target
+      - name: Runner facts
+        shell: pwsh
+        run: |
+          "ImageOS=$env:ImageOS ImageVersion=$env:ImageVersion"
+          [Environment]::OSVersion.VersionString
+          $p = [Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()
+          "IsAdministrator=$($p.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator))"
+          whoami /groups | Select-String "Mandatory Label"
+          Get-Volume -DriveLetter C, D | Format-Table DriveLetter, FileSystem, Size, SizeRemaining
+          "TEMP=$env:TEMP RUNNER_TEMP=$env:RUNNER_TEMP"
+          fsutil behavior query disabledeletenotify
+      - run: npm ci
+      - name: Prepare frontend assets for native tests
+        run: npm run build
+      - name: Build tests
+        run: cargo test --locked --manifest-path src-tauri/Cargo.toml --no-run
+      - name: Delete-pending names (C:)
+        id: pending
+        continue-on-error: true
+        shell: pwsh
+        run: |
+          $env:FOB_DIAG_DIR = $env:TEMP
+          cargo test --locked --manifest-path src-tauri/Cargo.toml space::diag::diag_delete_pending_names -- --ignored --nocapture --test-threads=1
+          "exit_code=$LASTEXITCODE"
+          exit $LASTEXITCODE
+      - name: Stale MFT reads (C:)
+        id: stale_c
+        continue-on-error: true
+        shell: pwsh
+        env:
+          FOB_DIAG_ITERS: ${{ inputs.iters_c }}
+          FOB_DIAG_RECYCLE: ${{ inputs.recycle }}
+        run: |
+          $env:FOB_DIAG_DIR = $env:TEMP
+          cargo test --locked --manifest-path src-tauri/Cargo.toml space::diag::diag_stale_mft_after_delete_move_recycle -- --ignored --nocapture --test-threads=1
+          "exit_code=$LASTEXITCODE"
+          exit $LASTEXITCODE
+      - name: Stale MFT reads (D:)
+        id: stale_d
+        continue-on-error: true
+        shell: pwsh
+        env:
+          FOB_DIAG_ITERS: ${{ inputs.iters_d }}
+          FOB_DIAG_RECYCLE: ${{ inputs.recycle }}
+        run: |
+          $env:FOB_DIAG_DIR = $env:RUNNER_TEMP
+          cargo test --locked --manifest-path src-tauri/Cargo.toml space::diag::diag_stale_mft_after_delete_move_recycle -- --ignored --nocapture --test-threads=1
+          "exit_code=$LASTEXITCODE"
+          exit $LASTEXITCODE
+      - name: Outcomes
+        shell: pwsh
+        run: |
+          "pending=${{ steps.pending.outcome }} stale_c=${{ steps.stale_c.outcome }} stale_d=${{ steps.stale_d.outcome }}"
