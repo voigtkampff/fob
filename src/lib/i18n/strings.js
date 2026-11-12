@@ -758,7 +758,7 @@ export const en = {
   "space.reveal": "Show in File Explorer",
   "space.closeMenu": "Close menu",
   "space.revealGone":
-    "This item no longer exists. The scan may be out of date, press Rescan to update it",
+    "This item no longer exists. The scan may be out of date, press Rescan",
   "space.revealDenied":
     "Access to this item is denied, so it can't be shown in File Explorer",
   "space.revealFailed":

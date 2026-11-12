@@ -19,7 +19,7 @@ test("a missing item says the scan may be out of date and to rescan", () => {
   );
   assert.equal(
     revealMessage({ kind: "gone" }, t("en")),
-    "This item no longer exists. The scan may be out of date, press Rescan to update it",
+    "This item no longer exists. The scan may be out of date, press Rescan",
   );
   // The hint names the real button.
   assert.ok(zh["space.revealGone"].includes(`「${zh["space.rescan"]}」`));

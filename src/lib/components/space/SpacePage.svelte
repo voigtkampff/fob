@@ -515,7 +515,11 @@
     color: var(--muted-foreground);
   }
   .error {
+    /* Takes the rest of the line and wraps there instead of being cut off. */
+    flex: 1 1 0;
+    min-width: 160px;
     margin-left: 8px;
+    white-space: normal;
     color: var(--destructive);
   }
   .crumbs {
