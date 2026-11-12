@@ -63,9 +63,9 @@ pub fn collect(busy: &engine_counters::EngineSnapshot) -> Vec<GpuDevice> {
                 core_clock_mhz: None,
                 cores: None,
                 source: if utilization.is_some() {
-                    "Windows DXGI inventory; utilization from PDH GPU Engine counters"
+                    super::SOURCE_DXGI_PDH
                 } else {
-                    "Windows DXGI inventory; live counters unavailable for this adapter"
+                    super::SOURCE_DXGI
                 }
                 .into(),
                 fan_percent: None,

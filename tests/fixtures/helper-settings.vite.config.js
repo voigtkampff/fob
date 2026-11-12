@@ -42,6 +42,7 @@ const panels = new Set([
   "/cpu-views-panel.html",
   "/disk-health-panel.html",
   "/main-page-panel.html",
+  "/gpu-engines-panel.html",
 ]);
 
 export default defineConfig({

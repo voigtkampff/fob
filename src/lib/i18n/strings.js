@@ -376,6 +376,35 @@ export const en = {
     "Shared GPU memory is part of system memory, not extra video memory",
   "gpu.counterNote":
     "Readings the graphics driver doesn't provide show as —, never as 0",
+  "gpu.engine.3d":
+    "3D graphics rendering, including games and desktop composition",
+  "gpu.engine.copy": "Moves data between system memory and video memory",
+  "gpu.engine.legacyOverlay": "Older video overlay display path",
+  "gpu.engine.ofa":
+    "NVIDIA optical flow hardware for motion estimation, such as frame generation and video processing",
+  "gpu.engine.security": "Protected content and encryption processing",
+  "gpu.engine.vr": "Headset-related work",
+  "gpu.engine.videoDecode": "Hardware video decoding, such as playback",
+  "gpu.engine.videoEncode":
+    "Hardware video encoding, such as recording and streaming",
+  "gpu.engine.unknown": "Engine type reported by the graphics driver",
+  "gpu.source.nvml": "NVIDIA NVML driver",
+  "gpu.source.nvmlPdh":
+    "NVIDIA NVML driver; GPU % from PDH GPU engine counters, same sample as the process list",
+  "gpu.source.nvmlNoPdh":
+    "NVIDIA NVML driver; GPU % from NVML because PDH GPU engine counters are unavailable",
+  "gpu.source.nvmlSharedName":
+    "NVIDIA NVML driver; GPU % from NVML because several cards share this name",
+  "gpu.source.nvmlUnmatched":
+    "NVIDIA NVML driver; GPU % from NVML, no PDH adapter with this name",
+  "gpu.source.dxgiPdh":
+    "Windows DXGI inventory; GPU % from PDH GPU engine counters",
+  "gpu.source.dxgi":
+    "Windows DXGI inventory; live counters unavailable for this adapter",
+  "gpu.source.linuxAmdgpu": "Linux amdgpu sysfs",
+  "gpu.source.linuxDrm": "Linux DRM inventory; utilization not exposed",
+  "gpu.source.macosIoreg": "macOS IORegistry driver statistics",
+  "gpu.source.fake": "Synthetic debug adapter, not a real sensor",
   "gpu.unavailable": "GPU readings unavailable",
   "gpu.unavailableNote":
     "NVIDIA cards show full readings, other graphics cards may only show their name",
@@ -1090,6 +1119,30 @@ export const zh = {
   "gpu.about": "关于这些读数",
   "gpu.sharedNote": "共享显存是系统内存的一部分，不是额外的显存",
   "gpu.counterNote": "显卡驱动不提供的读数显示为 —，不会显示为 0",
+  "gpu.engine.3d": "三维图形渲染，包括游戏和桌面合成",
+  "gpu.engine.copy": "在内存和显存之间传输数据",
+  "gpu.engine.legacyOverlay": "较旧的视频叠加显示通路",
+  "gpu.engine.ofa": "NVIDIA 光流硬件，用于运动估计，例如帧生成和视频处理",
+  "gpu.engine.security": "受保护内容与加密相关处理",
+  "gpu.engine.vr": "头显相关工作",
+  "gpu.engine.videoDecode": "硬件视频解码，例如播放",
+  "gpu.engine.videoEncode": "硬件视频编码，例如录制和直播",
+  "gpu.engine.unknown": "显卡驱动报告的引擎类型",
+  "gpu.source.nvml": "NVIDIA NVML 驱动",
+  "gpu.source.nvmlPdh":
+    "NVIDIA NVML 驱动；GPU 占用取自 PDH GPU 引擎计数器，与进程列表同一取样",
+  "gpu.source.nvmlNoPdh":
+    "NVIDIA NVML 驱动；因 PDH GPU 引擎计数器不可用，GPU 占用取自 NVML",
+  "gpu.source.nvmlSharedName":
+    "NVIDIA NVML 驱动；因多张显卡名称相同，GPU 占用取自 NVML",
+  "gpu.source.nvmlUnmatched":
+    "NVIDIA NVML 驱动；没有同名的 PDH 适配器，GPU 占用取自 NVML",
+  "gpu.source.dxgiPdh": "Windows DXGI 清单；GPU 占用取自 PDH GPU 引擎计数器",
+  "gpu.source.dxgi": "Windows DXGI 清单；此适配器没有可用的实时计数",
+  "gpu.source.linuxAmdgpu": "Linux amdgpu sysfs",
+  "gpu.source.linuxDrm": "Linux DRM 清单；未提供占用率",
+  "gpu.source.macosIoreg": "macOS IORegistry 驱动统计",
+  "gpu.source.fake": "调试用模拟显卡，不是真实传感器",
   "gpu.unavailable": "无法读取 GPU",
   "gpu.unavailableNote": "NVIDIA 显卡显示完整读数，其他显卡可能只显示型号",
   "gpu.shared": "共享",

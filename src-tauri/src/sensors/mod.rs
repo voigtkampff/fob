@@ -58,7 +58,10 @@ pub trait SensorSource: Send + Debug {
 /// NVIDIA GPU temperature / fan duty, read through NeoHtop's NVML GPU code.
 pub fn from_gpus(gpus: &[GpuDevice]) -> Vec<Sensor> {
     let mut out = Vec::new();
-    for gpu in gpus.iter().filter(|g| g.source.contains("NVML")) {
+    for gpu in gpus
+        .iter()
+        .filter(|g| crate::gpu::is_nvml_source(&g.source))
+    {
         if let Some(t) = gpu.temperature.filter(|t| t.is_finite()) {
             out.push(Sensor {
                 hardware: gpu.name.clone(),
@@ -161,13 +164,17 @@ mod tests {
     #[test]
     fn nvml_gpus_become_sensors_and_others_do_not() {
         let s = from_gpus(&[
-            gpu("NVIDIA NVML driver", Some(48.0), Some(30.0)),
-            gpu("Windows DXGI inventory", Some(40.0), None),
-            gpu("NVIDIA NVML driver", None, Some(f64::NAN)),
+            gpu(crate::gpu::SOURCE_NVML, Some(48.0), Some(30.0)),
+            gpu(crate::gpu::SOURCE_DXGI, Some(40.0), None),
+            gpu(crate::gpu::SOURCE_DXGI_PDH, Some(40.0), None),
+            gpu(crate::gpu::SOURCE_NVML, None, Some(f64::NAN)),
         ]);
         assert_eq!(s.len(), 2);
         assert_eq!((s[0].kind, s[0].value), (SensorKind::Temperature, 48.0));
         assert_eq!((s[1].kind, s[1].value), (SensorKind::Control, 30.0));
+        let paired = from_gpus(&[gpu(crate::gpu::SOURCE_NVML_PDH, Some(51.0), Some(20.0))]);
+        assert_eq!(paired.len(), 2);
+        assert_eq!(paired[0].value, 51.0);
     }
     #[derive(Debug)]
     struct Fixed(Option<Vec<Sensor>>);
@@ -219,7 +226,7 @@ mod tests {
                 Box::new(Fixed(Some(vec![other]))),
             ],
         };
-        let nvml = gpu("NVIDIA NVML driver", Some(48.0), Some(30.0));
+        let nvml = gpu(crate::gpu::SOURCE_NVML, Some(48.0), Some(30.0));
         let r = hub.read(std::slice::from_ref(&nvml));
         assert_eq!(r.sensors, vec![gpu_temp]);
         assert_eq!(r.sources, vec!["Fixed".to_string()]);
