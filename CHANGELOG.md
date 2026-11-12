@@ -12,7 +12,7 @@
 - A process's GPU % is still its own busiest engine, and the card's GPU % is the busiest engine of all processes together, so process values are not meant to add up to the card's value
 - Windows engine readings that Windows marks as new since the last refresh are no longer skipped
 - The GPU changes were checked by unit tests with made-up readings; a check on Windows with a real NVIDIA card is still pending
-- The GPU detail's engine list now uses official Chinese names where they exist (三维引擎, 复制引擎, 光流加速器, 视频解码, 视频编码); other names, including numbered ones such as Security_1, stay as the driver reports them. English keeps the driver names. Pointing at an engine shows a short description in the current language
+- The GPU detail's engine list now uses official Chinese names where they exist (三维引擎, 复制引擎, 光流加速器, 视频解码, 视频编码); other names, including numbered ones such as Security_1, stay as the driver reports them. English keeps the driver names. Pointing at an engine shows only the short description, not the name again
 - The 关于这些读数 (About these readings) note is now fully in Chinese or English, instead of mixing in an English source sentence
 - The engine names and notes were checked in a browser preview in Chinese and English with mocked readings; a check in the Windows app is still pending
 - The bundled sensor helper is unchanged at 0.8.2

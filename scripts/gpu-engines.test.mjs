@@ -64,7 +64,7 @@ test("Chinese UI uses official names and keeps the index; English keeps the driv
   }
 });
 
-test("hover text is a short localized description in both locales", () => {
+test("hover text is only the description, never the engine name", () => {
   assert.equal(
     engineDescription("3D", t("zh")),
     "三维图形渲染，包括游戏和桌面合成",
@@ -73,22 +73,18 @@ test("hover text is a short localized description in both locales", () => {
     engineDescription("OFA_0", t("en")),
     "NVIDIA optical flow hardware for motion estimation, such as frame generation and video processing",
   );
+  assert.equal(engineTitle("VideoDecode_1", t("zh")), "硬件视频解码，例如播放");
   assert.equal(
-    engineTitle("VideoDecode_1", "zh", t("zh")),
-    "视频解码 1 · 硬件视频解码，例如播放",
+    engineTitle("LegacyOverlay", t("en")),
+    "Older video overlay display path",
   );
+  assert.equal(engineTitle("Compute_0", t("zh")), "显卡驱动报告的引擎类型");
   assert.equal(
-    engineTitle("LegacyOverlay", "en", t("en")),
-    "LegacyOverlay · Older video overlay display path",
+    engineTitle("MysteryEngine_2", t("en")),
+    "Engine type reported by the graphics driver",
   );
-  assert.equal(
-    engineTitle("Compute_0", "zh", t("zh")),
-    "Compute_0 · 显卡驱动报告的引擎类型",
-  );
-  assert.equal(
-    engineTitle("MysteryEngine_2", "en", t("en")),
-    "MysteryEngine_2 · Engine type reported by the graphics driver",
-  );
+  assert.doesNotMatch(engineTitle("OFA_0", t("zh")), /光流加速器/);
+  assert.doesNotMatch(engineTitle("OFA_0", t("en")), /OFA/);
 });
 
 test("source notes are localized from codes and never drop an unknown code", () => {

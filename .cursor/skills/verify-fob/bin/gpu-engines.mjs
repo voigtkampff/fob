@@ -58,7 +58,7 @@ const expected =
         ],
         absent: ["utilization from", "NVIDIA NVML driver;"],
         note: /NVIDIA NVML 驱动；GPU 占用取自 PDH GPU 引擎计数器，与进程列表同一取样/,
-        hover: "光流加速器 0 · NVIDIA 光流硬件，用于运动估计，例如帧生成和视频处理",
+        hover: "NVIDIA 光流硬件，用于运动估计，例如帧生成和视频处理",
         hoverPick: "光流加速器 0",
       }
     : {
@@ -76,7 +76,7 @@ const expected =
         absent: ["三维引擎", "光流加速器", "同一取样"],
         note: /NVIDIA NVML driver; GPU % from PDH GPU engine counters, same sample as the process list/,
         hover:
-          "OFA_0 · NVIDIA optical flow hardware for motion estimation, such as frame generation and video processing",
+          "NVIDIA optical flow hardware for motion estimation, such as frame generation and video processing",
         hoverPick: "OFA_0",
       };
 

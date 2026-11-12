@@ -74,12 +74,12 @@ export function engineDescription(raw, t) {
 }
 
 /**
+ * Hover text is the description only; the visible label already shows the name.
  * @param {string} raw
- * @param {string} locale
  * @param {(key: string) => string} t
  */
-export function engineTitle(raw, locale, t) {
-  return `${engineLabel(raw, locale)} · ${engineDescription(raw, t)}`;
+export function engineTitle(raw, t) {
+  return engineDescription(raw, t);
 }
 
 /**

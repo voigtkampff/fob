@@ -214,7 +214,7 @@
             <span
               class="label"
               data-engine={engine}
-              title={engineTitle(engine, $locale, $t)}
+              title={engineTitle(engine, $t)}
               >{engineLabel(engine, $locale)}</span
             >
             <div class="track"><span style={`width:${load}%`}></span></div>
