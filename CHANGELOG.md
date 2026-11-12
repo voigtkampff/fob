@@ -5,6 +5,7 @@
 - 空间分布 (Space map): when right-click Show in File Explorer finds the item gone (Windows error 2 or 3), Fob now says the item no longer exists and that the scan may be out of date, with a hint to press 重新扫描 (Rescan). This replaces an English-only message that also showed in the Chinese interface
 - When Windows denies access to the item (error 5) or the check fails for another reason, Fob says so instead of claiming the item is gone; other errors show their Windows error number. A File Explorer that does not start has its own message in both languages
 - A message on the scan's status line now wraps onto a second line when the line is full, instead of being cut off
+- 进程 (Processes): bringing the main window back from the tray or the taskbar now reads the process list at once, instead of showing the list from before it was hidden until the next refresh (up to the refresh interval). While the main window is hidden or minimized it still reads no process list, as before
 - Scanning itself is unchanged. The bundled sensor helper is unchanged at 0.8.2
 
 ## 0.8.8

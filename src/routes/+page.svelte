@@ -5,6 +5,7 @@
   import { invoke } from "@tauri-apps/api/core";
   import { t } from "$lib/i18n";
   import { getCurrentWindow } from "@tauri-apps/api/window";
+  import { mainRefresh } from "$lib/utils/main-refresh.js";
   import { get } from "svelte/store";
   import { settingsStatus } from "$lib/stores/settings";
   import {
@@ -246,21 +247,24 @@
     };
   }
 
+  const refresh = mainRefresh(() => processStore.getProcesses());
   $: {
     if (intervalId) clearInterval(intervalId);
     if (mounted && !auxiliary && !isFrozen) {
       // Use adaptive refresh rate - slightly slower for 1s to reduce CPU usage
       const adaptiveRefreshRate = refreshRate === 1000 ? 1500 : refreshRate;
       intervalId = setInterval(async () => {
-        // winperf: no sampling while the main window is hidden to the tray or
-        // minimized, so idle CPU stays low (the mini window polls on its own).
+        // winperf: no reads while the main window is hidden to the tray or
+        // minimized (the mini window polls on its own); `refresh.shown`
+        // catches up when the window comes back.
+        let onScreen = true;
         try {
           const win = getCurrentWindow();
-          if (!(await win.isVisible()) || (await win.isMinimized())) return;
+          onScreen = (await win.isVisible()) && !(await win.isMinimized());
         } catch {
           /* Browser preview: always poll. */
         }
-        processStore.getProcesses();
+        refresh.tick(onScreen);
       }, adaptiveRefreshRate);
     }
   }
@@ -304,6 +308,13 @@
       const stopControl = await listen("monitor-control", () => {
         void processStore.refreshControl();
       });
+      // Every way back (tray, mini window, hotkey, second launch, taskbar)
+      // focuses the window.
+      const stopFocus = await getCurrentWindow().onFocusChanged(
+        ({ payload }) => {
+          if (payload && !isFrozen) refresh.shown();
+        },
+      );
       const stopPage = await listen<string>("open-page", ({ payload }) => {
         if (payload === "space" || payload === "processes") {
           detail = null;
@@ -327,11 +338,12 @@
       );
       if (disposed) {
         stopControl();
+        stopFocus();
         stopPage();
         stopOpen();
         return;
       }
-      listeners.push(stopControl, stopPage, stopOpen);
+      listeners.push(stopControl, stopFocus, stopPage, stopOpen);
       await processStore.getProcesses();
       if (!disposed) processStore.setIsLoading(false);
     })();
