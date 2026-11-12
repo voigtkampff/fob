@@ -103,13 +103,6 @@
           size="sm"
           class={`-mx-1 h-8 max-w-[calc(100%+0.5rem)] px-1 text-xs ${sortConfig.field === column.id ? "text-primary" : "text-muted-foreground"}`}
           onclick={() => onToggleSort(column.id)}
-          title={`${
-            treeView && column.id === "memory_usage"
-              ? $t("col.familyRamTitle")
-              : treeView && column.id === "cpu_usage"
-                ? $t("col.familyCpuTitle")
-                : $t("col.sortBy", { v: $t(`col.${column.id}`) })
-          }${column.id === "name" ? "" : `\n${$t("col.moveHint")}`}`}
           ><span
             >{treeView && column.id === "cpu_usage"
               ? $t("col.familyCpu")
@@ -124,7 +117,6 @@
         ><span
           class="col-resize"
           aria-hidden="true"
-          title={$t("col.resizeHint")}
           data-active={resizing === column.id ? "" : undefined}
           onpointerdown={(e) => resize(e, column.id)}
           ondblclick={(e) => {

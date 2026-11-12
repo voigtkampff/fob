@@ -246,10 +246,7 @@
             onclick={() => open("cpu")}
             onkeydown={(e) => openKey(e, "cpu")}
           >
-            <div
-              class="card-head"
-              title={onReorder ? $t("layout.moveCard") : undefined}
-            >
+            <div class="card-head">
               <span class="label"
                 >{#if onReorder}<span class="drag-grip" aria-hidden="true"
                   ></span>{/if}<Cpu class="size-3.5" />CPU</span
@@ -304,10 +301,7 @@
             onclick={() => open("gpu")}
             onkeydown={(e) => openKey(e, "gpu")}
           >
-            <div
-              class="card-head"
-              title={onReorder ? $t("layout.moveCard") : undefined}
-            >
+            <div class="card-head">
               <span class="label"
                 >{#if onReorder}<span class="drag-grip" aria-hidden="true"
                   ></span>{/if}<Gauge class="size-3.5" />GPU</span
@@ -353,10 +347,7 @@
             onclick={() => open("memory")}
             onkeydown={(e) => openKey(e, "memory")}
           >
-            <div
-              class="card-head"
-              title={onReorder ? $t("layout.moveCard") : undefined}
-            >
+            <div class="card-head">
               <span class="label"
                 >{#if onReorder}<span class="drag-grip" aria-hidden="true"
                   ></span>{/if}<MemoryStick class="size-3.5" />{$t(
@@ -401,10 +392,7 @@
             onclick={() => open("disk")}
             onkeydown={(e) => openKey(e, "disk")}
           >
-            <div
-              class="card-head"
-              title={onReorder ? $t("layout.moveCard") : undefined}
-            >
+            <div class="card-head">
               <span class="label"
                 >{#if onReorder}<span class="drag-grip" aria-hidden="true"
                   ></span>{/if}<HardDrive class="size-3.5" />{$t(
@@ -444,10 +432,7 @@
             onclick={() => open("network")}
             onkeydown={(e) => openKey(e, "network")}
           >
-            <div
-              class="card-head"
-              title={onReorder ? $t("layout.moveCard") : undefined}
-            >
+            <div class="card-head">
               <span class="label"
                 >{#if onReorder}<span class="drag-grip" aria-hidden="true"
                   ></span>{/if}<Globe class="size-3.5" />{$t(
@@ -496,10 +481,7 @@
             onclick={() => open("temp")}
             onkeydown={(e) => openKey(e, "temp")}
           >
-            <div
-              class="card-head"
-              title={onReorder ? $t("layout.moveCard") : undefined}
-            >
+            <div class="card-head">
               <span class="label"
                 >{#if onReorder}<span class="drag-grip" aria-hidden="true"
                   ></span>{/if}<Thermometer class="size-3.5" />{$t(

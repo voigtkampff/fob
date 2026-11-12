@@ -310,7 +310,7 @@
   </ChartCursor>
   <div
     class="min-h-3 truncate text-[10px] leading-3 text-muted-foreground tabular-nums"
-    title={$t("trend.title", { label, caption })}
+    title={$t("trend.title", { caption })}
   >
     {caption}
   </div>

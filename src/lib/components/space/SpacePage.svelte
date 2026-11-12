@@ -228,12 +228,6 @@
           class:active={d.root === root}
           aria-pressed={d.root === root}
           onclick={() => void choose(d.root, true)}
-          title={d.total
-            ? $t("space.driveFree", {
-                free: formatBytes(d.free),
-                total: formatBytes(d.total),
-              })
-            : d.root}
           ><span class="drive-line"
             >{d.root}{#if d.total}<small
                 >{$t("space.driveFree", {
