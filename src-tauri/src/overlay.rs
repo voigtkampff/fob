@@ -309,6 +309,34 @@ fn no_activate(w: &WebviewWindow) {
 #[cfg(not(windows))]
 fn no_activate(_: &WebviewWindow) {}
 
+/// Back to the top of the always-on-top windows, without taking focus. A
+/// borderless game that is itself topmost goes above the bar each time it
+/// is activated, and tao sends HWND_TOPMOST only when the flag changes, so
+/// `set_always_on_top(true)` again would do nothing.
+#[cfg(windows)]
+fn raise(w: &WebviewWindow) {
+    use windows::Win32::Foundation::HWND;
+    use windows::Win32::UI::WindowsAndMessaging::{
+        SetWindowPos, HWND_TOPMOST, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOOWNERZORDER, SWP_NOSIZE,
+    };
+    if let Ok(handle) = w.hwnd() {
+        let hwnd = HWND(handle.0 as _);
+        unsafe {
+            let _ = SetWindowPos(
+                hwnd,
+                Some(HWND_TOPMOST),
+                0,
+                0,
+                0,
+                0,
+                SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE | SWP_NOOWNERZORDER,
+            );
+        }
+    }
+}
+#[cfg(not(windows))]
+fn raise(_: &WebviewWindow) {}
+
 /// Puts the bar where `restore` says, at its measured width.
 fn place(app: &AppHandle, w: &WebviewWindow) {
     let (config, width) = match app.state::<Shared>().lock() {
@@ -381,6 +409,7 @@ pub fn sync(app: &AppHandle, prefs: &Value) {
     let Ok(w) = window(app) else { return };
     place(app, &w);
     let _ = w.show();
+    raise(&w);
     // Showing can reset the extended style on some systems; force a resend.
     if let Ok(mut s) = app.state::<Shared>().lock() {
         s.interactive = true;
@@ -413,7 +442,9 @@ fn poll(app: AppHandle) {
                 set_interactive(&app, &w, !config.locked && ctrl_down());
                 tick += 1;
                 if tick % 40 == 0 {
-                    // Every 2 s: off every monitor (one was unplugged)? Re-place.
+                    // Every 2 s: above a topmost game again, and off every
+                    // monitor (one was unplugged)? Re-place.
+                    raise(&w);
                     if let (Ok(p), Ok(s)) = (w.outer_position(), w.outer_size()) {
                         let r = Rect {
                             x: p.x,
@@ -724,6 +755,18 @@ mod tests {
         assert!(sync.contains("SYNC.lock()"));
         // close() would go through CloseRequested, which toggles the setting.
         assert!(!off.contains(".close()"));
+    }
+
+    #[test]
+    fn the_bar_goes_back_on_top_while_shown() {
+        let src = include_str!("overlay.rs");
+        let sync = &src[src.find("pub fn sync(").unwrap()..src.find("fn poll(").unwrap()];
+        assert!(sync.contains("w.show();\n    raise(&w);"));
+        let poll = &src[src.find("fn poll(").unwrap()..src.find("fn ctrl_down(").unwrap()];
+        let every = &poll[poll.find("tick % 40 == 0").unwrap()..];
+        assert!(every[..200].contains("raise(&w);"), "{every}");
+        let raise = &src[src.find("fn raise(").unwrap()..src.find("fn place(").unwrap()];
+        assert!(raise.contains("HWND_TOPMOST") && raise.contains("SWP_NOACTIVATE"));
     }
 
     #[test]
