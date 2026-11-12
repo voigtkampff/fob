@@ -177,6 +177,10 @@ pub struct OverlayState {
 }
 pub type Shared = Mutex<OverlayState>;
 static POLLING: AtomicBool = AtomicBool::new(false);
+/// Serializes `sync` (see there).
+static SYNC: Mutex<()> = Mutex::new(());
+/// How long turning the bar off waits for its window to be gone.
+const GONE_WAIT: Duration = Duration::from_secs(2);
 
 fn screens(window: &WebviewWindow) -> (Vec<Screen>, usize) {
     let monitors = window.available_monitors().unwrap_or_default();
@@ -348,14 +352,29 @@ fn set_interactive(app: &AppHandle, w: &WebviewWindow, on: bool) {
 
 /// Settings changed or loaded: show, hide or re-place the bar.
 pub fn sync(app: &AppHandle, prefs: &Value) {
+    // One at a time: an off that is still waiting for its window to go must
+    // finish before an on looks for the window. Callers run sync on their
+    // own threads, never on the event loop that carries the destroy out.
+    let _turn = SYNC.lock();
     let config = Config::from_prefs(prefs);
     if let Ok(mut s) = app.state::<Shared>().lock() {
         s.config = config;
     }
     crate::companion::set_overlay_checked(app, config.enabled);
     if !config.enabled {
+        // Destroyed, not hidden: a WebView whose page died (a renderer or
+        // GPU process lost mid-game) leaves a transparent window that shows
+        // nothing, and hiding and showing it again keeps it blank. Turning
+        // the bar back on builds a new window and page. `destroy` skips the
+        // CloseRequested handler, which would turn the setting back on.
         if let Some(w) = app.get_webview_window(LABEL) {
-            let _ = w.hide();
+            let _ = w.destroy();
+            // The destroy runs on the event loop; an on right after must not
+            // find the dying window and show it.
+            let start = Instant::now();
+            while app.get_webview_window(LABEL).is_some() && start.elapsed() < GONE_WAIT {
+                std::thread::sleep(Duration::from_millis(10));
+            }
         }
         return;
     }
@@ -691,6 +710,20 @@ mod tests {
         assert_eq!(screen_of(bar(2500, 300), &screens()), Some(1));
         assert_eq!(screen_of(bar(1700, 300), &screens()), Some(0));
         assert_eq!(screen_of(bar(1800, 300), &screens()), Some(1));
+    }
+
+    #[test]
+    fn turning_the_bar_off_destroys_its_window() {
+        let src = include_str!("overlay.rs");
+        let sync = &src[src.find("pub fn sync(").unwrap()..src.find("fn poll(").unwrap()];
+        let off = &sync[sync.find("if !config.enabled").unwrap()..sync.find("return;").unwrap()];
+        assert!(off.contains("w.destroy()"), "{off}");
+        assert!(!off.contains("w.hide()"), "{off}");
+        // An on right after an off never gets the dying window back.
+        assert!(off.contains("while app.get_webview_window(LABEL).is_some()"));
+        assert!(sync.contains("SYNC.lock()"));
+        // close() would go through CloseRequested, which toggles the setting.
+        assert!(!off.contains(".close()"));
     }
 
     #[test]
