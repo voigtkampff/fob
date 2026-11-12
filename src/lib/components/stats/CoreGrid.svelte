@@ -29,9 +29,8 @@
     });
   const groupTip = (g: CpuGroup) =>
     g.usage == null
-      ? $t("cpu.groupNoReading", { g: $t(g.label) })
+      ? $t("cpu.groupNoReading")
       : $t("cpu.groupTip", {
-          g: $t(g.label),
           n: g.threads.length,
           c: g.cores,
         });
@@ -75,7 +74,7 @@
     {#each groups as g (g.kind)}
       <div class="strip-group" title={groupTip(g)}>
         <div class="line">
-          <span class="truncate">{$t(g.label)}</span><span
+          <span class="truncate" title={$t(g.label)}>{$t(g.label)}</span><span
             class="num"
             class:none={g.usage == null}
             >{groupPercent(g.usage)}{g.usage == null ? "" : "%"}</span

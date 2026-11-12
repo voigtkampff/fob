@@ -361,7 +361,7 @@
               <span
                 class="truncate text-muted-foreground"
                 data-engine={engine}
-                title={engineTitle(engine, $locale, $t)}
+                title={engineTitle(engine, $t)}
                 >{engineLabel(engine, $locale)}</span
               ><Progress
                 value={Math.min(100, Math.max(0, load))}

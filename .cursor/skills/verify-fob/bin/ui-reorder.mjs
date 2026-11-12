@@ -11,9 +11,9 @@
 //   cells together), and nothing is saved until release; with reduced
 //   motion they jump instead of sliding;
 // - every summary card shows a dot grip whose left edge lines up with the
-//   value below, stronger on hover, with a short drag hint in the tooltip,
-//   and a Dashboard card drags from its grip; column headers show no grip
-//   but keep the hint; no vertical lines part the columns;
+//   value below, stronger on hover, and a Dashboard card drags from its
+//   grip; column headers show no grip and no hover explanation (including
+//   sort, resize and drag hints); no vertical lines part the columns;
 // - Processes and Dashboard summary cards drag by their title, the drag opens
 //   nothing and the next click still does;
 // - all three orders survive a reload, and bad saved orders (unknown,
@@ -257,11 +257,18 @@ try {
         const rule = (el) => getComputedStyle(el).boxShadow;
         return {
           headerGrips: ths.filter((th) => pseudo(th) !== 'none' || (th.querySelector('button') && pseudo(th.querySelector('button')) !== 'none')).length,
-          headerHints: ths.slice(1, -1).every((th) => th.querySelector('button').title.endsWith(${JSON.stringify(s["col.moveHint"])})),
+          headerHints: ths.slice(0, -1).every((th) => {
+            const btn = th.querySelector('button');
+            const resize = th.querySelector('.col-resize');
+            return (!btn || !btn.title) && (!resize || !resize.title);
+          }),
           cards: cards.map((c) => !!c.querySelector('.sc-title > .drag-grip[aria-hidden="true"]')),
           gripOffsets: cards.map((c) => Math.round((c.querySelector('.drag-grip').getBoundingClientRect().left - c.querySelector('.sc-value').getBoundingClientRect().left) * 10) / 10),
-          cardHints: cards.every((c) => c.querySelector('.sc-title').title === ${JSON.stringify(s["layout.moveCard"])}),
-          cardTitleHints: cards.every((c) => c.querySelector('.sc-title .truncate').title.endsWith(${JSON.stringify(s["layout.moveCard"])})),
+          cardHints: cards.every((c) => !c.querySelector('.sc-title').title),
+          cardTitleHints: cards.every((c) => {
+            const tip = c.querySelector('.sc-title .truncate')?.title ?? '';
+            return tip.length > 0 && !/Drag to reorder|拖动调整顺序/.test(tip);
+          }),
           focusable: document.querySelectorAll('.drag-grip[tabindex]').length,
           firstRules: [rule(ths[0]), rule(tds[0])],
           headRules: ths.slice(1, -1).map(rule),
@@ -284,7 +291,7 @@ try {
     const g = await grips();
     check(
       g.headerGrips === 0 && g.headerHints,
-      at(`header grips shown or hints missing ${JSON.stringify(g)}`),
+      at(`header grips shown or header tooltip still present ${JSON.stringify(g)}`),
     );
     check(
       g.cards.length === 7 &&
@@ -293,7 +300,7 @@ try {
         g.cardHints &&
         g.cardTitleHints &&
         !g.focusable,
-      at(`card grips, alignment or hints wrong ${JSON.stringify(g)}`),
+      at(`card grips, alignment or leftover drag hint ${JSON.stringify(g)}`),
     );
     report.push({
       lang,
@@ -783,10 +790,10 @@ try {
       (await evaluate(
         `document.querySelectorAll('.card-head .drag-grip[aria-hidden="true"]').length`,
       )) === dash0.length &&
-        (await evaluate(
+        !(await evaluate(
           `${grid}.children[0].querySelector('.card-head').title`,
-        )) === s["layout.moveCard"],
-      at("dashboard card grips or hints missing"),
+        )),
+      at("dashboard card grips missing or drag hint still present"),
     );
     const dashOffsets = await evaluate(
       `[...${grid}.children].map((c) => Math.round((c.querySelector('.drag-grip').getBoundingClientRect().left - c.children[1].getBoundingClientRect().left) * 10) / 10)`,

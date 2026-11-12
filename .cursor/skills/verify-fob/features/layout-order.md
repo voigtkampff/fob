@@ -58,8 +58,8 @@ zh and en, at 1920 and 1024 px. It fails unless:
 - with reduced motion a drag still lifts the item but nothing slides;
 - every summary card shows a dot grip whose left edge is within 1 px of the
   value below it, fully opaque on hover, in dark and light themes; column
-  headers show no grip; headers and cards carry the drag hint in their
-  tooltips; the grip takes no focus and a Dashboard card drags from it;
+  headers show no grip and no hover explanation; the grip takes no
+  focus and a Dashboard card drags from it;
 - no column draws a vertical line between columns, in the header or rows
   (the actions column keeps its own edge);
 - the 用户 (User) column shows SYSTEM, LOCAL SERVICE and a user name in full
