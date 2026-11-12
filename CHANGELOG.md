@@ -6,6 +6,7 @@
 - When Windows denies access to the item (error 5) or the check fails for another reason, Fob says so instead of claiming the item is gone; other errors show their Windows error number. A File Explorer that does not start has its own message in both languages
 - A message on the scan's status line now wraps onto a second line when the line is full, instead of being cut off
 - 进程 (Processes): bringing the main window back from the tray or the taskbar now reads the process list at once, instead of showing the list from before it was hidden until the next refresh (up to the refresh interval). While the main window is hidden or minimized it still reads no process list, as before
+- 状态栏 (Status bar): turning it off now closes its window, and turning it on builds a new one. If the bar went blank (for example while a game was running), switching it off and on brings it back without restarting Fob. Its position, dock and settings are kept. While shown, the bar also puts itself back above other always-on-top windows every 2 seconds, without taking focus, so a borderless game that brings itself to the top no longer covers it for good
 - Scanning itself is unchanged. The bundled sensor helper is unchanged at 0.8.2
 
 ## 0.8.8

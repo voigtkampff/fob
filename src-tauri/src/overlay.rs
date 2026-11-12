@@ -177,6 +177,10 @@ pub struct OverlayState {
 }
 pub type Shared = Mutex<OverlayState>;
 static POLLING: AtomicBool = AtomicBool::new(false);
+/// Serializes `sync` (see there).
+static SYNC: Mutex<()> = Mutex::new(());
+/// How long turning the bar off waits for its window to be gone.
+const GONE_WAIT: Duration = Duration::from_secs(2);
 
 fn screens(window: &WebviewWindow) -> (Vec<Screen>, usize) {
     let monitors = window.available_monitors().unwrap_or_default();
@@ -305,6 +309,34 @@ fn no_activate(w: &WebviewWindow) {
 #[cfg(not(windows))]
 fn no_activate(_: &WebviewWindow) {}
 
+/// Back to the top of the always-on-top windows, without taking focus. A
+/// borderless game that is itself topmost goes above the bar each time it
+/// is activated, and tao sends HWND_TOPMOST only when the flag changes, so
+/// `set_always_on_top(true)` again would do nothing.
+#[cfg(windows)]
+fn raise(w: &WebviewWindow) {
+    use windows::Win32::Foundation::HWND;
+    use windows::Win32::UI::WindowsAndMessaging::{
+        SetWindowPos, HWND_TOPMOST, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOOWNERZORDER, SWP_NOSIZE,
+    };
+    if let Ok(handle) = w.hwnd() {
+        let hwnd = HWND(handle.0 as _);
+        unsafe {
+            let _ = SetWindowPos(
+                hwnd,
+                Some(HWND_TOPMOST),
+                0,
+                0,
+                0,
+                0,
+                SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE | SWP_NOOWNERZORDER,
+            );
+        }
+    }
+}
+#[cfg(not(windows))]
+fn raise(_: &WebviewWindow) {}
+
 /// Puts the bar where `restore` says, at its measured width.
 fn place(app: &AppHandle, w: &WebviewWindow) {
     let (config, width) = match app.state::<Shared>().lock() {
@@ -348,20 +380,36 @@ fn set_interactive(app: &AppHandle, w: &WebviewWindow, on: bool) {
 
 /// Settings changed or loaded: show, hide or re-place the bar.
 pub fn sync(app: &AppHandle, prefs: &Value) {
+    // One at a time: an off that is still waiting for its window to go must
+    // finish before an on looks for the window. Callers run sync on their
+    // own threads, never on the event loop that carries the destroy out.
+    let _turn = SYNC.lock();
     let config = Config::from_prefs(prefs);
     if let Ok(mut s) = app.state::<Shared>().lock() {
         s.config = config;
     }
     crate::companion::set_overlay_checked(app, config.enabled);
     if !config.enabled {
+        // Destroyed, not hidden: a WebView whose page died (a renderer or
+        // GPU process lost mid-game) leaves a transparent window that shows
+        // nothing, and hiding and showing it again keeps it blank. Turning
+        // the bar back on builds a new window and page. `destroy` skips the
+        // CloseRequested handler, which would turn the setting back on.
         if let Some(w) = app.get_webview_window(LABEL) {
-            let _ = w.hide();
+            let _ = w.destroy();
+            // The destroy runs on the event loop; an on right after must not
+            // find the dying window and show it.
+            let start = Instant::now();
+            while app.get_webview_window(LABEL).is_some() && start.elapsed() < GONE_WAIT {
+                std::thread::sleep(Duration::from_millis(10));
+            }
         }
         return;
     }
     let Ok(w) = window(app) else { return };
     place(app, &w);
     let _ = w.show();
+    raise(&w);
     // Showing can reset the extended style on some systems; force a resend.
     if let Ok(mut s) = app.state::<Shared>().lock() {
         s.interactive = true;
@@ -394,7 +442,9 @@ fn poll(app: AppHandle) {
                 set_interactive(&app, &w, !config.locked && ctrl_down());
                 tick += 1;
                 if tick % 40 == 0 {
-                    // Every 2 s: off every monitor (one was unplugged)? Re-place.
+                    // Every 2 s: above a topmost game again, and off every
+                    // monitor (one was unplugged)? Re-place.
+                    raise(&w);
                     if let (Ok(p), Ok(s)) = (w.outer_position(), w.outer_size()) {
                         let r = Rect {
                             x: p.x,
@@ -691,6 +741,34 @@ mod tests {
         assert_eq!(screen_of(bar(2500, 300), &screens()), Some(1));
         assert_eq!(screen_of(bar(1700, 300), &screens()), Some(0));
         assert_eq!(screen_of(bar(1800, 300), &screens()), Some(1));
+    }
+
+    #[test]
+    fn turning_the_bar_off_destroys_its_window() {
+        let src = include_str!("overlay.rs");
+        let sync = &src[src.find("pub fn sync(").unwrap()..src.find("fn poll(").unwrap()];
+        let off = &sync[sync.find("if !config.enabled").unwrap()..sync.find("return;").unwrap()];
+        assert!(off.contains("w.destroy()"), "{off}");
+        assert!(!off.contains("w.hide()"), "{off}");
+        // An on right after an off never gets the dying window back.
+        assert!(off.contains("while app.get_webview_window(LABEL).is_some()"));
+        assert!(sync.contains("SYNC.lock()"));
+        // close() would go through CloseRequested, which toggles the setting.
+        assert!(!off.contains(".close()"));
+    }
+
+    #[test]
+    fn the_bar_goes_back_on_top_while_shown() {
+        let src = include_str!("overlay.rs");
+        let sync = &src[src.find("pub fn sync(").unwrap()..src.find("fn poll(").unwrap()];
+        // Right after the show (CRLF on a Windows checkout).
+        let after = &sync[sync.find("w.show();").unwrap() + "w.show();".len()..];
+        assert!(after.trim_start().starts_with("raise(&w);"), "{after}");
+        let poll = &src[src.find("fn poll(").unwrap()..src.find("fn ctrl_down(").unwrap()];
+        let every = &poll[poll.find("tick % 40 == 0").unwrap()..];
+        assert!(every[..200].contains("raise(&w);"), "{every}");
+        let raise = &src[src.find("fn raise(").unwrap()..src.find("fn place(").unwrap()];
+        assert!(raise.contains("HWND_TOPMOST") && raise.contains("SWP_NOACTIVATE"));
     }
 
     #[test]
