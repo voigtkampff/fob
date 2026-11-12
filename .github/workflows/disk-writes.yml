@@ -1,0 +1,84 @@
+name: Disk write measurement
+
+# Manual only: runs a published Fob zip on a hosted Windows runner and sums
+# write I/O per phase with WPR (scripts/disk-writes/run.ps1). Only this
+# runner's files and processes are measured; the trace files stay on it.
+on:
+  workflow_dispatch:
+    inputs:
+      zip_url:
+        description: Fob zip to run
+        default: https://github.com/voigtkampff/fob/releases/download/v0.8.8/fob-v0.8.8-x86_64-windows.zip
+      zip_sha256:
+        description: Expected SHA256 of the zip
+        default: 822268a9edfe580867d098c4e92e3616d38b79ee09abe741444af1fb1c8d3f5d
+      baseline_min:
+        description: Minutes without Fob
+        default: "5"
+      phase_min:
+        description: Minutes per Fob phase (tray, main, mini)
+        default: "10"
+      helper_min:
+        description: Minutes with the sensor helper installed
+        default: "8"
+
+permissions:
+  contents: read
+
+jobs:
+  measure:
+    name: Disk writes (windows)
+    runs-on: windows-2022
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+      - name: Build the analyzer
+        run: dotnet build tools/disk-writes -c Release -o "$env:RUNNER_TEMP\analyzer"
+      - name: Download and verify the package
+        env:
+          ZIP_URL: ${{ inputs.zip_url }}
+          ZIP_SHA256: ${{ inputs.zip_sha256 }}
+        run: |
+          $zip = "$env:RUNNER_TEMP\fob.zip"
+          Invoke-WebRequest $env:ZIP_URL -OutFile $zip
+          $hash = (Get-FileHash $zip -Algorithm SHA256).Hash.ToLower()
+          "zip sha256 $hash"
+          if ($hash -ne $env:ZIP_SHA256) { throw "hash mismatch" }
+          Expand-Archive $zip "$env:RUNNER_TEMP\fob"
+          $exe = Get-ChildItem "$env:RUNNER_TEMP\fob" -Recurse -Filter fob.exe | Select-Object -First 1
+          "fob.exe sha256 $((Get-FileHash $exe.FullName).Hash.ToLower())"
+          "FOB_EXE=$($exe.FullName)" >> $env:GITHUB_ENV
+      - name: Runner facts
+        run: |
+          "ImageOS=$env:ImageOS ImageVersion=$env:ImageVersion"
+          [Environment]::OSVersion.VersionString
+          Get-PhysicalDisk | Format-Table DeviceId, MediaType, BusType, Size
+          Get-Volume -DriveLetter C, D | Format-Table DriveLetter, FileSystem, Size, SizeRemaining
+          Get-ItemProperty "HKLM:\SOFTWARE\WOW6432Node\Microsoft\EdgeUpdate\Clients\{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}" -ErrorAction SilentlyContinue | Select-Object pv
+          wpr -profiles | Select-String -Pattern "DiskIO|FileIO"
+      - name: Measure
+        env:
+          BASELINE_MIN: ${{ inputs.baseline_min }}
+          PHASE_MIN: ${{ inputs.phase_min }}
+          HELPER_MIN: ${{ inputs.helper_min }}
+        run: >
+          scripts/disk-writes/run.ps1 "$env:FOB_EXE" "$env:RUNNER_TEMP\evidence"
+          "$env:RUNNER_TEMP\analyzer\disk-writes.dll"
+          $env:BASELINE_MIN $env:PHASE_MIN $env:HELPER_MIN
+      - name: Summarize
+        if: always()
+        run: |
+          "Automation commit: $env:GITHUB_SHA" >> $env:GITHUB_STEP_SUMMARY
+          $report = "$env:RUNNER_TEMP\evidence\report.md"
+          if (Test-Path $report) { Get-Content $report >> $env:GITHUB_STEP_SUMMARY }
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: disk-writes-${{ github.run_id }}
+          path: ${{ runner.temp }}/evidence
+          if-no-files-found: warn
