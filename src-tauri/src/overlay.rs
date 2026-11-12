@@ -761,7 +761,9 @@ mod tests {
     fn the_bar_goes_back_on_top_while_shown() {
         let src = include_str!("overlay.rs");
         let sync = &src[src.find("pub fn sync(").unwrap()..src.find("fn poll(").unwrap()];
-        assert!(sync.contains("w.show();\n    raise(&w);"));
+        // Right after the show (CRLF on a Windows checkout).
+        let after = &sync[sync.find("w.show();").unwrap() + "w.show();".len()..];
+        assert!(after.trim_start().starts_with("raise(&w);"), "{after}");
         let poll = &src[src.find("fn poll(").unwrap()..src.find("fn ctrl_down(").unwrap()];
         let every = &poll[poll.find("tick % 40 == 0").unwrap()..];
         assert!(every[..200].contains("raise(&w);"), "{every}");
