@@ -15,6 +15,7 @@
     X,
   } from "@lucide/svelte";
   import SpaceMap from "./SpaceMap.svelte";
+  import { revealMessage } from "$lib/utils/space-reveal.js";
   import OtherList from "./OtherList.svelte";
   import {
     folderAt,
@@ -168,7 +169,7 @@
     try {
       await invoke("space_reveal", { path: target });
     } catch (e) {
-      error = String(e);
+      error = revealMessage(e, $t);
     }
   }
 
@@ -514,7 +515,11 @@
     color: var(--muted-foreground);
   }
   .error {
+    /* Takes the rest of the line and wraps there instead of being cut off. */
+    flex: 1 1 0;
+    min-width: 160px;
     margin-left: 8px;
+    white-space: normal;
     color: var(--destructive);
   }
   .crumbs {

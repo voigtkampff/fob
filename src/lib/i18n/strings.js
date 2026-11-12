@@ -757,6 +757,15 @@ export const en = {
   "space.hint": "Click a folder to open it · right-click for File Explorer",
   "space.reveal": "Show in File Explorer",
   "space.closeMenu": "Close menu",
+  "space.revealGone":
+    "This item no longer exists. The scan may be out of date, press Rescan",
+  "space.revealDenied":
+    "Access to this item is denied, so it can't be shown in File Explorer",
+  "space.revealFailed":
+    "Couldn't check this item, so it wasn't shown in File Explorer",
+  "space.revealFailedCode":
+    "Couldn't check this item (error {code}), so it wasn't shown in File Explorer",
+  "space.revealExplorer": "File Explorer did not open",
 };
 
 /** @type {Record<keyof typeof en, string>} */
@@ -1475,6 +1484,12 @@ export const zh = {
   "space.hint": "单击文件夹进入 · 右键在资源管理器中显示",
   "space.reveal": "在资源管理器中显示",
   "space.closeMenu": "关闭菜单",
+  "space.revealGone": "此项已不存在，扫描结果可能已过时，按「重新扫描」更新",
+  "space.revealDenied": "没有权限访问此项，无法在资源管理器中显示",
+  "space.revealFailed": "无法检查此项，没有在资源管理器中显示",
+  "space.revealFailedCode":
+    "无法检查此项（错误 {code}），没有在资源管理器中显示",
+  "space.revealExplorer": "资源管理器没有打开",
 };
 
 export const tables = { en, zh };

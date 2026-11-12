@@ -976,14 +976,64 @@ pub async fn space_folded(
     })
 }
 
+/// Why Open in File Explorer did not happen; the page words it.
+#[derive(Clone, Debug, Serialize, PartialEq, Eq)]
+#[serde(tag = "kind", rename_all = "camelCase")]
+pub enum RevealError {
+    /// The item is gone since the scan (Windows error 2 or 3).
+    Gone,
+    /// Windows refused access (error 5).
+    Denied,
+    /// Any other failure checking the item; `code` is the OS error, if any.
+    Failed {
+        #[serde(skip_serializing_if = "Option::is_none")]
+        code: Option<i32>,
+    },
+    /// The item exists but File Explorer did not start.
+    Explorer,
+}
+
+impl RevealError {
+    /// The answer for a failed check of an item listed by the scan.
+    #[allow(clippy::let_and_return)]
+    fn from_io(e: &std::io::Error) -> Self {
+        #[cfg(windows)]
+        let kind = match e.raw_os_error() {
+            // ERROR_FILE_NOT_FOUND, ERROR_PATH_NOT_FOUND
+            Some(2 | 3) => Self::Gone,
+            // ERROR_ACCESS_DENIED
+            Some(5) => Self::Denied,
+            code => Self::Failed { code },
+        };
+        #[cfg(not(windows))]
+        let kind = match e.kind() {
+            std::io::ErrorKind::NotFound => Self::Gone,
+            std::io::ErrorKind::PermissionDenied => Self::Denied,
+            _ => Self::Failed {
+                code: e.raw_os_error(),
+            },
+        };
+        kind
+    }
+}
+
+/// Whether `path` can be shown in File Explorer: an absolute path that
+/// exists (links count as themselves) and that `/select,"…"` can quote.
+fn reveal_check(path: &str) -> Result<(), RevealError> {
+    let target = Path::new(path);
+    if path.contains('"') || !target.is_absolute() {
+        return Err(RevealError::Failed { code: None });
+    }
+    fs::symlink_metadata(target)
+        .map(|_| ())
+        .map_err(|e| RevealError::from_io(&e))
+}
+
 /// Shows `path` selected in File Explorer (explorer.exe /select, through
 /// ShellExecute; no shell in between).
 #[tauri::command]
-pub async fn space_reveal(path: String) -> Result<(), String> {
-    let target = Path::new(&path);
-    if path.contains('"') || !target.is_absolute() || fs::symlink_metadata(target).is_err() {
-        return Err("This item no longer exists".into());
-    }
+pub async fn space_reveal(path: String) -> Result<(), RevealError> {
+    reveal_check(&path)?;
     #[cfg(windows)]
     {
         use windows::core::{w, HSTRING, PCWSTR};
@@ -1001,17 +1051,88 @@ pub async fn space_reveal(path: String) -> Result<(), String> {
             )
         };
         if result.0 as isize <= 32 {
-            return Err("File Explorer did not open".into());
+            return Err(RevealError::Explorer);
         }
         Ok(())
     }
     #[cfg(not(windows))]
-    Err("Open in Explorer is available on Windows".into())
+    Err(RevealError::Explorer)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn reveal_says_gone_only_for_a_missing_item() {
+        let dir = temp("reveal");
+        let file = dir.join("here.bin");
+        fs::write(&file, b"x").unwrap();
+        assert_eq!(reveal_check(file.to_str().unwrap()), Ok(()));
+        let missing = dir.join("gone.bin");
+        assert_eq!(
+            reveal_check(missing.to_str().unwrap()),
+            Err(RevealError::Gone)
+        );
+        // A missing folder in the middle of the path (Windows: error 3).
+        let deeper = dir.join("no-folder").join("gone.bin");
+        assert_eq!(
+            reveal_check(deeper.to_str().unwrap()),
+            Err(RevealError::Gone)
+        );
+        assert_eq!(
+            reveal_check("relative/item"),
+            Err(RevealError::Failed { code: None })
+        );
+        assert_eq!(
+            reveal_check(&format!("{}\"quoted\"", dir.display())),
+            Err(RevealError::Failed { code: None })
+        );
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn reveal_maps_windows_error_codes() {
+        let map = |code| RevealError::from_io(&std::io::Error::from_raw_os_error(code));
+        assert_eq!(map(2), RevealError::Gone);
+        assert_eq!(map(3), RevealError::Gone);
+        assert_eq!(map(5), RevealError::Denied);
+        assert_eq!(map(32), RevealError::Failed { code: Some(32) });
+        assert_eq!(map(1920), RevealError::Failed { code: Some(1920) });
+    }
+
+    #[cfg(not(windows))]
+    #[test]
+    fn reveal_maps_error_kinds() {
+        use std::io::{Error, ErrorKind};
+        let map = |e: Error| RevealError::from_io(&e);
+        assert_eq!(map(Error::from(ErrorKind::NotFound)), RevealError::Gone);
+        assert_eq!(
+            map(Error::from(ErrorKind::PermissionDenied)),
+            RevealError::Denied
+        );
+        assert_eq!(
+            map(Error::from_raw_os_error(16)),
+            RevealError::Failed { code: Some(16) }
+        );
+    }
+
+    #[test]
+    fn reveal_errors_reach_the_page_as_kinds() {
+        let json = |e: RevealError| serde_json::to_string(&e).unwrap();
+        assert_eq!(json(RevealError::Gone), r#"{"kind":"gone"}"#);
+        assert_eq!(json(RevealError::Denied), r#"{"kind":"denied"}"#);
+        assert_eq!(
+            json(RevealError::Failed { code: Some(32) }),
+            r#"{"kind":"failed","code":32}"#
+        );
+        assert_eq!(
+            json(RevealError::Failed { code: None }),
+            r#"{"kind":"failed"}"#
+        );
+        assert_eq!(json(RevealError::Explorer), r#"{"kind":"explorer"}"#);
+    }
 
     fn temp(name: &str) -> PathBuf {
         let dir = std::env::temp_dir().join(format!("fob-space-{name}-{}", std::process::id()));
