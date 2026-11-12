@@ -61,7 +61,7 @@ impl Nvidia {
                     power_watts: device.power_usage().ok().map(|v| v as f64 / 1000.0),
                     core_clock_mhz: device.clock_info(Clock::Graphics).ok().map(u64::from),
                     cores: None,
-                    source: "NVIDIA NVML driver".into(),
+                    source: crate::gpu::SOURCE_NVML.into(),
                     fan_percent: device.fan_speed(0).ok().map(f64::from),
                     engines: Vec::new(),
                 })

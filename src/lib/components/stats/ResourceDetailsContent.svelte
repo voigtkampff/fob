@@ -29,7 +29,12 @@
   import DetailSection from "./DetailSection.svelte";
   import ResourceTrend from "./ResourceTrend.svelte";
   import DiskHealthSummary from "./DiskHealthSummary.svelte";
-  import { t } from "$lib/i18n";
+  import { locale, t } from "$lib/i18n";
+  import {
+    engineLabel,
+    engineTitle,
+    gpuAboutNote,
+  } from "$lib/utils/gpu-engines.js";
   import type { PanelKind } from "./panel";
   import type {
     GpuDevice,
@@ -320,7 +325,7 @@
       ]}
       chartTitle={$t("details.overTime")}
       noteTitle={$t("gpu.about")}
-      note={`${device.source}. ${device.memory_kind === "shared" ? $t("gpu.sharedNote") : ""}${$t("gpu.counterNote")}`}
+      note={gpuAboutNote(device.source, device.memory_kind, $t)}
     >
       {#snippet picker()}{#if gpus.length > 1}<div class="space-y-2">
             <label for="gpu-device" class="text-sm font-medium"
@@ -353,11 +358,14 @@
           {#each device.engines ?? [] as [engine, load]}<div
               class="grid grid-cols-[7rem_1fr_3rem] items-center gap-3 text-sm"
             >
-              <span class="truncate text-muted-foreground" title={engine}
-                >{engine}</span
+              <span
+                class="truncate text-muted-foreground"
+                data-engine={engine}
+                title={engineTitle(engine, $locale, $t)}
+                >{engineLabel(engine, $locale)}</span
               ><Progress
                 value={Math.min(100, Math.max(0, load))}
-                aria-label={engine}
+                aria-label={engineLabel(engine, $locale)}
                 style="--primary:var(--chart-2)"
               /><span class="text-right font-medium tabular-nums"
                 >{load.toFixed(0)}%</span

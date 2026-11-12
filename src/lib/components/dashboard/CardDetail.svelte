@@ -34,7 +34,8 @@
   import SensorSetup from "./SensorSetup.svelte";
   import DiskHealth from "./DiskHealth.svelte";
   import { sensorSetup } from "$lib/stores/sensorSetup";
-  import { t } from "$lib/i18n";
+  import { locale, t } from "$lib/i18n";
+  import { engineLabel, engineTitle } from "$lib/utils/gpu-engines.js";
 
   type Row = {
     pid: number;
@@ -210,7 +211,12 @@
         </ChartCursor>
         {#each g.engines ?? [] as [engine, load]}
           <div class="meter">
-            <span class="label">{engine}</span>
+            <span
+              class="label"
+              data-engine={engine}
+              title={engineTitle(engine, $locale, $t)}
+              >{engineLabel(engine, $locale)}</span
+            >
             <div class="track"><span style={`width:${load}%`}></span></div>
             <span class="num">{load.toFixed(0)}%</span>
           </div>

@@ -99,9 +99,9 @@ fn collect_from(root: &Path) -> Vec<GpuDevice> {
             core_clock_mhz: hwmon_number(&path, "freq1_input").map(|v| v / 1_000_000),
             cores: None,
             source: if amd {
-                "Linux amdgpu sysfs"
+                super::SOURCE_LINUX_AMDGPU
             } else {
-                "Linux DRM inventory; utilization not exposed"
+                super::SOURCE_LINUX_DRM
             }
             .into(),
             fan_percent: None,

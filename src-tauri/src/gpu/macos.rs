@@ -134,7 +134,7 @@ pub fn collect() -> Vec<GpuDevice> {
             power_watts: None,
             core_clock_mhz: None,
             cores,
-            source: "macOS IORegistry driver statistics".into(),
+            source: super::SOURCE_MACOS_IOREG.into(),
             fan_percent: None,
             engines: Vec::new(),
         });

@@ -37,6 +37,25 @@ pub struct GpuDevice {
     pub engines: Vec<(String, f64)>,
 }
 
+/// Stable source codes the UI maps to localized “about these readings” text.
+/// NVIDIA NVML readings use the `nvml` prefix so temperature/fan sensors can
+/// find them without parsing English prose.
+pub const SOURCE_NVML: &str = "nvml";
+pub const SOURCE_NVML_PDH: &str = "nvml-pdh";
+pub const SOURCE_NVML_NO_PDH: &str = "nvml-no-pdh";
+pub const SOURCE_NVML_SHARED_NAME: &str = "nvml-shared-name";
+pub const SOURCE_NVML_UNMATCHED: &str = "nvml-unmatched";
+pub const SOURCE_DXGI_PDH: &str = "dxgi-pdh";
+pub const SOURCE_DXGI: &str = "dxgi";
+pub const SOURCE_LINUX_AMDGPU: &str = "linux-amdgpu";
+pub const SOURCE_LINUX_DRM: &str = "linux-drm";
+pub const SOURCE_MACOS_IOREG: &str = "macos-ioreg";
+pub const SOURCE_FAKE: &str = "fake";
+
+pub fn is_nvml_source(source: &str) -> bool {
+    source == SOURCE_NVML || source.starts_with("nvml-")
+}
+
 pub fn percent(value: f64) -> Option<f64> {
     (value.is_finite() && (0.0..=100.0).contains(&value)).then_some(value)
 }
@@ -117,12 +136,12 @@ fn pair_nvidia(nvml: Vec<GpuDevice>, mut dxgi: Vec<GpuDevice>) -> Vec<GpuDevice>
                 Some(busy) => {
                     card.utilization = Some(busy);
                     card.engines = twin.engines;
-                    "NVIDIA NVML driver; utilization from PDH GPU Engine counters, same sample as the process list"
+                    SOURCE_NVML_PDH
                 }
-                None => "NVIDIA NVML driver; utilization from NVML because PDH GPU Engine counters are unavailable",
+                None => SOURCE_NVML_NO_PDH,
             },
-            Some(_) => "NVIDIA NVML driver; utilization from NVML because several cards share this name",
-            None => "NVIDIA NVML driver; utilization from NVML, no PDH adapter with this name",
+            Some(_) => SOURCE_NVML_SHARED_NAME,
+            None => SOURCE_NVML_UNMATCHED,
         }
         .into();
         cards.push(card);
@@ -153,8 +172,18 @@ fn fake_gpu() -> Option<GpuDevice> {
         power_watts: None,
         core_clock_mhz: None,
         cores: None,
-        source: "fake".into(),
-        engines: Vec::new(),
+        source: SOURCE_FAKE.into(),
+        engines: vec![
+            ("3D".into(), 42.0),
+            ("Copy".into(), 8.0),
+            ("LegacyOverlay".into(), 0.0),
+            ("OFA_0".into(), 12.0),
+            ("Security_1".into(), 1.0),
+            ("VR".into(), 0.0),
+            ("VideoDecode_1".into(), 55.0),
+            ("VideoEncode".into(), 18.0),
+            ("Compute_0".into(), 3.0),
+        ],
     })
 }
 
@@ -217,7 +246,7 @@ mod tests {
             (c.temperature, c.power_watts, c.memory_used, c.fan_percent),
             (Some(51.0), Some(42.5), Some(1 << 30), Some(30.0))
         );
-        assert!(c.source.contains("utilization from PDH"), "{}", c.source);
+        assert_eq!(c.source, SOURCE_NVML_PDH);
     }
 
     #[test]
@@ -227,7 +256,7 @@ mod tests {
             vec![pdh("luid:0:a", "NVIDIA Example 9000", "NVIDIA", Some(0.0))],
         );
         assert_eq!(idle[0].utilization, Some(0.0));
-        assert!(idle[0].source.contains("from PDH"));
+        assert_eq!(idle[0].source, SOURCE_NVML_PDH);
 
         let missing = pair_nvidia(
             vec![nvml("GPU-a", "NVIDIA Example 9000", Some(3.0))],
@@ -236,7 +265,7 @@ mod tests {
         assert_eq!(missing.len(), 1);
         assert_eq!(missing[0].utilization, Some(3.0));
         assert!(missing[0].engines.is_empty());
-        assert!(missing[0].source.contains("from NVML because PDH"));
+        assert_eq!(missing[0].source, SOURCE_NVML_NO_PDH);
 
         let neither = pair_nvidia(
             vec![nvml("GPU-a", "NVIDIA Example 9000", None)],
@@ -249,7 +278,7 @@ mod tests {
             vec![],
         );
         assert_eq!(unmatched[0].utilization, Some(3.0));
-        assert!(unmatched[0].source.contains("no PDH adapter"));
+        assert_eq!(unmatched[0].source, SOURCE_NVML_UNMATCHED);
     }
 
     #[test]
@@ -269,7 +298,7 @@ mod tests {
             let c = by_id(&cards, id);
             assert_eq!(c.utilization, Some(nvml_busy));
             assert!(c.engines.is_empty());
-            assert!(c.source.contains("several cards share this name"));
+            assert_eq!(c.source, SOURCE_NVML_SHARED_NAME);
         }
     }
 
@@ -302,6 +331,31 @@ mod tests {
         assert_eq!(percent(100.0), Some(100.0));
         for value in [-1.0, 101.0, f64::NAN, f64::INFINITY] {
             assert_eq!(percent(value), None);
+        }
+    }
+
+    #[test]
+    fn nvml_source_codes_are_the_ones_that_start_with_nvml() {
+        for code in [
+            SOURCE_NVML,
+            SOURCE_NVML_PDH,
+            SOURCE_NVML_NO_PDH,
+            SOURCE_NVML_SHARED_NAME,
+            SOURCE_NVML_UNMATCHED,
+        ] {
+            assert!(is_nvml_source(code), "{code}");
+        }
+        for code in [
+            SOURCE_DXGI_PDH,
+            SOURCE_DXGI,
+            SOURCE_LINUX_AMDGPU,
+            SOURCE_LINUX_DRM,
+            SOURCE_MACOS_IOREG,
+            SOURCE_FAKE,
+            "test",
+            "NVIDIA NVML driver",
+        ] {
+            assert!(!is_nvml_source(code), "{code}");
         }
     }
 }
