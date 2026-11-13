@@ -608,6 +608,7 @@ export const en = {
   "proc.expandAria": "Expand {v} children",
   "proc.lockedBranch": "Clear search and filters to collapse this branch",
   "proc.familyCount": "{n} processes in this family",
+  "proc.familyCpuMissing": "部分进程没有 CPU 读数，无法计算完整合计",
   "proc.familyCpu": "Combined CPU for {n} processes",
   "proc.familyRam":
     "Memory of this process and all its children; shared memory may count twice",
@@ -1340,6 +1341,8 @@ export const zh = {
   "proc.expandAria": "展开 {v} 的子进程",
   "proc.lockedBranch": "清除搜索和筛选后才能折叠此分支",
   "proc.familyCount": "此进程族有 {n} 个进程",
+  "proc.familyCpuMissing":
+    "Some processes have no CPU reading; the full total is unavailable",
   "proc.familyCpu": "{n} 个进程的 CPU 合计",
   "proc.familyRam": "此进程及所有子进程的内存合计，共享内存可能重复计算",
   "proc.tableAria": "进程表",

@@ -118,9 +118,9 @@
             expansionLocked={searchActive}
             {onToggleExpand}
             isPinned={pinnedProcesses.has(row.process.command)}
-            isHighUsage={(viewMode === "tree"
+            isHighUsage={((viewMode === "tree"
               ? row.familyCpuUsage
-              : row.process.cpu_usage) > 50 ||
+              : row.process.cpu_usage) ?? 0) > 50 ||
               (viewMode === "tree"
                 ? row.familyMemoryUsage
                 : row.process.memory_usage) /

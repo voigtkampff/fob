@@ -74,7 +74,7 @@ try {
     mobile: false,
   });
   await send("Page.navigate", {
-    url: `${base}/process-table-panel.html?lang=${lang}`,
+    url: `${base}/process-table-panel.html?lang=${lang}&cpuMissing`,
   });
   for (
     let i = 0;
@@ -125,6 +125,35 @@ try {
     scrollWidth: before.scrollWidth,
     clientWidth: before.clientWidth,
   };
+  const cpuCol = col(before, "CPU %");
+  assert.equal(
+    before.rows.find((r) => r[0].text === "setup.exe")[cpuCol].text,
+    "—",
+  );
+  assert.equal(
+    before.rows.find((r) => r[0].text === "explorer.exe")[cpuCol].text,
+    "0.0%",
+  );
+  assert.equal(
+    names(before).at(-1),
+    "setup.exe",
+    "CPU unknown last descending",
+  );
+  assert.equal(
+    await evaluate("document.querySelectorAll('thead [title]').length"),
+    0,
+    "no column header tooltips",
+  );
+  await shot(`process-table-${lang}-cpu-missing.png`);
+  await click("CPU %");
+  const cpuAsc = await table();
+  assert.equal(names(cpuAsc).at(-1), "setup.exe", "CPU unknown last ascending");
+  assert.equal(
+    names(cpuAsc)[0],
+    "explorer.exe",
+    "measured idle first ascending",
+  );
+  report.cpuMissing = true;
   await shot(`process-table-${lang}.png`);
   await click(L.read);
   const byRead = await table();
@@ -171,6 +200,56 @@ try {
     r[col(byWrite, L.write)].text,
   ]);
   assert.deepEqual(names(byWrite).slice(0, 2), ["OneDrive.exe", "chrome.exe"]);
+  const detailBox = await evaluate(`(() => {
+    const b = [...document.querySelectorAll('tbody button')].find(b => b.textContent.trim() === 'setup.exe');
+    const r = b.getBoundingClientRect(); return { x: r.x+r.width/2, y:r.y+r.height/2 };
+  })()`);
+  for (const type of ["mouseMoved", "mousePressed", "mouseReleased"])
+    await send("Input.dispatchMouseEvent", {
+      type,
+      ...detailBox,
+      button: "left",
+      clickCount: 1,
+    });
+  for (
+    let i = 0;
+    i < 50 &&
+    !(await evaluate("!!document.querySelector('[data-slot=sheet-content]')"));
+    i++
+  )
+    await new Promise((r) => setTimeout(r, 100));
+  const detailCpu = await evaluate(
+    "document.querySelector('[data-slot=sheet-content] .text-2xl')?.textContent.trim()",
+  );
+  assert.equal(
+    detailCpu,
+    "—",
+    "details show unknown, not zero or a filled progress bar",
+  );
+  await shot(`process-details-${lang}-cpu-missing.png`);
+  report.detailCpu = detailCpu;
+  await send("Page.navigate", {
+    url: `${base}/process-table-panel.html?lang=${lang}&cpuMissing&view=tree`,
+  });
+  for (
+    let i = 0;
+    i < 100 && !(await evaluate("!!document.querySelector('tbody tr')"));
+    i++
+  )
+    await new Promise((r) => setTimeout(r, 100));
+  const familyCpu = await evaluate(`(() => {
+    const row = [...document.querySelectorAll('tbody tr')].find(r => r.querySelector('button[title="System"]'));
+    const cell = row?.querySelector('[data-col=cpu_usage]');
+    return { text: cell?.textContent.trim(), title: cell?.querySelector('span')?.title };
+  })()`);
+  assert.equal(
+    familyCpu.text,
+    "—",
+    "family with unknown descendant is not a partial total",
+  );
+  assert.ok(familyCpu.title?.length > 0);
+  report.familyCpu = familyCpu;
+  await shot(`process-tree-${lang}-cpu-missing.png`);
   writeFileSync(
     `${out}/process-table-${lang}.json`,
     JSON.stringify(report, null, 2),

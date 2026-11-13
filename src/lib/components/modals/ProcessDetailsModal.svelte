@@ -82,13 +82,15 @@
             ></Card.Header
           ><Card.Content class="flex-1 justify-between gap-3"
             ><p class="text-2xl font-semibold tabular-nums">
-              {process.cpu_usage.toFixed(1)}%
+              {process.cpu_usage == null
+                ? "—"
+                : `${process.cpu_usage.toFixed(1)}%`}
             </p>
-            <Progress
-              value={Math.min(100, Math.max(0, process.cpu_usage))}
-              aria-label={$t("pd.cpuAria")}
-              style={`--primary:var(--${process.cpu_usage > 80 ? "red" : process.cpu_usage > 50 ? "yellow" : "blue"})`}
-            /></Card.Content
+            {#if process.cpu_usage != null}<Progress
+                value={Math.min(100, Math.max(0, process.cpu_usage))}
+                aria-label={$t("pd.cpuAria")}
+                style={`--primary:var(--${process.cpu_usage > 80 ? "red" : process.cpu_usage > 50 ? "yellow" : "blue"})`}
+              />{/if}</Card.Content
           ></Card.Root
         ><Card.Root size="sm" class="gap-2"
           ><Card.Header
@@ -190,7 +192,9 @@
                     ><Table.Cell class="font-mono text-xs"
                       >{child.pid}</Table.Cell
                     ><Table.Cell class="text-right font-mono text-xs"
-                      >{child.cpu_usage.toFixed(1)}%</Table.Cell
+                      >{child.cpu_usage == null
+                        ? "—"
+                        : `${child.cpu_usage.toFixed(1)}%`}</Table.Cell
                     ><Table.Cell class="text-right font-mono text-xs"
                       >{formatBytes(child.memory_usage)}</Table.Cell
                     ></Table.Row

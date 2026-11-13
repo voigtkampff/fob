@@ -5,6 +5,8 @@
 //! and data structures for representing system state.
 
 mod accounts;
+#[cfg(any(target_os = "windows", test))]
+mod cpu_rates;
 mod cpu_topology;
 pub use cpu_topology::*;
 mod gpu_process_monitor;

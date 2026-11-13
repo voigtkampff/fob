@@ -83,14 +83,16 @@ export function buildProcessTree(
     order.push(process);
     for (const child of allChildren.get(process.pid) || []) stack.push(child);
   }
-  /** @type {Map<number, {cpu: number, memory: number, count: number, pinned: boolean}>} */
+  /** @type {Map<number, {cpu: number | null, memory: number, count: number, pinned: boolean}>} */
   const totals = new Map();
   for (let index = order.length - 1; index >= 0; index--) {
     const process = order[index];
+    /** @type {{cpu: number | null, memory: number, count: number, pinned: boolean}} */
     const total = {
-      cpu: Number.isFinite(process.cpu_usage)
-        ? Math.max(0, process.cpu_usage)
-        : 0,
+      cpu:
+        process.cpu_usage != null && Number.isFinite(process.cpu_usage)
+          ? Math.max(0, process.cpu_usage)
+          : null,
       memory: Number.isFinite(process.memory_usage)
         ? Math.max(0, process.memory_usage)
         : 0,
@@ -100,7 +102,10 @@ export function buildProcessTree(
     for (const child of allChildren.get(process.pid) || []) {
       const childTotal = totals.get(child.pid);
       if (!childTotal) continue;
-      total.cpu += childTotal.cpu;
+      total.cpu =
+        total.cpu == null || childTotal.cpu == null
+          ? null
+          : total.cpu + childTotal.cpu;
       total.memory += childTotal.memory;
       total.count += childTotal.count;
       total.pinned ||= childTotal.pinned;
@@ -146,8 +151,11 @@ export function buildProcessTree(
     if (!a || !b) return 0;
     if (a.pinned !== b.pinned) return a.pinned ? -1 : 1;
     const direction = options.sortConfig?.direction === "asc" ? 1 : -1;
-    if (options.sortConfig?.field === "cpu_usage")
+    if (options.sortConfig?.field === "cpu_usage") {
+      if (a.cpu == null || b.cpu == null)
+        return a.cpu == null ? (b.cpu == null ? 0 : 1) : -1;
       return direction * (a.cpu - b.cpu);
+    }
     if (options.sortConfig?.field === "memory_usage")
       return direction * (a.memory - b.memory);
     return 0;
@@ -175,7 +183,7 @@ export function buildProcessTree(
         childCount: descendants.length,
         expanded: isExpanded,
         rootIndex,
-        familyCpuUsage: total?.cpu || 0,
+        familyCpuUsage: total ? total.cpu : null,
         familyMemoryUsage: total?.memory || 0,
         familyProcessCount: total?.count || 1,
       });

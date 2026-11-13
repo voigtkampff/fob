@@ -119,7 +119,10 @@ const liveSnapshot = () => {
       sequence: tick + 1,
       processes: processes.map((p, i) => ({
         ...p,
-        cpu_usage: Math.round(p.cpu_usage * (0.5 + wave(i)) * 10) / 10,
+        cpu_usage:
+          p.cpu_usage == null
+            ? null
+            : Math.round(p.cpu_usage * (0.5 + wave(i)) * 10) / 10,
         disk_usage: [Math.round(4096 * wave(i + 1)), 0],
       })),
       stats: {
@@ -169,7 +172,18 @@ mockIPC(async (command, args) => {
     return { config, revision: ++revision, ready: true };
   }
   if (command === "plugin:event|listen") return 1;
-  if (command === "get_processes") return live ? liveSnapshot() : snapshot;
+  if (command === "get_processes") {
+    const result = live ? liveSnapshot() : snapshot;
+    return {
+      ...result,
+      history: {
+        reset: true,
+        samples: result.history,
+        cursor: null,
+        first_timestamp: result.history[0]?.timestamp ?? null,
+      },
+    };
+  }
   // The poll skips a hidden or minimized window; with ?live it is shown.
   if (live && command === "plugin:window|is_visible") return true;
   if (live && command === "set_monitor_paused") {

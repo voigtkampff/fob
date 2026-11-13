@@ -23,7 +23,7 @@ async function load(path, replace = {}) {
   return `data:text/javascript;base64,${Buffer.from(javascript).toString("base64")}`;
 }
 const utilsUrl = await load("../src/lib/utils/index.ts");
-const { sortProcesses } = await import(utilsUrl);
+const { sortProcesses, filterProcesses } = await import(utilsUrl);
 const { column_definitions: columns } = await import(
   await load("../src/lib/definitions/columns.ts", {
     "$lib/utils": utilsUrl,
@@ -159,4 +159,39 @@ test("PawnIO is uninstalled in Windows settings, not in Fob", () => {
   );
   assert.ok(!zh["setup.disableNote"].includes("设置 › 应用"));
   assert.ok(!en["setup.disableNote"].includes("Settings › Apps"));
+});
+
+test("CPU missing readings remain distinct from idle in formatting, sorting and filters", () => {
+  assert.equal(column("cpu_usage").format(null), "—");
+  assert.equal(column("cpu_usage").format(0), "0.0%");
+  assert.equal(column("cpu_usage").nullable, true);
+  const processes = [null, 0, 5].map((cpu_usage, i) => ({
+    pid: i,
+    command: `${i}`,
+    cpu_usage,
+  }));
+  for (const direction of ["asc", "desc"]) {
+    const sorted = sortProcesses(
+      processes,
+      { field: "cpu_usage", direction },
+      new Set(),
+    );
+    assert.equal(sorted.at(-1).cpu_usage, null);
+  }
+  const filters = {
+    cpu: { enabled: true, operator: "=", value: 0 },
+    gpu: { enabled: false },
+    ram: { enabled: false },
+    runtime: { enabled: false },
+    status: { enabled: false },
+  };
+  assert.deepEqual(
+    filterProcesses(processes, "", filters).map((p) => p.cpu_usage),
+    [0],
+  );
+  filters.cpu.operator = "<=";
+  assert.deepEqual(
+    filterProcesses(processes, "", filters).map((p) => p.cpu_usage),
+    [0],
+  );
 });

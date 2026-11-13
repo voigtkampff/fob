@@ -1,4 +1,5 @@
 <script>
+  import ProcessDetailsModal from "../../src/lib/components/modals/ProcessDetailsModal.svelte";
   import ProcessTable from "../../src/lib/components/process/ProcessTable.svelte";
   import { column_definitions } from "../../src/lib/definitions/columns";
   import { sortProcesses } from "../../src/lib/utils";
@@ -75,7 +76,7 @@
     {
       pid: 2200,
       name: "explorer.exe",
-      cpu_usage: 0.2,
+      cpu_usage: params.has("cpuMissing") ? 0 : 0.2,
       memory_usage: 150 * MB,
       virtual_memory: 1.4e9,
       gpu_usage: 0.8,
@@ -86,7 +87,7 @@
     {
       pid: 15004,
       name: "setup.exe",
-      cpu_usage: 1.5,
+      cpu_usage: params.has("cpuMissing") ? null : 1.5,
       memory_usage: 30 * MB,
       virtual_memory: 0.2e9,
       gpu_usage: 0,
@@ -131,6 +132,12 @@
     run_time: [2265, 25592, 9999 * 3600 + 3599, 45, 8760 * 3600 + 3599][i % 5],
     ...p,
   }));
+  /** @type {import("../../src/lib/types").Process | null} */
+  let selected = $state(null);
+  /** @param {import("../../src/lib/types").Process} process */
+  const showDetails = (process) => {
+    selected = process;
+  };
   /** @type {import("../../src/lib/types").SortConfig} */
   let sortConfig = $state({ field: "cpu_usage", direction: "desc" });
   const columns = $derived(
@@ -178,10 +185,19 @@
             }
           : { field, direction: "desc" })}
     onTogglePin={() => {}}
-    onShowDetails={() => {}}
+    onShowDetails={showDetails}
     onKillProcess={() => {}}
   />
 </div>
+<ProcessDetailsModal
+  show={selected != null}
+  process={selected}
+  {processes}
+  onClose={() => {
+    selected = null;
+  }}
+  onShowDetails={showDetails}
+/>
 
 <style>
   .preview-note {

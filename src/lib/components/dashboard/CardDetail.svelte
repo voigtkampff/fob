@@ -40,7 +40,7 @@
   type Row = {
     pid: number;
     name: string;
-    cpu_usage: number;
+    cpu_usage: number | null;
     memory_usage: number;
     gpu_usage?: number | null;
   };
@@ -169,7 +169,7 @@
       {#each lists.cpu.slice(0, n) as p (p.pid)}
         <div class="item">
           <span class="name">{p.name}</span><span class="num"
-            >{p.cpu_usage.toFixed(1)}</span
+            >{p.cpu_usage == null ? "—" : p.cpu_usage.toFixed(1)}</span
           >
         </div>
       {/each}
