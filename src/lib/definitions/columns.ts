@@ -22,7 +22,8 @@ export let column_definitions: Column[] = [
     label: "CPU %",
     visible: true,
     numeric: true,
-    format: (v) => v.toFixed(1) + "%",
+    nullable: true,
+    format: (v) => (v == null ? "—" : v.toFixed(1) + "%"),
   },
   {
     id: "memory_usage",

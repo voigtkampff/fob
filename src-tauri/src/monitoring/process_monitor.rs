@@ -29,6 +29,8 @@ pub struct ProcessMonitor {
     io: IoRates,
     /// Owner names by SID, looked up once per owner.
     accounts: AccountNames,
+    #[cfg(target_os = "windows")]
+    cpu: super::cpu_rates::CpuRates,
 }
 
 impl ProcessMonitor {
@@ -38,6 +40,8 @@ impl ProcessMonitor {
             process_cache: HashMap::new(),
             io: IoRates::default(),
             accounts: AccountNames::default(),
+            #[cfg(target_os = "windows")]
+            cpu: super::cpu_rates::CpuRates::default(),
         }
     }
 
@@ -59,7 +63,7 @@ impl ProcessMonitor {
         max_window: Duration,
     ) -> Result<Vec<ProcessInfo>, String> {
         let current_time = Self::get_current_time()?;
-        let processes_data = self.collect_process_data(sys, current_time);
+        let processes_data = self.collect_process_data(sys, current_time, max_window);
         Ok(self.build_process_info(processes_data, Instant::now(), max_window))
     }
 
@@ -88,8 +92,26 @@ impl ProcessMonitor {
     }
 
     /// Collects raw process data from the system
-    fn collect_process_data(&self, sys: &sysinfo::System, current_time: u64) -> Vec<ProcessData> {
+    fn collect_process_data(
+        &mut self,
+        sys: &sysinfo::System,
+        current_time: u64,
+        _max_window: Duration,
+    ) -> Vec<ProcessData> {
+        #[cfg(not(target_os = "windows"))]
         let logical = logical_processors(sys);
+        #[cfg(target_os = "windows")]
+        let cpu = self.cpu.advance(
+            Instant::now(),
+            _max_window,
+            super::cpu_rates::system(),
+            sys.processes().iter().map(|(pid, p)| {
+                (
+                    (pid.as_u32(), p.start_time()),
+                    super::cpu_rates::process(pid.as_u32()),
+                )
+            }),
+        );
         sys.processes()
             .iter()
             .map(|(pid, process)| {
@@ -104,7 +126,13 @@ impl ProcessMonitor {
                     name: process.name().to_string_lossy().into_owned(),
                     cmd: need_cmd.then(|| os_string_vec_to_string_vec(process.cmd())),
                     user_id: process.user_id().map(|uid| uid.to_string()),
-                    cpu_usage: normalize_cpu(process.cpu_usage(), logical),
+                    #[cfg(not(target_os = "windows"))]
+                    cpu_usage: process
+                        .cpu_usage()
+                        .is_finite()
+                        .then(|| normalize_cpu(process.cpu_usage(), logical)),
+                    #[cfg(target_os = "windows")]
+                    cpu_usage: cpu.get(&(pid.as_u32(), start_time)).copied(),
                     memory: process.memory(),
                     status: process.status(),
                     ppid: process.parent().map(|p| p.as_u32()),
@@ -221,6 +249,7 @@ impl ProcessMonitor {
 }
 
 /// Logical processors the CPU percentages are shared across.
+#[cfg(not(target_os = "windows"))]
 fn logical_processors(sys: &sysinfo::System) -> usize {
     match sys.cpus().len() {
         0 => std::thread::available_parallelism().map_or(1, |n| n.get()),
@@ -231,6 +260,7 @@ fn logical_processors(sys: &sysinfo::System) -> usize {
 /// sysinfo reports a process's CPU as a share of one logical processor
 /// (0..100 x logical). Task Manager shows the share of the whole machine,
 /// 0..100, so a process that saturates 1 of 24 threads reads 4.2 %.
+#[cfg(any(not(target_os = "windows"), test))]
 fn normalize_cpu(per_core: f32, logical: usize) -> f32 {
     if !per_core.is_finite() {
         return 0.0;
@@ -265,7 +295,7 @@ mod tests {
             name: name.into(),
             cmd: cmd.map(strings),
             user_id: Some("1000".into()),
-            cpu_usage: 1.0,
+            cpu_usage: Some(1.0),
             memory: 10,
             status: ProcessStatus::Run,
             ppid: None,

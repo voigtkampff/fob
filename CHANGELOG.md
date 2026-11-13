@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.8.10
+
+- 主窗口 (Main window): chart history is sent in full on the first read, then only new samples are transferred. Returning after a long hidden period resynchronizes the full retained history when needed; chart cadence and the independent mini window/status bar readings are unchanged
+- 进程 CPU (Process CPU): unavailable Windows CPU readings and samples without a valid baseline now show — rather than 0.0%. Measured idle still shows 0.0%, and readings recover after two successful samples
+- A process family's CPU total shows — if any member has no reading. Unknown CPU values sort after measured values in either direction and do not match numeric CPU filters; system-wide CPU readings and other process metrics are unchanged
+- The bundled sensor helper is unchanged at 0.8.2
+
 ## 0.8.9
 
 - 空间分布 (Space map): when right-click Show in File Explorer finds the item gone (Windows error 2 or 3), Fob now says the item no longer exists and that the scan may be out of date, with a hint to press 重新扫描 (Rescan). This replaces an English-only message that also showed in the Chinese interface

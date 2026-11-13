@@ -164,3 +164,29 @@ test("sorting and pinning prioritize whole families without mutating snapshots",
   );
   assert.equal(JSON.stringify(processes), before);
 });
+
+test("unknown descendants invalidate the full family CPU even while searching", () => {
+  const processes = [
+    process(1, 0, 1, 2),
+    process(2, 1, 2, null),
+    process(3, 0, 3, 0),
+  ];
+  for (const direction of ["asc", "desc"]) {
+    const options = { sortConfig: { field: "cpu_usage", direction } };
+    const tree = buildProcessTree(processes, new Set(), null, options);
+    assert.equal(tree.rows.at(-1).process.pid, 1);
+    assert.equal(tree.rows.at(-1).familyCpuUsage, null);
+    const filtered = buildProcessTree(
+      processes,
+      new Set(),
+      new Set([2]),
+      options,
+    );
+    assert.equal(filtered.rows[0].familyCpuUsage, null);
+  }
+  const recovered = buildProcessTree(
+    [process(1, 0, 1, 2), process(2, 1, 2, 0)],
+    new Set(),
+  );
+  assert.equal(recovered.rows[0].familyCpuUsage, 2);
+});

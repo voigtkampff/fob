@@ -14,7 +14,8 @@ pub async fn get_processes(
     app: tauri::AppHandle,
     include_gpu: Option<bool>,
     include_ports: Option<bool>,
-) -> Result<crate::sampling::Snapshot, String> {
+    history_cursor: Option<crate::sampling::HistoryCursor>,
+) -> Result<crate::sampling::ProcessSnapshot, String> {
     tauri::async_runtime::spawn_blocking(move || {
         use tauri::Manager;
         let state = app.state::<AppState>();
@@ -37,7 +38,7 @@ pub async fn get_processes(
                 }
             }
         }
-        Ok(snapshot)
+        Ok(snapshot.for_main(history_cursor))
     })
     .await
     .map_err(|e| e.to_string())?

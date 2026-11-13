@@ -73,14 +73,17 @@
                 class="size-3 shrink-0 fill-primary/20 text-primary"
               />{/if}
           </div>
-        {:else if column.id === "cpu_usage"}{@const cpu =
-            tree?.familyCpuUsage ?? process.cpu_usage}<span
-            class={cpu > 50
+        {:else if column.id === "cpu_usage"}{@const cpu = tree
+            ? tree.familyCpuUsage
+            : process.cpu_usage}<span
+            class={cpu != null && cpu > 50
               ? "rounded bg-destructive/10 px-1.5 py-1 text-destructive"
               : ""}
-            title={tree
-              ? $t("proc.familyCpu", { n: tree.familyProcessCount })
-              : undefined}>{cpu.toFixed(1)}%</span
+            title={cpu == null
+              ? $t(tree ? "proc.familyCpuMissing" : "proc.noReading")
+              : tree
+                ? $t("proc.familyCpu", { n: tree.familyProcessCount })
+                : undefined}>{cpu == null ? "—" : `${cpu.toFixed(1)}%`}</span
           >
         {:else if tree && column.id === "memory_usage"}<span
             title={$t("proc.familyRam")}

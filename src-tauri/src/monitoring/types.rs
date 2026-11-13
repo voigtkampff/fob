@@ -14,8 +14,8 @@ pub(crate) struct ProcessData {
     pub cmd: Option<Vec<String>>,
     /// User ID that owns the process
     pub user_id: Option<String>,
-    /// CPU usage as percentage (0-100)
-    pub cpu_usage: f32,
+    /// CPU usage as percentage of the whole machine (0-100); None without a valid reading.
+    pub cpu_usage: Option<f32>,
     /// Physical memory usage in bytes
     pub memory: u64,
     /// Current process status
@@ -69,8 +69,8 @@ pub struct ProcessInfo {
     pub ppid: u32,
     /// Process name
     pub name: String,
-    /// CPU usage as percentage (0-100)
-    pub cpu_usage: f32,
+    /// CPU usage as percentage of the whole machine (0-100); None without a valid reading.
+    pub cpu_usage: Option<f32>,
     /// Physical memory usage in bytes
     pub memory_usage: u64,
     /// Process status as string

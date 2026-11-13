@@ -4,7 +4,7 @@ use crate::{
     monitoring::{ProcessInfo, SystemStats},
     state::AppState,
 };
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use std::{
     collections::{BTreeMap, VecDeque},
     sync::Arc,
@@ -259,6 +259,7 @@ pub struct Hub {
     pub process_gpu: bool,
     gpu_process_monitor: crate::monitoring::GpuProcessMonitor,
     history: VecDeque<Sample>,
+    history_epoch: String,
     pub interval: u64,
     pub paused: bool,
     last_attempt: Option<Instant>,
@@ -272,6 +273,7 @@ impl Default for Hub {
             process_gpu: false,
             gpu_process_monitor: crate::monitoring::GpuProcessMonitor::new(),
             history: VecDeque::new(),
+            history_epoch: history_epoch(),
             interval: 3000,
             paused: false,
             last_attempt: None,
@@ -285,11 +287,89 @@ pub struct Snapshot {
     pub port_error: Option<String>,
     pub frame: Arc<Frame>,
     pub history: Vec<Sample>,
+    #[serde(skip)]
+    history_epoch: String,
     pub paused: bool,
     pub interval: u64,
     pub error: Option<String>,
 }
+fn history_epoch() -> String {
+    static NEXT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+    format!(
+        "{}-{}",
+        SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_nanos(),
+        NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
+    )
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct HistoryCursor {
+    epoch: String,
+    timestamp: u64,
+}
+#[derive(Serialize)]
+pub struct HistoryUpdate {
+    reset: bool,
+    samples: Vec<Sample>,
+    cursor: Option<HistoryCursor>,
+    first_timestamp: Option<u64>,
+}
+impl HistoryUpdate {
+    fn of(history: Vec<Sample>, epoch: String, cursor: Option<HistoryCursor>) -> Self {
+        let after = cursor
+            .filter(|c| c.epoch == epoch)
+            .and_then(|c| history.iter().position(|s| s.timestamp == c.timestamp));
+        let next = history.last().map(|s| HistoryCursor {
+            epoch,
+            timestamp: s.timestamp,
+        });
+        let first_timestamp = history.first().map(|s| s.timestamp);
+        Self {
+            reset: after.is_none(),
+            cursor: next,
+            first_timestamp,
+            samples: history
+                .into_iter()
+                .skip(after.map_or(0, |i| i + 1))
+                .collect(),
+        }
+    }
+}
+#[derive(Serialize)]
+pub struct ProcessSnapshot {
+    pub port_error: Option<String>,
+    pub frame: Arc<Frame>,
+    pub history: HistoryUpdate,
+    pub paused: bool,
+    pub interval: u64,
+    pub error: Option<String>,
+}
+impl Snapshot {
+    pub fn for_main(self, cursor: Option<HistoryCursor>) -> ProcessSnapshot {
+        ProcessSnapshot {
+            port_error: self.port_error,
+            frame: self.frame,
+            history: HistoryUpdate::of(self.history, self.history_epoch, cursor),
+            paused: self.paused,
+            interval: self.interval,
+            error: self.error,
+        }
+    }
+}
 impl Hub {
+    fn append_history(&mut self, sample: Sample) {
+        if self
+            .history
+            .back()
+            .is_some_and(|s| s.timestamp >= sample.timestamp)
+        {
+            self.history_epoch = history_epoch();
+        }
+        append(&mut self.history, sample);
+    }
     fn due(&self) -> bool {
         self.frame.is_none()
             || (!self.paused
@@ -302,7 +382,7 @@ impl Hub {
             return;
         }
         self.paused = paused;
-        append(&mut self.history, Sample::gap(now_ms(), self.interval));
+        self.append_history(Sample::gap(now_ms(), self.interval));
         // Preserve the CPU minimum refresh window when resuming immediately.
         if !paused
             && self
@@ -317,12 +397,12 @@ impl Hub {
             self.last_attempt = Some(Instant::now());
             match self.capture(state) {
                 Ok(frame) => {
-                    append(&mut self.history, Sample::from_frame(&frame, self.interval));
+                    self.append_history(Sample::from_frame(&frame, self.interval));
                     self.frame = Some(Arc::new(frame));
                     self.error = None;
                 }
                 Err(error) => {
-                    append(&mut self.history, Sample::gap(now_ms(), self.interval));
+                    self.append_history(Sample::gap(now_ms(), self.interval));
                     self.error = Some(error);
                 }
             }
@@ -335,6 +415,7 @@ impl Hub {
                     .unwrap_or_else(|| "No system readings yet".into())
             })?,
             history: self.history.iter().cloned().collect(),
+            history_epoch: self.history_epoch.clone(),
             paused: self.paused,
             interval: self.interval,
             error: self.error.clone(),
@@ -413,7 +494,7 @@ pub struct BusyProcess {
     pub pid: u32,
     pub start_time: u64,
     pub name: String,
-    pub cpu_usage: f32,
+    pub cpu_usage: Option<f32>,
     pub memory_usage: u64,
     pub gpu_usage: Option<f32>,
 }
@@ -476,7 +557,7 @@ impl From<Snapshot> for Overview {
             gpus: s.frame.gpus.clone(),
             history: s.history,
             processes: top_memory.iter().take(5).cloned().collect(),
-            top_cpu: top_by(all, 10, |p| p.cpu_usage.is_finite().then_some(p.cpu_usage)),
+            top_cpu: top_by(all, 10, |p| p.cpu_usage.filter(|v| v.is_finite())),
             top_gpu: top_by(all, 10, |p| {
                 p.gpu_usage.filter(|g| g.is_finite() && *g > 0.0)
             }),
@@ -552,6 +633,82 @@ pub async fn set_monitor_interval(
 #[cfg(test)]
 mod tests {
     use super::*;
+    fn assert_main_history(
+        hub: &Hub,
+        current: &mut Vec<Sample>,
+        cursor: &mut Option<HistoryCursor>,
+    ) -> bool {
+        let update = HistoryUpdate::of(
+            hub.history.iter().cloned().collect(),
+            hub.history_epoch.clone(),
+            cursor.clone(),
+        );
+        let reset = update.reset;
+        if reset {
+            *current = update.samples;
+        } else {
+            current.retain(|s| {
+                update
+                    .first_timestamp
+                    .is_some_and(|first| s.timestamp >= first)
+            });
+            current.extend(update.samples);
+        }
+        *cursor = update.cursor;
+        assert_eq!(
+            serde_json::to_value(&*current).unwrap(),
+            serde_json::to_value(&hub.history).unwrap()
+        );
+        reset
+    }
+    #[test]
+    fn main_history_resumes_rolls_over_and_resets_without_changing_other_readers() {
+        let mut hub = Hub::default();
+        let (mut current, mut cursor) = (Vec::new(), None);
+        for i in 0..180 {
+            hub.append_history(Sample::gap(10000 + i * 1500, 1500));
+            if i % 7 == 0 {
+                assert_main_history(&hub, &mut current, &mut cursor);
+            }
+        }
+        assert_main_history(&hub, &mut current, &mut cursor);
+        let update = HistoryUpdate::of(
+            hub.history.iter().cloned().collect(),
+            hub.history_epoch.clone(),
+            cursor.clone(),
+        );
+        assert!(!update.reset);
+        assert!(update.samples.is_empty());
+        // A second consumer starts with the full buffer, not the first one's cursor.
+        let mut independent = Vec::new();
+        let mut independent_cursor = None;
+        assert!(assert_main_history(
+            &hub,
+            &mut independent,
+            &mut independent_cursor
+        ));
+        for i in 180..300 {
+            hub.append_history(Sample::gap(10000 + i * 1500, 1500));
+        }
+        assert!(assert_main_history(&hub, &mut current, &mut cursor));
+        assert!(assert_main_history(
+            &hub,
+            &mut independent,
+            &mut independent_cursor
+        ));
+        // Replacement and backward wall clock invalidate cursors even if timestamps match.
+        hub.append_history(Sample::gap(hub.history.back().unwrap().timestamp, 3000));
+        assert!(assert_main_history(&hub, &mut current, &mut cursor));
+        hub.append_history(Sample::gap(5000, 3000));
+        assert!(assert_main_history(&hub, &mut current, &mut cursor));
+        let mut restarted = Hub::default();
+        restarted.append_history(Sample::gap(5000, 3000));
+        assert!(assert_main_history(&restarted, &mut current, &mut cursor));
+        // Pause and failed/late captures can add history without a new frame sequence.
+        restarted.append_history(Sample::gap(20000, 3000));
+        assert!(!assert_main_history(&restarted, &mut current, &mut cursor));
+    }
+
     #[test]
     fn headline_temps_pick_the_cpu_package_and_the_gpu() {
         use crate::sensors::{Sensor, SensorKind};

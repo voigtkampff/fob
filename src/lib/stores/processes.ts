@@ -1,3 +1,4 @@
+import { mergeHistory } from "$lib/utils/history-transfer.js";
 import { get, writable } from "svelte/store";
 import type {
   Process,
@@ -6,6 +7,7 @@ import type {
   GpuDevice,
   FrameExtra,
   MonitorSnapshot,
+  HistoryCursor,
 } from "$lib/types";
 import { searchHasPortQuery } from "$lib/utils";
 import { invoke } from "@tauri-apps/api/core";
@@ -13,6 +15,7 @@ import { invoke } from "@tauri-apps/api/core";
 interface ProcessStore {
   portError: string | null;
   resourceHistory: ResourceSample[];
+  historyCursor: HistoryCursor | null;
   processes: Process[];
   systemStats: SystemStats | null;
   gpus: GpuDevice[];
@@ -39,6 +42,7 @@ interface ProcessStore {
 const initialState: ProcessStore = {
   portError: null,
   resourceHistory: [],
+  historyCursor: null,
   processes: [],
   systemStats: null,
   gpus: [],
@@ -74,6 +78,7 @@ function createProcessStore() {
   const readProcesses = async () => {
     try {
       const result = await invoke<MonitorSnapshot>("get_processes", {
+        historyCursor: get({ subscribe }).historyCursor,
         includeGpu: gpuDetails,
         includePorts: searchHasPortQuery(get({ subscribe }).searchTerm),
       });
@@ -84,7 +89,8 @@ function createProcessStore() {
         gpus: result.frame.gpus,
         extra: result.frame.extra ?? null,
         capturedAt: result.frame.captured_at,
-        resourceHistory: result.history,
+        resourceHistory: mergeHistory(state.resourceHistory, result.history),
+        historyCursor: result.history.cursor,
         isFrozen: result.paused,
         error: result.error,
         portError: result.port_error ?? null,

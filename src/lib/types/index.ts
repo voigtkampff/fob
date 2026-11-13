@@ -3,7 +3,7 @@ export interface Process {
   pid: number;
   ppid: number;
   name: string;
-  cpu_usage: number;
+  cpu_usage: number | null;
   gpu_usage: number | null;
   memory_usage: number;
   status: string;
@@ -116,7 +116,7 @@ export interface ProcessTreeRow {
   childCount: number;
   expanded: boolean;
   rootIndex: number;
-  familyCpuUsage: number;
+  familyCpuUsage: number | null;
   familyMemoryUsage: number;
   familyProcessCount: number;
 }
@@ -304,6 +304,16 @@ export interface NetApp {
   rx: number;
   tx: number;
 }
+export interface HistoryCursor {
+  epoch: string;
+  timestamp: number;
+}
+export interface HistoryUpdate {
+  reset: boolean;
+  samples: ResourceSample[];
+  cursor: HistoryCursor | null;
+  first_timestamp: number | null;
+}
 export interface MonitorSnapshot {
   port_error?: string | null;
   frame: {
@@ -314,7 +324,7 @@ export interface MonitorSnapshot {
     gpus: GpuDevice[];
     extra?: FrameExtra;
   };
-  history: ResourceSample[];
+  history: HistoryUpdate;
   paused: boolean;
   interval: number;
   error: string | null;

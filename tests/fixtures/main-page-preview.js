@@ -119,7 +119,10 @@ const liveSnapshot = () => {
       sequence: tick + 1,
       processes: processes.map((p, i) => ({
         ...p,
-        cpu_usage: Math.round(p.cpu_usage * (0.5 + wave(i)) * 10) / 10,
+        cpu_usage:
+          p.cpu_usage == null
+            ? null
+            : Math.round(p.cpu_usage * (0.5 + wave(i)) * 10) / 10,
         disk_usage: [Math.round(4096 * wave(i + 1)), 0],
       })),
       stats: {

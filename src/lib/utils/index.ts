@@ -117,7 +117,11 @@ export function filterProcesses(
     // Apply CPU filter
     if (filters.cpu.enabled) {
       const cpuValue = process.cpu_usage;
-      if (!compareValue(cpuValue, filters.cpu.operator, filters.cpu.value)) {
+      if (
+        cpuValue == null ||
+        !Number.isFinite(cpuValue) ||
+        !compareValue(cpuValue, filters.cpu.operator, filters.cpu.value)
+      ) {
         return false;
       }
     }

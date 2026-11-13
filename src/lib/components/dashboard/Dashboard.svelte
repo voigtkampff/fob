@@ -567,7 +567,9 @@
           <div class="proc-row">
             <span class="ellipsis" title={p.command || p.name}>{p.name}</span>
             <span class="num">{formatGB(p.memory_usage, 2)}</span>
-            <span class="num">{p.cpu_usage.toFixed(1)}</span>
+            <span class="num"
+              >{p.cpu_usage == null ? "—" : p.cpu_usage.toFixed(1)}</span
+            >
           </div>
         {:else}
           <div class="proc-row" aria-hidden="true"></div>
