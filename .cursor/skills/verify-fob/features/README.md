@@ -8,5 +8,6 @@
 | First launch                                     | first-launch.md    |
 | Process disk speed and GPU columns               | process-columns.md |
 | CPU core groups (P-cores / E-cores)              | cpu-groups.md      |
+| Helper status lifecycle in Settings              | helper-status.md   |
 | Disk health (Disk detail and storage side panel) | disk-health.md     |
 | Column and summary card order (drag)             | layout-order.md    |

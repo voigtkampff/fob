@@ -8,7 +8,7 @@
   import HotkeyField from "./HotkeyField.svelte";
   import OpacitySlider from "./OpacitySlider.svelte";
   import SensorSetup from "./dashboard/SensorSetup.svelte";
-  import { sensorSetup, refreshSensorSetup } from "$lib/stores/sensorSetup";
+  import { sensorSetup } from "$lib/stores/sensorSetup";
   import { Button } from "$lib/components/ui/button/index.js";
   import { Checkbox } from "$lib/components/ui/checkbox/index.js";
   import { Label } from "$lib/components/ui/label/index.js";
@@ -152,7 +152,6 @@
           "general",
       );
       await settingsStore.init();
-      await refreshSensorSetup();
       await readDragged();
       await emit("preferences-runtime-status-request");
     })();

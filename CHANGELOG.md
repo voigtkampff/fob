@@ -5,6 +5,7 @@
 - 主窗口 (Main window): chart history is sent in full on the first read, then only new samples are transferred. Returning after a long hidden period resynchronizes the full retained history when needed; chart cadence and the independent mini window/status bar readings are unchanged
 - 进程 CPU (Process CPU): unavailable Windows CPU readings and samples without a valid baseline now show — rather than 0.0%. Measured idle still shows 0.0%, and readings recover after two successful samples
 - A process family's CPU total shows — if any member has no reading. Unknown CPU values sort after measured values in either direction and do not match numeric CPU filters; system-wide CPU readings and other process metrics are unchanged
+- Skip the unused legacy Windows process CPU calculation while retaining system CPU and other process readings; Settings → General now has one owner for its initial helper status request, with manual and action refreshes unchanged
 - The bundled sensor helper is unchanged at 0.8.2
 
 ## 0.8.9
