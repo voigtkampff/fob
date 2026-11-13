@@ -426,7 +426,7 @@ impl Hub {
             let mut sys = state.sys.lock().map_err(|e| e.to_string())?;
             let mut disks = state.disks.lock().map_err(|e| e.to_string())?;
             let mut networks = state.networks.lock().map_err(|e| e.to_string())?;
-            sys.refresh_all();
+            sys.refresh_specifics(AppState::refresh_kind());
             disks.refresh(true);
             networks.refresh(true);
             let processes = state

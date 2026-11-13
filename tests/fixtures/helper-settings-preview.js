@@ -45,6 +45,21 @@ const statuses = {
 let status = statuses[scenario] ?? absent;
 let operations = 0;
 let reads = 0;
+let pendingReads = 0;
+let queryFails = scenario === "query-error";
+const statusDelay = Number(params.get("status-delay") ?? 0);
+const preferencesDelay = Number(params.get("preferences-delay") ?? 0);
+Object.defineProperty(window, "helperFixture", {
+  value: {
+    get counts() {
+      return { operations, reads, pendingReads };
+    },
+    recover() {
+      queryFails = false;
+      status = current;
+    },
+  },
+});
 function reportCounts() {
   window.parent.postMessage(
     { fixture: "fob-helper-settings", operations, reads },
@@ -64,8 +79,15 @@ mockIPC(async (command, args) => {
   if (command === "sensor_setup_status") {
     reads++;
     reportCounts();
-    if (scenario === "query-error") throw "Fixture status query unavailable";
-    return status;
+    pendingReads++;
+    try {
+      if (statusDelay)
+        await new Promise((resolve) => setTimeout(resolve, statusDelay));
+      if (queryFails) throw "Fixture status query unavailable";
+      return status;
+    } finally {
+      pendingReads--;
+    }
   }
   if (command === "sensor_setup") {
     operations++;
@@ -87,7 +109,11 @@ mockIPC(async (command, args) => {
   if (command === "settings_pane") return "general";
   if (command === "get_mini_position_saved") return false;
   if (command === "get_hotkey") return { combo: "", error: null, failed: "" };
-  if (command === "read_preferences") return { config, revision, ready: true };
+  if (command === "read_preferences") {
+    if (preferencesDelay)
+      await new Promise((resolve) => setTimeout(resolve, preferencesDelay));
+    return { config, revision, ready: true };
+  }
   if (command === "update_preferences" && args && "patch" in args) {
     config = mergePreferences(config, args.patch);
     return { config, revision: ++revision, ready: true };
