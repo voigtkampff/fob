@@ -6,6 +6,11 @@ name: Windows package smoke
 on:
   workflow_dispatch:
     inputs:
+      mode:
+        description: Manual diagnostic mode; smoke is unchanged
+        type: choice
+        default: smoke
+        options: [smoke, cpu-startup]
       run_id:
         description: Build Check or Draft Release run that uploaded fob-windows-x86_64
         required: true
@@ -36,11 +41,22 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version-file: .nvmrc
+      - name: Validate CPU diagnostic
+        if: inputs.mode == 'cpu-startup'
+        run: pwsh -NoProfile -File scripts/package-smoke/cpu-profile.ps1 -ValidateOnly
       - name: Download and verify the package
         env:
           GH_TOKEN: ${{ github.token }}
         run: node scripts/package-smoke/provenance.mjs "$env:RUN_ID" "$env:SOURCE_SHA" "$env:ZIP_SHA256" "$env:RUNNER_TEMP\package"
+      - name: Profile accepted package startup CPU
+        if: inputs.mode == 'cpu-startup'
+        run: >
+          pwsh -NoProfile -File scripts/package-smoke/cpu-profile.ps1
+          -FobDir "$env:FOB_DIR"
+          -PackageRoot "$env:RUNNER_TEMP\package"
+          -Evidence "$env:RUNNER_TEMP\evidence"
       - name: Run the package
+        if: inputs.mode != 'cpu-startup'
         run: node scripts/package-smoke/run.mjs "$env:FOB_DIR" "$env:RUNNER_TEMP\evidence"
       - name: Summarize
         if: always()
