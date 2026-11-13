@@ -11,7 +11,7 @@ const execute = (command, args) =>
     stdio: ["ignore", "pipe", "pipe"],
   });
 
-export function assertUtcCommit(raw) {
+export function readUtcCommit(raw) {
   const headers = raw.split("\n\n", 1)[0];
   for (const role of ["author", "committer"]) {
     const match = headers.match(
@@ -19,6 +19,12 @@ export function assertUtcCommit(raw) {
     );
     assert.equal(match?.[1], "+0000", `${role} metadata must use +0000`);
   }
+  const tree = headers.match(/^tree ([0-9a-f]{40})$/m)?.[1];
+  assert.match(tree ?? "", shaPattern, "Commit tree metadata is required");
+  const parents = [...headers.matchAll(/^parent ([0-9a-f]{40})$/gm)].map(
+    (match) => match[1],
+  );
+  return { tree, parents };
 }
 
 export function mergeUtc(
@@ -61,14 +67,25 @@ export function mergeUtc(
     "PR is not cleanly mergeable",
   );
   assert.match(pr.base.sha, shaPattern);
+  assert.equal(
+    pr.commits,
+    1,
+    "PR must contain exactly one prepared UTC commit",
+  );
   const commits = git(["rev-list", `${pr.base.sha}..${head}`])
     .trim()
     .split(/\s+/);
-  assert.ok(
-    commits.length && commits.every((sha) => shaPattern.test(sha)),
-    "Fetch the PR commits first",
+  assert.deepEqual(
+    commits,
+    [head],
+    "Local PR range must contain only the checked head",
   );
-  for (const sha of commits) assertUtcCommit(git(["cat-file", "commit", sha]));
+  const sourceCommit = readUtcCommit(git(["cat-file", "commit", head]));
+  assert.deepEqual(
+    sourceCommit.parents,
+    [pr.base.sha],
+    "Source commit must extend the checked base directly",
+  );
   const checks = gh([
     `repos/${repo}/commits/${head}/check-runs?filter=latest&per_page=100`,
   ]);
@@ -89,31 +106,46 @@ export function mergeUtc(
       ),
     "Source checks must pass on this exact head",
   );
-  const result = gh([
-    "--method",
-    "PUT",
-    `${path}/merge`,
-    "--header",
-    "Accept: application/vnd.github+json",
-    "--header",
-    "Time-Zone: Etc/UTC",
-    "-f",
-    "merge_method=squash",
-    "-f",
-    `sha=${head}`,
-    "-f",
-    `commit_title=${pr.title} (#${number})`,
-  ]);
+  let result;
+  try {
+    result = gh([
+      "--method",
+      "PUT",
+      `${path}/merge`,
+      "--header",
+      "Accept: application/vnd.github+json",
+      "--header",
+      "Time-Zone: Etc/UTC",
+      "-f",
+      "merge_method=rebase",
+      "-f",
+      `sha=${head}`,
+    ]);
+  } catch {
+    throw new Error(
+      "Merge outcome unconfirmed; inspect the PR before any retry.",
+    );
+  }
   assert.ok(
     result.merged && shaPattern.test(result.sha),
-    "Provider did not confirm a merge",
+    "Provider did not confirm a merge; inspect the PR before any retry",
   );
   try {
     git(["fetch", "origin", result.sha]);
-    assertUtcCommit(git(["cat-file", "commit", result.sha]));
+    const mergedCommit = readUtcCommit(git(["cat-file", "commit", result.sha]));
+    assert.equal(
+      mergedCommit.tree,
+      sourceCommit.tree,
+      "Merged tree differs from checked source",
+    );
+    assert.deepEqual(
+      mergedCommit.parents,
+      sourceCommit.parents,
+      "Merge must add only the intended single commit",
+    );
   } catch {
     throw new Error(
-      `PR already merged as ${result.sha}; raw UTC verification failed. Stop without retrying or rewriting history.`,
+      `PR already merged as ${result.sha}; raw UTC/tree/ancestry verification failed. Stop without retrying or rewriting history.`,
     );
   }
   return result.sha;
