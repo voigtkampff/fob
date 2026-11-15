@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.8.11
+
+- CPU 电压 (CPU voltage): 主窗口 (main window) 的 CPU 详细分页列出这台机器读到的全部 CPU 电压，迷你窗口 (mini window) 的 CPU 详情列出最靠前的三条，状态栏 (status bar) 有自己的 CPU 电压指标。读数保留三位小数（1.240 V），读不到时显示 —，不显示 0；温度与风扇卡片不混入电压，仍只列温度、风扇转速和占空比
+- 只显示 CPU 电压：CPU 自己的通道（CPU Core 和各核心）以及主板给 CPU 供电的那条（Vcore、CPU Termination）。整板轨道（AVCC、+3.3V、+5V、+12V、+3V 待机、未命名的 Voltage #N）既不上传也不显示，显卡电压同样不显示
+- 状态栏的 CPU 电压指标默认打开，可在 设置 → 状态栏 里关掉，也可和其它指标一样调顺序、开关图表；图表对它不可用，与显存占用、显卡功耗一致
+- 没有电压可读的机器（不少笔记本和不被 Super I/O 支持的芯片组）不显示假数据：详情页与状态栏都只显示 —，其余指标照旧
+- 传感器助手 (Sensor helper): 内置版本现在是 0.8.3，0.8.10 里是 0.8.2。0.8.3 是第一个上报 CPU 电压的助手，装过 0.8.2 的机器要更新一次才能看到电压：设置 → 常规 → 传感器助手 会显示“有可用更新”，按 更新 → 继续，Windows 询问一次权限即可。无需重启 Fob，助手重连后电压自己出现；计划任务在这一步重新注册并立即启动，不用重新登录
+
 ## 0.8.10
 
 - 主窗口 (Main window): chart history is sent in full on the first read, then only new samples are transferred. Returning after a long hidden period resynchronizes the full retained history when needed; chart cadence and the independent mini window/status bar readings are unchanged
