@@ -356,6 +356,54 @@ export function voltageReadings(sensors) {
     );
 }
 
+/** Which core cluster a per-core voltage reading belongs to, from its name
+ * ("P-Core #1" / "E-Core #2"); null for the CPU's own package rails.
+ * @param {string} name
+ * @returns {"p" | "e" | null} */
+export function coreCluster(name) {
+  const match = /^\s*([pe])[\s-]?core\b/i.exec(name);
+  return match ? /** @type {"p" | "e"} */ (match[1].toLowerCase()) : null;
+}
+
+/** Mean of one core cluster's voltage readings, rounded to a millivolt, or
+ * null when the cluster has none (a machine without P/E cores, or no
+ * per-core voltage at all). Cores that report nothing are left out of the
+ * mean, so a partial cluster still says something.
+ * @template {{ kind: string, name: string, value: number }} S
+ * @param {S[]} sensors
+ * @param {"p" | "e"} cluster
+ * @returns {number | null}
+ */
+export function coreVoltageMean(sensors, cluster) {
+  const values = (sensors ?? [])
+    .filter(
+      (s) =>
+        s.kind === "voltage" &&
+        Number.isFinite(s.value) &&
+        coreCluster(s.name) === cluster,
+    )
+    .map((s) => s.value);
+  if (!values.length) return null;
+  const mean = values.reduce((a, b) => a + b, 0) / values.length;
+  return Math.round(mean * 1000) / 1000;
+}
+
+/** The four readings the mini window's voltage card shows: the board's VCore
+ * rail, the CPU's own core reading, and the P/E cluster means. Each is null
+ * when the machine reports nothing for it.
+ * @param {{ kind: string, name: string, value: number }[]} sensors */
+export function voltageCard(sensors) {
+  const list = voltageReadings(sensors);
+  /** @param {number} rank */
+  const pick = (rank) => list.find((s) => voltageRank(s.name) === rank)?.value;
+  return {
+    vcore: pick(0) ?? null,
+    cpuCore: pick(1) ?? null,
+    p: coreVoltageMean(list, "p"),
+    e: coreVoltageMean(list, "e"),
+  };
+}
+
 /** Fan RPM sensors grouped by hardware (board first-seen order), names in
  * natural order. 0 RPM fans are kept: stopped or not connected.
  * @template {{ hardware: string, name: string, kind: string, value: number }} S

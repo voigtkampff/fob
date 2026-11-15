@@ -20,6 +20,9 @@ import {
   cpuTempRank,
   groupByHardware,
   formatSensor,
+  voltageCard,
+  coreVoltageMean,
+  coreCluster,
   voltageRank,
   voltageReadings,
   fanGroups,
@@ -312,6 +315,62 @@ assert.deepEqual(
   byKind([sensors[9], sensors[7], sensors[8], sensors[0]]).map((s) => s.name),
   ["CPU", "CPU Core", "P-Core #1", "Vcore"],
 );
+// The mini window's four rows: the two CPU rails and the P/E cluster means.
+const v = (/** @type {string} */ name, /** @type {number} */ value) => ({
+  hardware: "Example Hybrid CPU",
+  name,
+  kind: "voltage",
+  value,
+});
+const card = voltageCard([
+  v("Vcore", 1.24),
+  v("CPU Core", 1.448608),
+  v("P-Core #1", 1.4),
+  v("P-Core #2", 1.42),
+  v("E-Core #1", 1.36),
+  v("E-Core #2", 1.38),
+]);
+assert.deepEqual(card, { vcore: 1.24, cpuCore: 1.448608, p: 1.41, e: 1.37 });
+assert.equal(
+  coreVoltageMean([v("P-Core #1", 1.4), v("P-Core #2", 1.42)], "p"),
+  1.41,
+);
+// Cores that report nothing are left out: two of three cores still average.
+assert.equal(
+  coreVoltageMean([v("P-Core #1", 1.4), v("P-Core #3", 1.42)], "p"),
+  1.41,
+);
+// A cluster with no reading at all, and a machine with no per-core rails.
+assert.equal(coreVoltageMean([v("P-Core #1", 1.4)], "e"), null);
+assert.equal(coreVoltageMean([], "p"), null);
+assert.deepEqual(voltageCard([]), {
+  vcore: null,
+  cpuCore: null,
+  p: null,
+  e: null,
+});
+assert.deepEqual(
+  voltageCard([v("Core #1", 1.1)]),
+  { vcore: null, cpuCore: null, p: null, e: null },
+  "an unnamed core is neither P nor E",
+);
+assert.deepEqual(
+  [coreCluster("P-Core #1"), coreCluster("e-core #4"), coreCluster("CPU Core")],
+  ["p", "e", null],
+);
+// Millivolt precision: 1.2345 rounds to 1.235, and formats like the rest.
+assert.equal(
+  coreVoltageMean([v("E-Core #1", 1.2345), v("E-Core #2", 1.2345)], "e"),
+  1.235,
+);
+assert.equal(
+  formatSensor({
+    kind: "voltage",
+    value: coreVoltageMean([v("E-Core #1", 1.3)], "e"),
+  }),
+  "1.300 V",
+);
+assert.equal(formatSensor({ kind: "voltage", value: card.p }), "1.410 V");
 
 console.log(
   "PASS: dashboard formatting, volume/GPU selection, top processes, sparkline series",

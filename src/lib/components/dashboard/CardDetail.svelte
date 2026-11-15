@@ -27,7 +27,7 @@
     mergeNetApps,
     sortedNetRows,
     series,
-    voltageReadings,
+    voltageCard,
   } from "$lib/utils/dashboard.js";
   import { ChevronLeft, ChevronRight, LayoutGrid } from "@lucide/svelte";
   import ChartCursor from "$lib/components/charts/ChartCursor.svelte";
@@ -110,9 +110,34 @@
   $: appMax = Math.max(1, ...appRows.map((r) => Math.max(r.rx, r.tx)));
   $: summary = sensorSummary(sensors);
   $: fans = fanGroups(sensors);
-  // The mini window has a fixed height: three rails fit, the rest stay in
-  // the main window's panel.
-  $: voltages = voltageReadings(sensors).slice(0, compact ? 3 : 8);
+  // The mini window has a fixed height, so the card is a fixed four rows:
+  // the two CPU rails and the P/E cluster means. Per-core values stay in the
+  // main window's CPU panel.
+  $: volts = voltageCard(sensors);
+  /** @returns {[string, number | null]} */
+  const vrow = (
+    label: string,
+    value: number | null,
+  ): [string, number | null] => [label, value];
+  $: voltageRows = [
+    vrow($t("details.voltageVcore"), volts.vcore),
+    vrow($t("details.voltageCpuCore"), volts.cpuCore),
+    vrow($t("details.voltageP"), volts.p),
+    vrow($t("details.voltageE"), volts.e),
+  ];
+  /** One voltage row's text; a reading the machine doesn't report stays a dash. */
+  function voltText(value: number | null) {
+    return value == null
+      ? $t("common.na")
+      : formatSensor({ kind: "voltage", value });
+  }
+  // The CPU header: the model on its own line (ellipsised, never wrapped) and
+  // cores/threads under it, which stays whole even in the mini window.
+  $: cpuModel = systemStats.details.identity.cpu_model ?? "";
+  $: coresText = $t("detail.coresThreads", {
+    c: systemStats.details.identity.physical_cores ?? "?",
+    n: cores.length,
+  });
   // Fans are listed on their own above; the per-hardware lists show the rest
   // (voltages are on the CPU detail).
   $: groups = groupByHardware(
@@ -138,18 +163,13 @@
 
   {#if kind === "cpu"}
     <div class="panel">
-      <div class="row">
+      <div class="row head-row">
+        <div class="identity">
+          <span class="model" title={cpuModel}>{cpuModel}</span>
+          <span class="muted">{coresText}</span>
+        </div>
         <span class="big"
           >{formatPercent(averageCpu(cores), $t)}<small>%</small></span
-        >
-        <span class="muted"
-          >{systemStats.details.identity.cpu_model ?? ""} · {$t(
-            "detail.coresThreads",
-            {
-              c: systemStats.details.identity.physical_cores ?? "?",
-              n: cores.length,
-            },
-          )}</span
         >
       </div>
       <ChartCursor
@@ -169,6 +189,19 @@
       </ChartCursor>
       <CoreGrid usage={cores} where="detail" groups={coreGroups} />
     </div>
+    {#if (volts.vcore ?? volts.cpuCore ?? volts.p ?? volts.e) != null}
+      <div class="panel">
+        <div class="list-head"><span>{$t("details.voltages")}</span></div>
+        {#each voltageRows as [label, value] (label)}
+          <div class="item">
+            <span class="name">{label}</span><span
+              class="num"
+              class:muted={value == null}>{voltText(value)}</span
+            >
+          </div>
+        {/each}
+      </div>
+    {/if}
     <div class="panel">
       <div class="list-head">
         <span>{$t("detail.topProcs")}</span><span>% CPU</span>
@@ -181,18 +214,6 @@
         </div>
       {/each}
     </div>
-    {#if voltages.length}
-      <div class="panel">
-        <div class="list-head"><span>{$t("details.voltages")}</span></div>
-        {#each voltages as s (s.id || `${s.kind}:${s.name}`)}
-          <div class="item">
-            <span class="name">{s.name}</span><span class="num"
-              >{formatSensor(s)}</span
-            >
-          </div>
-        {/each}
-      </div>
-    {/if}
   {:else if kind === "gpu"}
     {#each gpus as g (g.id)}
       <div class="panel">
@@ -622,6 +643,30 @@
     justify-content: space-between;
     gap: 10px;
     min-width: 0;
+  }
+  /* The CPU identity is two lines, so it centres against the big number
+     instead of sharing its baseline. */
+  .head-row {
+    align-items: center;
+  }
+  .identity {
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+    min-width: 0;
+  }
+  .identity .model {
+    font-size: 12.5px;
+    font-weight: 600;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .identity .muted {
+    white-space: nowrap;
+  }
+  .head-row .big {
+    flex: none;
   }
   .rates {
     justify-content: flex-start;
