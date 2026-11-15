@@ -161,6 +161,9 @@ assert.deepEqual(cells({ diskRead: 0, diskWrite: 5000 }, ["disk"])[0].parts, [
   "R 0B",
   "W 4.9K",
 ]);
+assert.equal(cells({ cpuVoltage: 1.24 }, ["cpuVoltage"])[0].value, "1.24V");
+assert.equal(cells({}, ["cpuVoltage"])[0].value, "—");
+assert.equal(cells({ cpuVoltage: NaN }, ["cpuVoltage"])[0].value, "—");
 // Drag and drop: `to` is the slot before removal (0..length).
 const four = ["cpu", "gpu", "ram", "net"];
 assert.deepEqual(reorderMetric(four, 0, 4), ["gpu", "ram", "net", "cpu"]);

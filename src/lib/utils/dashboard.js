@@ -232,7 +232,7 @@ export function topBy(items, key, count = 10) {
 }
 
 /** Pick headline readings for the Temp & fan card.
- * @param {{ hardware: string, id?: string, name: string, kind: "temperature" | "fan" | "control", value: number }[]} sensors
+ * @param {{ hardware: string, id?: string, name: string, kind: "temperature" | "fan" | "control" | "voltage", value: number }[]} sensors
  */
 export function sensorSummary(sensors) {
   const list = sensors ?? [];
@@ -253,7 +253,13 @@ export function sensorSummary(sensors) {
   const fan = fans.length
     ? fans.reduce((a, b) => (b.value > a.value ? b : a))
     : (list.find((s) => s.kind === "control") ?? null);
-  return { cpuTemp, gpuTemp, fan, count: list.length };
+  return {
+    cpuTemp,
+    gpuTemp,
+    fan,
+    cpuVoltage: voltageReadings(list)[0] ?? null,
+    count: list.length,
+  };
 }
 
 /** Which device a sensor belongs to. LibreHardwareMonitor ids start with
@@ -316,11 +322,39 @@ export function groupByHardware(sensors) {
 export function formatSensor(s) {
   if (s.kind === "temperature") return `${s.value.toFixed(0)} °C`;
   if (s.kind === "fan") return `${Math.round(s.value)} RPM`;
+  if (s.kind === "voltage") return `${s.value.toFixed(3)} V`;
   return `${Math.round(s.value)} %`;
 }
 
 /** Natural order for sensor names ("Fan #2" before "Fan #10"). */
 const natural = new Intl.Collator("en", { numeric: true, sensitivity: "base" });
+
+/** Which CPU voltage to show first (lower is better): the board's real VCore
+ * rail, then the CPU's own "CPU Core" reading (its requested VID), then the
+ * per-core values, then the rest (CPU Termination and the like).
+ * @param {string} name */
+export function voltageRank(name) {
+  const n = name.trim().toLowerCase();
+  if (n.includes("vcore")) return 0;
+  if (n.includes("cpu core")) return 1;
+  return n.includes("core") ? 2 : 3;
+}
+
+/** Every voltage reading, headline pick first, names in natural order within
+ * a rank.
+ * @template {{ kind: string, name: string, value: number }} S
+ * @param {S[]} sensors
+ * @returns {S[]}
+ */
+export function voltageReadings(sensors) {
+  return (sensors ?? [])
+    .filter((s) => s.kind === "voltage" && Number.isFinite(s.value))
+    .sort(
+      (a, b) =>
+        voltageRank(a.name) - voltageRank(b.name) ||
+        natural.compare(a.name, b.name),
+    );
+}
 
 /** Fan RPM sensors grouped by hardware (board first-seen order), names in
  * natural order. 0 RPM fans are kept: stopped or not connected.
@@ -350,12 +384,12 @@ export function fanText(sensors, max = 3) {
   return `${shown.join(" · ")} RPM${more > 0 ? ` +${more}` : ""}`;
 }
 
-/** Sensors are sorted temperature, fan, duty within a hardware group.
+/** Sensors are sorted temperature, fan, duty, voltage within a hardware group.
  * @template {{ kind: string, name: string }} S
  * @param {S[]} list
  */
 export function byKind(list) {
-  const rank = { temperature: 0, fan: 1, control: 2 };
+  const rank = { temperature: 0, fan: 1, control: 2, voltage: 3 };
   return [...list].sort(
     (a, b) =>
       (rank[/** @type {keyof typeof rank} */ (a.kind)] ?? 3) -

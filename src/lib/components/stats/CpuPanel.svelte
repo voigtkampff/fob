@@ -3,7 +3,7 @@
   import StatCard from "./StatCard.svelte";
   import CoreGrid from "./CoreGrid.svelte";
   import ResourceTrend from "./ResourceTrend.svelte";
-  import type { SystemStats, ResourceSample } from "$lib/types";
+  import type { SystemStats, ResourceSample, Sensor } from "$lib/types";
   import { Cpu } from "@lucide/svelte";
   import { t } from "$lib/i18n";
   import { cpuGroups } from "$lib/utils/cpu-groups.js";
@@ -13,6 +13,7 @@
   export let isFrozen = false;
   export let unavailable = false;
   export let cpuUsage: number[];
+  export let sensors: Sensor[] = [];
   $: groups = cpuGroups(stats.cpu_topology, cpuUsage);
   $: average =
     cpuUsage.length && cpuUsage.every(Number.isFinite)
@@ -32,6 +33,7 @@
       {capturedAt}
       {isFrozen}
       {unavailable}
+      {sensors}
       {history}
     />{/snippet}
   {#snippet value()}

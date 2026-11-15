@@ -20,6 +20,8 @@ import {
   cpuTempRank,
   groupByHardware,
   formatSensor,
+  voltageRank,
+  voltageReadings,
   fanGroups,
   fanText,
   byKind,
@@ -218,16 +220,40 @@ const sensors = [
     kind: "control",
     value: 42,
   },
+  {
+    hardware: "Example Chip",
+    id: "/lpc/example/0/voltage/0",
+    name: "Vcore",
+    kind: "voltage",
+    value: 1.24,
+  },
+  {
+    hardware: "Example Hybrid CPU",
+    id: "/intelcpu/0/voltage/0",
+    name: "CPU Core",
+    kind: "voltage",
+    value: 1.448608,
+  },
+  {
+    hardware: "Example Hybrid CPU",
+    id: "/intelcpu/0/voltage/1",
+    name: "P-Core #1",
+    kind: "voltage",
+    value: 1.428589,
+  },
 ];
 const sum = sensorSummary(sensors);
 assert.equal(sum.cpuTemp?.name, "CPU Package");
 assert.equal(sum.gpuTemp?.name, "GPU Core");
 assert.equal(sum.fan?.name, "Fan #2");
-assert.equal(sum.count, 7);
+// The board's real VCore rail beats the CPU's requested-VID readout.
+assert.equal(sum.cpuVoltage?.name, "Vcore");
+assert.equal(sum.count, 10);
 assert.deepEqual(sensorSummary([]), {
   cpuTemp: null,
   gpuTemp: null,
   fan: null,
+  cpuVoltage: null,
   count: 0,
 });
 // NVML only: GPU temp + fan duty, no CPU temp
@@ -251,14 +277,41 @@ assert.equal(nv.fan?.kind, "control");
 assert.deepEqual(
   groupByHardware(sensors).map((g) => [g.hardware, g.sensors.length]),
   [
-    ["Example Chip", 4],
-    ["Example Hybrid CPU", 2],
+    ["Example Chip", 5],
+    ["Example Hybrid CPU", 4],
     ["NVIDIA Example GPU", 1],
   ],
 );
 assert.equal(formatSensor(sensors[2]), "52 °C");
 assert.equal(formatSensor(sensors[5]), "1349 RPM");
 assert.equal(formatSensor(sensors[6]), "42 %");
+assert.equal(formatSensor(sensors[7]), "1.240 V");
+assert.equal(voltageRank(" VCore "), 0);
+assert.equal(voltageRank("CPU Core"), 1);
+assert.equal(voltageRank("CPU Core Voltage (SVI2 TFN)"), 1);
+assert.equal(voltageRank("E-Core #3"), 2);
+assert.equal(voltageRank("CPU Termination"), 3);
+assert.deepEqual(
+  voltageReadings([
+    ...sensors,
+    { hardware: "B", name: "CPU Termination", kind: "voltage", value: 0.54 },
+  ]).map((s) => s.name),
+  ["Vcore", "CPU Core", "P-Core #1", "CPU Termination"],
+);
+assert.deepEqual(
+  voltageReadings(sensors).map((s) => s.name),
+  ["Vcore", "CPU Core", "P-Core #1"],
+);
+// A CPU with only its own rails: "CPU Core" first, then the per-core ones.
+assert.deepEqual(
+  voltageReadings(sensors.slice(8)).map((s) => s.name),
+  ["CPU Core", "P-Core #1"],
+);
+assert.deepEqual(voltageReadings([]), []);
+assert.deepEqual(
+  byKind([sensors[9], sensors[7], sensors[8], sensors[0]]).map((s) => s.name),
+  ["CPU", "CPU Core", "P-Core #1", "Vcore"],
+);
 
 console.log(
   "PASS: dashboard formatting, volume/GPU selection, top processes, sparkline series",
@@ -266,7 +319,12 @@ console.log(
 
 // winperf v0.4: helper pipe sensors (same fixture the Rust and C# tests use).
 {
-  const kinds = { Temperature: "temperature", Fan: "fan", Control: "control" };
+  const kinds = {
+    Temperature: "temperature",
+    Fan: "fan",
+    Control: "control",
+    Voltage: "voltage",
+  };
   const line = readFileSync(
     new URL("../src-tauri/tests/fixtures/sensors-pipe.jsonl", import.meta.url),
     "utf8",
@@ -329,8 +387,15 @@ console.log(
   const done = { ...base, pawnio_installed: true, installed: true, task: "ok" };
   assert.equal(setupState({ ...done, running: true }), "ready");
   assert.equal(setupState(done), "starting");
-  assert.equal(setupState({ ...done, update_available: true,
-    installed_version: "0.8.1", bundled_version: "0.8.2" }), "update");
+  assert.equal(
+    setupState({
+      ...done,
+      update_available: true,
+      installed_version: "0.8.1",
+      bundled_version: "0.8.2",
+    }),
+    "update",
+  );
   assert.equal(setupState({ ...done, task: "mismatch" }), "repair");
   assert.equal(setupState({ ...base, task: "unknown" }), "repair");
   const fresh = setupSteps(base);
@@ -462,7 +527,10 @@ console.log("PASS: per-app network rows group, stick for 30 s and sort");
 {
   // Same machines as headline_temps in src-tauri/src/sampling.rs.
   const { cases } = JSON.parse(
-    readFileSync(new URL("./fixtures/headline-temps.json", import.meta.url), "utf8"),
+    readFileSync(
+      new URL("./fixtures/headline-temps.json", import.meta.url),
+      "utf8",
+    ),
   );
   const key = (s) => (s == null ? null : s.id || s.value);
   for (const c of cases) {
@@ -471,36 +539,65 @@ console.log("PASS: per-app network rows group, stick for 30 s and sort");
     assert.equal(key(sum.gpuTemp), c.gpu, `${c.machine}: GPU`);
   }
   assert.equal(
-    sensorDevice({ hardware: "AMD Ryzen 7 8845H w/ Radeon 780M Graphics", id: "/amdcpu/0/temperature/2" }),
+    sensorDevice({
+      hardware: "AMD Ryzen 7 8845H w/ Radeon 780M Graphics",
+      id: "/amdcpu/0/temperature/2",
+    }),
     "cpu",
     "an APU is a CPU whatever its name says",
   );
-  assert.equal(sensorDevice({ hardware: "Example Chip", id: "/lpc/example/0/temperature/0" }), "other");
+  assert.equal(
+    sensorDevice({
+      hardware: "Example Chip",
+      id: "/lpc/example/0/temperature/0",
+    }),
+    "other",
+  );
   assert.deepEqual(
-    ["Core #1", "Core Average", "CCDs Max (Tdie)", "Tdie", "Core (Tctl/Tdie)", "CPU Package"].map(cpuTempRank),
+    [
+      "Core #1",
+      "Core Average",
+      "CCDs Max (Tdie)",
+      "Tdie",
+      "Core (Tctl/Tdie)",
+      "CPU Package",
+    ].map(cpuTempRank),
     [5, 4, 3, 2, 1, 0],
   );
-  console.log("PASS: CPU and GPU temperature picked per machine (Intel, AMD desktop, AMD APU laptop)");
+  console.log(
+    "PASS: CPU and GPU temperature picked per machine (Intel, AMD desktop, AMD APU laptop)",
+  );
 }
 
 {
-  const { SERIES_COLOR, DASHED, sparkAreaPath } = await import("../src/lib/utils/chart-style.js");
-  const src = (p) => readFileSync(new URL(`../src/${p}`, import.meta.url), "utf8");
+  const { SERIES_COLOR, DASHED, sparkAreaPath } = await import(
+    "../src/lib/utils/chart-style.js"
+  );
+  const src = (p) =>
+    readFileSync(new URL(`../src/${p}`, import.meta.url), "utf8");
   assert.equal(
     sparkAreaPath("M0,10L5,4M8,2L9,3", 36),
     "M0,10L5,4L5,36L0,36ZM8,2L9,3L9,36L8,36Z",
     "each run of the line closes to the baseline",
   );
   assert.equal(SERIES_COLOR.received, "var(--chart-1)");
-  assert.ok(DASHED.has("sent") && DASHED.has("disk_write") && !DASHED.has("received"));
+  assert.ok(
+    DASHED.has("sent") && DASHED.has("disk_write") && !DASHED.has("received"),
+  );
   for (const p of [
     "lib/components/stats/ResourceTrend.svelte",
     "lib/components/dashboard/Dashboard.svelte",
     "lib/components/dashboard/CardDetail.svelte",
   ]) {
     const s = src(p);
-    assert.ok(s.includes("chart-style.js"), `${p} draws with the shared chart style`);
-    assert.ok(!/var\(--(peach|yellow|blue|green)\)"/.test(s), `${p}: no chart colour of its own`);
+    assert.ok(
+      s.includes("chart-style.js"),
+      `${p} draws with the shared chart style`,
+    );
+    assert.ok(
+      !/var\(--(peach|yellow|blue|green)\)"/.test(s),
+      `${p}: no chart colour of its own`,
+    );
   }
   assert.ok(
     !/@media[^{]*\{\s*\.resource-grid/.test(src("app.css")),
@@ -508,20 +605,40 @@ console.log("PASS: per-app network rows group, stick for 30 s and sort");
   );
   const page = src("routes/+page.svelte");
   assert.ok(page.includes('= "processes";'), "Fob starts on the Processes tab");
-  console.log("PASS: one chart style everywhere; Processes tab default; card spacing fixed");
+  console.log(
+    "PASS: one chart style everywhere; Processes tab default; card spacing fixed",
+  );
 }
 
 {
-  const field = readFileSync(new URL("../src/lib/components/HotkeyField.svelte", import.meta.url), "utf8");
-  assert.ok(/class=\{`flex h-8 w-44 /.test(field), "every hotkey box has one fixed width");
-  assert.ok(field.includes('<span class="size-8 shrink-0" aria-hidden="true"></span>'), "an unset field keeps the clear button's slot");
+  const field = readFileSync(
+    new URL("../src/lib/components/HotkeyField.svelte", import.meta.url),
+    "utf8",
+  );
+  assert.ok(
+    /class=\{`flex h-8 w-44 /.test(field),
+    "every hotkey box has one fixed width",
+  );
+  assert.ok(
+    field.includes('<span class="size-8 shrink-0" aria-hidden="true"></span>'),
+    "an unset field keeps the clear button's slot",
+  );
   console.log("PASS: hotkey fields line up set or unset");
 }
 
 {
-  const field = readFileSync(new URL("../src/lib/components/HotkeyField.svelte", import.meta.url), "utf8");
+  const field = readFileSync(
+    new URL("../src/lib/components/HotkeyField.svelte", import.meta.url),
+    "utf8",
+  );
   const root = field.slice(field.indexOf("</script>"));
-  assert.ok(root.trimStart().includes('<div class="w-[13.5rem]">'), "the field, error included, has one fixed width");
-  assert.ok(root.indexOf('role="alert"') < root.lastIndexOf("</div>"), "the error sits inside that width");
+  assert.ok(
+    root.trimStart().includes('<div class="w-[13.5rem]">'),
+    "the field, error included, has one fixed width",
+  );
+  assert.ok(
+    root.indexOf('role="alert"') < root.lastIndexOf("</div>"),
+    "the error sits inside that width",
+  );
   console.log("PASS: a hotkey error wraps under its box without moving it");
 }

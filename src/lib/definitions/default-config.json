@@ -40,7 +40,15 @@
     "miniHotkey": "",
     "miniOpacity": 100,
     "overlayEnabled": false,
-    "overlayMetrics": ["cpu", "cpuTemp", "gpu", "gpuTemp", "ram", "net"],
+    "overlayMetrics": [
+      "cpu",
+      "cpuTemp",
+      "cpuVoltage",
+      "gpu",
+      "gpuTemp",
+      "ram",
+      "net"
+    ],
     "overlayDock": "top",
     "overlayOpacity": 60,
     "overlayLocked": false,

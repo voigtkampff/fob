@@ -7,6 +7,7 @@
 export const METRICS = /** @type {const} */ ([
   "cpu",
   "cpuTemp",
+  "cpuVoltage",
   "gpu",
   "gpuTemp",
   "ram",
@@ -19,6 +20,7 @@ export const METRICS = /** @type {const} */ ([
 export const DEFAULT_METRICS = [
   "cpu",
   "cpuTemp",
+  "cpuVoltage",
   "gpu",
   "gpuTemp",
   "ram",
@@ -27,7 +29,7 @@ export const DEFAULT_METRICS = [
 /** Metrics with a history to chart (OVERLAY_CHART_METRICS in preferences.rs). */
 /** @type {MetricId[]} */
 export const CHART_METRICS = METRICS.filter(
-  (id) => id !== "vram" && id !== "power",
+  (id) => id !== "vram" && id !== "power" && id !== "cpuVoltage",
 );
 export const DOCKS = /** @type {const} */ (["top", "bottom", "free"]);
 export const DEFAULT_OPACITY = 60;
@@ -224,11 +226,14 @@ const pct = (/** @type {number | null | undefined} */ v) =>
   v == null || !Number.isFinite(v) ? "—" : `${Math.round(v)}%`;
 const temp = (/** @type {number | null | undefined} */ v) =>
   v == null || !Number.isFinite(v) ? "—" : `${Math.round(v)}°C`;
+const volts = (/** @type {number | null | undefined} */ v) =>
+  v == null || !Number.isFinite(v) ? "—" : `${v.toFixed(2)}V`;
 const gb = (/** @type {number | null | undefined} */ v) =>
   v == null || !Number.isFinite(v) ? "—" : `${(v / GIB).toFixed(1)}G`;
 
 /**
- * @typedef {{ cpu?: number|null, cpuTemp?: number|null, gpu?: number|null,
+ * @typedef {{ cpu?: number|null, cpuTemp?: number|null, cpuVoltage?: number|null,
+ *   gpu?: number|null,
  *   gpuTemp?: number|null, ramUsed?: number|null, ramTotal?: number|null,
  *   vramUsed?: number|null, vramTotal?: number|null, diskRead?: number|null,
  *   diskWrite?: number|null, netRx?: number|null, netTx?: number|null,
@@ -245,6 +250,7 @@ export function cells(r, shown) {
   const text = {
     cpu: () => pct(x.cpu),
     cpuTemp: () => temp(x.cpuTemp),
+    cpuVoltage: () => volts(x.cpuVoltage),
     gpu: () => pct(x.gpu),
     gpuTemp: () => temp(x.gpuTemp),
     ram: () => gb(x.ramUsed),
@@ -263,11 +269,12 @@ export function cells(r, shown) {
 }
 
 /** What each metric's chart draws from a sampler Sample (sampling.rs), and
- * its scale; `null`: no history for it (video memory, GPU power).
+ * its scale; `null`: no history for it (CPU voltage, video memory, GPU power).
  * @type {Record<MetricId, { pick: (s: any) => number | null, max: number | null } | null>} */
 const SERIES = {
   cpu: { pick: (s) => s.cpu ?? null, max: 100 },
   cpuTemp: { pick: (s) => s.cpu_temp ?? null, max: 100 },
+  cpuVoltage: null,
   gpu: {
     pick: (s) => {
       const v = Object.values(s.gpus ?? {}).filter(

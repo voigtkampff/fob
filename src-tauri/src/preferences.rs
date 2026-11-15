@@ -9,8 +9,17 @@ use tauri::{AppHandle, Emitter, Manager, WebviewWindow};
 /// CHART_METRICS in src/lib/utils/overlay.js.
 pub const OVERLAY_CHART_METRICS: [&str; 7] =
     ["cpu", "cpuTemp", "gpu", "gpuTemp", "ram", "disk", "net"];
-pub const OVERLAY_METRICS: [&str; 9] = [
-    "cpu", "cpuTemp", "gpu", "gpuTemp", "ram", "vram", "disk", "net", "power",
+pub const OVERLAY_METRICS: [&str; 10] = [
+    "cpu",
+    "cpuTemp",
+    "cpuVoltage",
+    "gpu",
+    "gpuTemp",
+    "ram",
+    "vram",
+    "disk",
+    "net",
+    "power",
 ];
 /// Cards of the Dashboard tab and of the Processes tab's stats row, in their
 /// default order (DASHBOARD_CARDS and PROCESS_CARDS in src/lib/utils/layout-order.js).

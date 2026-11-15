@@ -20,6 +20,7 @@
     sensorSummary,
     setupState,
     uptimeInfo,
+    voltageReadings,
   } from "$lib/utils/dashboard.js";
   import { sensorSetup } from "$lib/stores/sensorSetup";
   import SensorSetup from "$lib/components/dashboard/SensorSetup.svelte";
@@ -122,11 +123,16 @@
   const summary = $derived(sensorSummary(sensors));
   const fans = $derived(fanGroups(sensors));
   const sensorGroups = $derived(
-    groupByHardware(sensors.filter((s) => s.kind !== "fan")),
+    // Voltages have their own panel on the CPU card; Temp & fan stays temps,
+    // fans and duty.
+    groupByHardware(
+      sensors.filter((s) => s.kind !== "fan" && s.kind !== "voltage"),
+    ),
   );
   const fanCount = $derived(fans.reduce((n, g) => n + g.fans.length, 0));
   const setup = $derived(setupState($sensorSetup));
   const head = $derived(summary.cpuTemp ?? summary.gpuTemp);
+  const voltageGroups = $derived(groupByHardware(voltageReadings(sensors)));
   // Literal keys so the i18n check can see every one.
   const helperText = $derived(
     {
@@ -226,6 +232,10 @@
     })}
     facts={[
       [$t("stats.avgUtil"), percent(cpu)],
+      [
+        $t("details.cpuVoltage"),
+        summary.cpuVoltage ? formatSensor(summary.cpuVoltage) : na,
+      ],
       ...(coreGroups ?? []).map((g): [string, string] => [
         $t(g.label),
         percent(g.usage),
@@ -248,7 +258,17 @@
           where="detail"
           groups={coreGroups}
         /></DetailSection
-      >{/snippet}
+      >
+      {#each voltageGroups as group (group.hardware)}<DetailSection
+          title={$t("details.voltages")}
+          description={group.hardware}
+        >
+          {#each group.sensors as s (s.id || `${s.kind}:${s.name}`)}{@render row(
+              s.name,
+              formatSensor(s),
+            )}{/each}
+        </DetailSection>{/each}
+    {/snippet}
   </DetailLayout>
 {:else if kind === "memory"}
   <DetailLayout

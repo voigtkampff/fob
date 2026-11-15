@@ -597,6 +597,7 @@ pub async fn overlay_fit(app: AppHandle, width: f64) -> Result<(), String> {
 pub struct Reading {
     pub cpu: Option<f64>,
     pub cpu_temp: Option<f64>,
+    pub cpu_voltage: Option<f64>,
     pub gpu: Option<f64>,
     pub gpu_temp: Option<f64>,
     pub ram_used: Option<u64>,
@@ -622,6 +623,7 @@ pub async fn overlay_reading(app: AppHandle) -> Result<Reading, String> {
     Ok(Reading {
         cpu: last.and_then(|s| s.cpu),
         cpu_temp: last.and_then(|s| s.cpu_temp),
+        cpu_voltage: last.and_then(|s| s.cpu_voltage),
         gpu: gpu.and_then(|g| g.utilization),
         gpu_temp: last
             .and_then(|s| s.gpu_temp)

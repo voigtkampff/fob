@@ -27,6 +27,7 @@
     mergeNetApps,
     sortedNetRows,
     series,
+    voltageReadings,
   } from "$lib/utils/dashboard.js";
   import { ChevronLeft, ChevronRight, LayoutGrid } from "@lucide/svelte";
   import ChartCursor from "$lib/components/charts/ChartCursor.svelte";
@@ -109,8 +110,14 @@
   $: appMax = Math.max(1, ...appRows.map((r) => Math.max(r.rx, r.tx)));
   $: summary = sensorSummary(sensors);
   $: fans = fanGroups(sensors);
-  // Fans are listed on their own above; the per-hardware lists show the rest.
-  $: groups = groupByHardware(sensors.filter((s) => s.kind !== "fan"));
+  // The mini window has a fixed height: three rails fit, the rest stay in
+  // the main window's panel.
+  $: voltages = voltageReadings(sensors).slice(0, compact ? 3 : 8);
+  // Fans are listed on their own above; the per-hardware lists show the rest
+  // (voltages are on the CPU detail).
+  $: groups = groupByHardware(
+    sensors.filter((s) => s.kind !== "fan" && s.kind !== "voltage"),
+  );
   $: memAvail = systemStats.memory_total - systemStats.memory_used;
   const pct = (part: number, total: number) =>
     total > 0 ? Math.min(100, Math.max(0, (part / total) * 100)) : 0;
@@ -174,6 +181,18 @@
         </div>
       {/each}
     </div>
+    {#if voltages.length}
+      <div class="panel">
+        <div class="list-head"><span>{$t("details.voltages")}</span></div>
+        {#each voltages as s (s.id || `${s.kind}:${s.name}`)}
+          <div class="item">
+            <span class="name">{s.name}</span><span class="num"
+              >{formatSensor(s)}</span
+            >
+          </div>
+        {/each}
+      </div>
+    {/if}
   {:else if kind === "gpu"}
     {#each gpus as g (g.id)}
       <div class="panel">
