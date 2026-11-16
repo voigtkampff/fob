@@ -312,15 +312,13 @@ td[data-dragging] {
   background: color-mix(in srgb, var(--primary) 16%, var(--card));
 }
 .resource-grid > [data-dragging],
-.grid > [data-dragging],
-.overlay-metrics > [data-dragging] {
+.grid > [data-dragging] {
   position: relative;
   scale: 1.03;
 }
 @media (prefers-reduced-motion: reduce) {
   .grid > [data-dragging],
-  .resource-grid > [data-dragging],
-  .overlay-metrics > [data-dragging] {
+  .resource-grid > [data-dragging] {
     scale: none;
   }
 }

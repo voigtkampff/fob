@@ -381,6 +381,10 @@
                   ids: shownBlocks,
                   handle: ".grip",
                   vertical: true,
+                  // The ghost stays inside this list and is portalled out of
+                  // the scrolling pane so no ancestor can clip it.
+                  clampToNode: true,
+                  portal: true,
                   onMove: (id, target, after) =>
                     saveOverlay({
                       overlayOrder: moveNextTo(
