@@ -21,6 +21,7 @@
     setupState,
     uptimeInfo,
     voltageReadings,
+    voltageTip,
   } from "$lib/utils/dashboard.js";
   import { sensorSetup } from "$lib/stores/sensorSetup";
   import SensorSetup from "$lib/components/dashboard/SensorSetup.svelte";
@@ -31,6 +32,7 @@
   import ResourceTrend from "./ResourceTrend.svelte";
   import DiskHealthSummary from "./DiskHealthSummary.svelte";
   import { locale, t } from "$lib/i18n";
+  import * as Tooltip from "$lib/components/ui/tooltip/index.js";
   import {
     engineLabel,
     engineTitle,
@@ -212,12 +214,27 @@
     {unavailable}
     {unsupported}
   />{/snippet}
-{#snippet row(label: string, value: string, muted = false)}<div
-    class="flex justify-between gap-4 text-sm"
-  >
-    <span class="min-w-0 truncate text-muted-foreground" title={label}
-      >{label}</span
-    ><span
+{#snippet row(
+  label: string,
+  value: string,
+  muted = false,
+  tip: string | null = null,
+)}<div class="flex justify-between gap-4 text-sm">
+    {#if tip}<Tooltip.Root>
+        <Tooltip.Trigger
+          class="min-w-0 truncate text-left text-muted-foreground"
+          >{label}</Tooltip.Trigger
+        >
+        <Tooltip.Content
+          side="top"
+          align="start"
+          sideOffset={6}
+          collisionPadding={8}>{tip}</Tooltip.Content
+        >
+      </Tooltip.Root>{:else}<span
+        class="min-w-0 truncate text-muted-foreground"
+        title={label}>{label}</span
+      >{/if}<span
       class={`shrink-0 text-right font-medium tabular-nums ${muted ? "text-muted-foreground" : ""}`}
       >{value}</span
     >
@@ -263,10 +280,17 @@
           title={$t("details.voltages")}
           description={group.hardware}
         >
-          {#each group.sensors as s (s.id || `${s.kind}:${s.name}`)}{@render row(
-              s.name,
-              formatSensor(s),
-            )}{/each}
+          <Tooltip.Provider delayDuration={300}
+            >{#each group.sensors as s (s.id || `${s.kind}:${s.name}`)}
+              {@const tip = voltageTip(s.name)}
+              {@render row(
+                s.name,
+                formatSensor(s),
+                false,
+                tip ? $t(`voltage.tip.${tip}`) : null,
+              )}
+            {/each}</Tooltip.Provider
+          >
         </DetailSection>{/each}
     {/snippet}
   </DetailLayout>

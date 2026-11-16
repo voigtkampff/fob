@@ -22,6 +22,7 @@ import {
   formatSensor,
   voltageCard,
   voltageCardRows,
+  voltageTip,
   coreVoltageMean,
   coreCluster,
   voltageRank,
@@ -396,14 +397,34 @@ assert.deepEqual(
 // A machine that only names per-core rails still gets a useful card.
 assert.deepEqual(keys([v("P-Core #1", 1.4), v("E-Core #1", 1.36)]), ["p", "e"]);
 assert.deepEqual(keys([]), [], "no readings at all: no card");
+// Hover text is chosen by the reading, not by the panel: the same four
+// explanations follow a rail from the card into the full window's list.
 assert.deepEqual(
-  keys([v("CPU Termination", 0.54)]),
-  [],
-  "a rail the card has no row for is not one of them",
+  [
+    "Vcore",
+    "CPU Core",
+    "P-Core #3",
+    "E-Core #7",
+    "CPU Termination",
+    "Core #1",
+  ].map(voltageTip),
+  ["vcore", "cpuCore", "p", "e", null, null],
+  "each voltage reading gets its own one-line explanation",
 );
-// Every rendered row carries a number, so the card never draws a dash.
-for (const row of voltageCardRows([...rails, v("P-Core #1", 1.4)]))
-  assert.ok(Number.isFinite(row.value), row.key);
+// Every row key the card can render has a tip key too, so no row is left
+// without an explanation and none of them falls back to a tooltip title.
+const rowNames = {
+  vcore: "Vcore",
+  cpuCore: "CPU Core",
+  p: "P-Core #1",
+  e: "E-Core #1",
+};
+for (const row of voltageCardRows([
+  ...rails,
+  v("P-Core #1", 1.4),
+  v("E-Core #1", 1.36),
+]))
+  assert.equal(voltageTip(rowNames[row.key]), row.key, `tip for ${row.key}`);
 
 console.log(
   "PASS: dashboard formatting, volume/GPU selection, top processes, sparkline series",

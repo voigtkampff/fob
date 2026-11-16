@@ -408,6 +408,20 @@ export function voltageCard(sensors) {
  * @typedef {"vcore" | "cpuCore" | "p" | "e"} VoltageRowKey
  */
 
+/** Which explanation a voltage row carries on hover: the suffix of
+ * `voltage.tip.<suffix>`, or null for a reading with no sentence of its own
+ * (e.g. CPU Termination).
+ * @param {string} name
+ * @returns {"vcore" | "cpuCore" | "p" | "e" | null} */
+export function voltageTip(name) {
+  const cluster = coreCluster(name);
+  if (cluster) return cluster;
+  const rank = voltageRank(name);
+  if (rank === 0) return "vcore";
+  if (rank === 1) return "cpuCore";
+  return null;
+}
+
 /** The voltage rows the card shows for this machine: only the readings it has,
  * so a CPU without P/E cores gets a two-row card instead of empty labels. The
  * decision comes from the data (a "P-Core"/"E-Core" reading exists), never

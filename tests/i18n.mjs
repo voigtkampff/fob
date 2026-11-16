@@ -141,6 +141,7 @@ const dynamic = {
     "power",
   ],
   "settings.overlayDock": ["top", "bottom", "free"],
+  "voltage.tip": ["vcore", "cpuCore", "p", "e"],
   "gpu.engine": [
     "3d",
     "copy",
