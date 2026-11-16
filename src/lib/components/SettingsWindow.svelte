@@ -433,7 +433,7 @@
               >
                 {$t("settings.overlayMetricsNote")}
               </p>
-              <Tooltip.Provider delayDuration={300}>
+              <Tooltip.Provider delayDuration={150} skipDelayDuration={500}>
                 <ul
                   class="overlay-metrics"
                   use:dragReorder={{

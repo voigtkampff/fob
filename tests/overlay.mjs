@@ -353,6 +353,15 @@ const settingsSource = readFileSync(
   new URL("../src/lib/components/SettingsWindow.svelte", import.meta.url),
   "utf8",
 );
+const delay = Number(settingsSource.match(/delayDuration=\{(\d+)\}/)?.[1]);
+const skipDelay = Number(
+  settingsSource.match(/skipDelayDuration=\{(\d+)\}/)?.[1],
+);
+assert.ok(delay >= 120 && delay <= 150, "tooltip opens after 120–150 ms");
+assert.ok(
+  skipDelay >= 400 && skipDelay <= 600,
+  "adjacent icons skip the delay for 400–600 ms",
+);
 assert.ok(!settingsSource.includes("native-tip"), "no custom tooltip CSS");
 assert.ok(!settingsSource.includes("showTitle"), "no custom tooltip timer");
 assert.ok(!settingsSource.includes("clearTitle"), "no custom tooltip timer");
