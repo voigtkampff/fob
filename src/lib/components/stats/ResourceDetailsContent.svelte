@@ -219,6 +219,7 @@
   value: string,
   muted = false,
   tip: string | null = null,
+  nativeTitle = true,
 )}<div class="flex justify-between gap-4 text-sm">
     {#if tip}<Tooltip.Root>
         <Tooltip.Trigger
@@ -233,7 +234,7 @@
         >
       </Tooltip.Root>{:else}<span
         class="min-w-0 truncate text-muted-foreground"
-        title={label}>{label}</span
+        title={nativeTitle ? label : undefined}>{label}</span
       >{/if}<span
       class={`shrink-0 text-right font-medium tabular-nums ${muted ? "text-muted-foreground" : ""}`}
       >{value}</span
@@ -288,6 +289,7 @@
                 formatSensor(s),
                 false,
                 tip ? $t(`voltage.tip.${tip}`) : null,
+                false,
               )}
             {/each}</Tooltip.Provider
           >

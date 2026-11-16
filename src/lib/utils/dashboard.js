@@ -408,14 +408,14 @@ export function voltageCard(sensors) {
  * @typedef {"vcore" | "cpuCore" | "p" | "e"} VoltageRowKey
  */
 
-/** Which explanation a voltage row carries on hover: the suffix of
- * `voltage.tip.<suffix>`, or null for a reading with no sentence of its own
- * (e.g. CPU Termination).
+/** Which explanation a row carries on hover, as the suffix of
+ * `voltage.tip.<suffix>`. Only the two summary rails have one: a per-core row
+ * ("P-Core #1", "E-Core #2") is a single reading, and the sentence that
+ * explains the cluster mean would be wrong on it. Everything else (CPU
+ * Termination and the like) has no explanation either.
  * @param {string} name
- * @returns {"vcore" | "cpuCore" | "p" | "e" | null} */
+ * @returns {"vcore" | "cpuCore" | null} */
 export function voltageTip(name) {
-  const cluster = coreCluster(name);
-  if (cluster) return cluster;
   const rank = voltageRank(name);
   if (rank === 0) return "vcore";
   if (rank === 1) return "cpuCore";

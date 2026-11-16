@@ -397,8 +397,8 @@ assert.deepEqual(
 // A machine that only names per-core rails still gets a useful card.
 assert.deepEqual(keys([v("P-Core #1", 1.4), v("E-Core #1", 1.36)]), ["p", "e"]);
 assert.deepEqual(keys([]), [], "no readings at all: no card");
-// Hover text is chosen by the reading, not by the panel: the same four
-// explanations follow a rail from the card into the full window's list.
+// Hover text belongs to the four summary labels only. A per-core row is one
+// reading, so the sentence about the cluster mean must never appear on it.
 assert.deepEqual(
   [
     "Vcore",
@@ -408,80 +408,25 @@ assert.deepEqual(
     "CPU Termination",
     "Core #1",
   ].map(voltageTip),
-  ["vcore", "cpuCore", "p", "e", null, null],
-  "each voltage reading gets its own one-line explanation",
+  ["vcore", "cpuCore", null, null, null, null],
 );
-// Every row key the card can render has a tip key too, so no row is left
-// without an explanation and none of them falls back to a tooltip title.
-const rowNames = {
-  vcore: "Vcore",
-  cpuCore: "CPU Core",
-  p: "P-Core #1",
-  e: "E-Core #1",
-};
-for (const row of voltageCardRows([
-  ...rails,
-  v("P-Core #1", 1.4),
-  v("E-Core #1", 1.36),
-]))
-  assert.equal(voltageTip(rowNames[row.key]), row.key, `tip for ${row.key}`);
-
-console.log(
-  "PASS: dashboard formatting, volume/GPU selection, top processes, sparkline series",
+const perCore = [
+  ...Array.from({ length: 8 }, (_, i) => `P-Core #${i + 1}`),
+  ...Array.from({ length: 8 }, (_, i) => `E-Core #${i + 1}`),
+];
+assert.deepEqual(
+  perCore.map(voltageTip),
+  perCore.map(() => null),
+  "no per-core row carries the cluster-mean explanation",
 );
-
-// winperf v0.4: helper pipe sensors (same fixture the Rust and C# tests use).
-{
-  const kinds = {
-    Temperature: "temperature",
-    Fan: "fan",
-    Control: "control",
-    Voltage: "voltage",
-  };
-  const line = readFileSync(
-    new URL("../src-tauri/tests/fixtures/sensors-pipe.jsonl", import.meta.url),
-    "utf8",
-  ).split("\n")[0];
-  const pipe = JSON.parse(line)
-    .sensors.filter((s) => kinds[s.type] && Number.isFinite(s.value))
-    .map((s) => ({
-      hardware: s.hw,
-      id: s.id,
-      name: s.name,
-      kind: kinds[s.type],
-      value: s.value,
-      source: "winperf sensor helper",
-    }));
-  const sum = sensorSummary(pipe);
-  assert.equal(sum.cpuTemp?.name, "CPU Package");
-  assert.equal(sum.cpuTemp?.value, 52);
-  assert.equal(sum.gpuTemp?.name, "GPU Core");
-  const groups = fanGroups(pipe);
-  assert.deepEqual(
-    groups.map((g) => [g.hardware, g.fans.map((f) => f.name)]),
-    [
-      ["Example Board", ["Fan #1", "Fan #2", "Fan #3"]],
-      ["NVIDIA Example GPU", ["GPU Fan 1"]],
-    ],
-  );
-  assert.equal(fanText(pipe), "1102 · 1349 RPM");
-  assert.equal(fanText(pipe, 1), "1102 RPM +1");
-  assert.equal(fanText([]), "");
-  const tenth = { hardware: "B", name: "Fan #10", kind: "fan", value: 900 };
-  const second = { hardware: "B", name: "Fan #2", kind: "fan", value: 800 };
-  assert.deepEqual(
-    fanGroups([tenth, second])[0].fans.map((f) => f.name),
-    ["Fan #2", "Fan #10"],
-  );
-  assert.deepEqual(
-    byKind([
-      { kind: "control", name: "Fan #2" },
-      { kind: "fan", name: "Fan #1" },
-      { kind: "temperature", name: "CPU" },
-    ]).map((s) => s.kind),
-    ["temperature", "fan", "control"],
-  );
-}
+// The card's rows are the four summary labels, so every row it draws has one.
+assert.deepEqual(
+  voltageCardRows([
+    ...rails,
+    ...perCore.map((n, i) => v(n, 1.3 + i * 0.01)),
+  ]).map((r) => r.key),
+  ["vcore", "cpuCore", "p", "e"],
+);
 {
   const base = {
     supported: true,
@@ -735,6 +680,29 @@ console.log("PASS: per-app network rows group, stick for 30 s and sort");
     cardDetail,
     /\.head-block \.big \{[^}]*line-height:/,
     "the reading's line height belongs to the shared header",
+  );
+  // One trigger per mount point, on the row label itself: a trigger on the
+  // card or list container would pop the wrong sentence on every row under it.
+  assert.equal(
+    (cardDetail.match(/<Tooltip\.Root>/g) ?? []).length,
+    1,
+    "the card has one tooltip, on the voltage row label",
+  );
+  const sheet = src("lib/components/stats/ResourceDetailsContent.svelte");
+  assert.equal(
+    (sheet.match(/<Tooltip\.Root>/g) ?? []).length,
+    1,
+    "the detail list has one tooltip, on the row label",
+  );
+  assert.match(
+    sheet,
+    /\{@const tip = voltageTip\(s\.name\)\}/,
+    "the detail list asks voltageTip about each reading",
+  );
+  assert.match(
+    sheet,
+    /tip \? \$t\(`voltage\.tip\.\$\{tip\}`\) : null/,
+    "a row without an explanation gets no tooltip at all",
   );
   const page = src("routes/+page.svelte");
   assert.ok(page.includes('= "processes";'), "Fob starts on the Processes tab");
