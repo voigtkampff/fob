@@ -232,7 +232,7 @@ export function topBy(items, key, count = 10) {
 }
 
 /** Pick headline readings for the Temp & fan card.
- * @param {{ hardware: string, id?: string, name: string, kind: "temperature" | "fan" | "control", value: number }[]} sensors
+ * @param {{ hardware: string, id?: string, name: string, kind: "temperature" | "fan" | "control" | "voltage", value: number }[]} sensors
  */
 export function sensorSummary(sensors) {
   const list = sensors ?? [];
@@ -253,7 +253,13 @@ export function sensorSummary(sensors) {
   const fan = fans.length
     ? fans.reduce((a, b) => (b.value > a.value ? b : a))
     : (list.find((s) => s.kind === "control") ?? null);
-  return { cpuTemp, gpuTemp, fan, count: list.length };
+  return {
+    cpuTemp,
+    gpuTemp,
+    fan,
+    cpuVoltage: voltageReadings(list)[0] ?? null,
+    count: list.length,
+  };
 }
 
 /** Which device a sensor belongs to. LibreHardwareMonitor ids start with
@@ -316,11 +322,125 @@ export function groupByHardware(sensors) {
 export function formatSensor(s) {
   if (s.kind === "temperature") return `${s.value.toFixed(0)} °C`;
   if (s.kind === "fan") return `${Math.round(s.value)} RPM`;
+  if (s.kind === "voltage") return `${s.value.toFixed(3)} V`;
   return `${Math.round(s.value)} %`;
 }
 
 /** Natural order for sensor names ("Fan #2" before "Fan #10"). */
 const natural = new Intl.Collator("en", { numeric: true, sensitivity: "base" });
+
+/** Which CPU voltage to show first (lower is better): the board's real VCore
+ * rail, then the CPU's own "CPU Core" reading (its requested VID), then the
+ * per-core values, then the rest (CPU Termination and the like).
+ * @param {string} name */
+export function voltageRank(name) {
+  const n = name.trim().toLowerCase();
+  if (n.includes("vcore")) return 0;
+  if (n.includes("cpu core")) return 1;
+  return n.includes("core") ? 2 : 3;
+}
+
+/** Every voltage reading, headline pick first, names in natural order within
+ * a rank.
+ * @template {{ kind: string, name: string, value: number }} S
+ * @param {S[]} sensors
+ * @returns {S[]}
+ */
+export function voltageReadings(sensors) {
+  return (sensors ?? [])
+    .filter((s) => s.kind === "voltage" && Number.isFinite(s.value))
+    .sort(
+      (a, b) =>
+        voltageRank(a.name) - voltageRank(b.name) ||
+        natural.compare(a.name, b.name),
+    );
+}
+
+/** Which core cluster a per-core voltage reading belongs to, from its name
+ * ("P-Core #1" / "E-Core #2"); null for the CPU's own package rails.
+ * @param {string} name
+ * @returns {"p" | "e" | null} */
+export function coreCluster(name) {
+  const match = /^\s*([pe])[\s-]?core\b/i.exec(name);
+  return match ? /** @type {"p" | "e"} */ (match[1].toLowerCase()) : null;
+}
+
+/** Mean of one core cluster's voltage readings, rounded to a millivolt, or
+ * null when the cluster has none (a machine without P/E cores, or no
+ * per-core voltage at all). Cores that report nothing are left out of the
+ * mean, so a partial cluster still says something.
+ * @template {{ kind: string, name: string, value: number }} S
+ * @param {S[]} sensors
+ * @param {"p" | "e"} cluster
+ * @returns {number | null}
+ */
+export function coreVoltageMean(sensors, cluster) {
+  const values = (sensors ?? [])
+    .filter(
+      (s) =>
+        s.kind === "voltage" &&
+        Number.isFinite(s.value) &&
+        coreCluster(s.name) === cluster,
+    )
+    .map((s) => s.value);
+  if (!values.length) return null;
+  const mean = values.reduce((a, b) => a + b, 0) / values.length;
+  return Math.round(mean * 1000) / 1000;
+}
+
+/** The four readings the mini window's voltage card can show: the board's
+ * VCore rail, the CPU's own core reading, and the P/E cluster means. Each is
+ * null when the machine reports nothing for it.
+ * @param {{ kind: string, name: string, value: number }[]} sensors */
+export function voltageCard(sensors) {
+  const list = voltageReadings(sensors);
+  /** @param {number} rank */
+  const pick = (rank) => list.find((s) => voltageRank(s.name) === rank)?.value;
+  return {
+    vcore: pick(0) ?? null,
+    cpuCore: pick(1) ?? null,
+    p: coreVoltageMean(list, "p"),
+    e: coreVoltageMean(list, "e"),
+  };
+}
+
+/**
+ * @typedef {"vcore" | "cpuCore" | "p" | "e"} VoltageRowKey
+ */
+
+/** Which explanation a row carries on hover, as the suffix of
+ * `voltage.tip.<suffix>`. Only the two summary rails have one: a per-core row
+ * ("P-Core #1", "E-Core #2") is a single reading, and the sentence that
+ * explains the cluster mean would be wrong on it. Everything else (CPU
+ * Termination and the like) has no explanation either.
+ * @param {string} name
+ * @returns {"vcore" | "cpuCore" | null} */
+export function voltageTip(name) {
+  const rank = voltageRank(name);
+  if (rank === 0) return "vcore";
+  if (rank === 1) return "cpuCore";
+  return null;
+}
+
+/** The voltage rows the card shows for this machine: only the readings it has,
+ * so a CPU without P/E cores gets a two-row card instead of empty labels. The
+ * decision comes from the data (a "P-Core"/"E-Core" reading exists), never
+ * from the vendor or model, so a hybrid AMD CPU works the same way.
+ * @param {{ kind: string, name: string, value: number }[]} sensors
+ * @returns {{ key: VoltageRowKey, value: number }[]} */
+export function voltageCardRows(sensors) {
+  const card = voltageCard(sensors);
+  /** @type {{ key: VoltageRowKey, value: number | null }[]} */
+  const rows = [
+    { key: "vcore", value: card.vcore },
+    { key: "cpuCore", value: card.cpuCore },
+    { key: "p", value: card.p },
+    { key: "e", value: card.e },
+  ];
+  return rows
+    .filter((row) => row.value != null)
+    .map((row) => ({ key: row.key, value: /** @type {number} */ (row.value) }));
+}
 
 /** Fan RPM sensors grouped by hardware (board first-seen order), names in
  * natural order. 0 RPM fans are kept: stopped or not connected.
@@ -350,12 +470,12 @@ export function fanText(sensors, max = 3) {
   return `${shown.join(" · ")} RPM${more > 0 ? ` +${more}` : ""}`;
 }
 
-/** Sensors are sorted temperature, fan, duty within a hardware group.
+/** Sensors are sorted temperature, fan, duty, voltage within a hardware group.
  * @template {{ kind: string, name: string }} S
  * @param {S[]} list
  */
 export function byKind(list) {
-  const rank = { temperature: 0, fan: 1, control: 2 };
+  const rank = { temperature: 0, fan: 1, control: 2, voltage: 3 };
   return [...list].sort(
     (a, b) =>
       (rank[/** @type {keyof typeof rank} */ (a.kind)] ?? 3) -

@@ -2,7 +2,8 @@
 //! elevated by the `fob-sensors` scheduled task) serves one JSON line per
 //! second on `\\.\pipe\fob-sensors`:
 //! `{"ts":<unix ms>,"sensors":[{"hw","id","name","type","value"}]}` with
-//! `type` = Temperature | Fan | Control and `value` a number or null.
+//! `type` = Temperature | Fan | Control | Voltage and `value` a number or null.
+//! Voltage is CPU-only: the helper drops every whole-board rail.
 //! The line format is produced by sensors-helper/src/Wire.cs; both sides are
 //! tested against tests/fixtures/sensors-pipe.jsonl.
 // Most of this is only reachable on Windows.
@@ -35,6 +36,7 @@ fn kind(text: &str) -> Option<SensorKind> {
         "Temperature" => Some(SensorKind::Temperature),
         "Fan" => Some(SensorKind::Fan),
         "Control" => Some(SensorKind::Control),
+        "Voltage" => Some(SensorKind::Voltage),
         _ => None,
     }
 }
@@ -272,8 +274,8 @@ mod tests {
         assert_eq!(lines.len(), 3);
         let HelperLine { ts, sensors, net } = parse_line(lines[0]).unwrap();
         assert_eq!(ts, 1_793_612_400_000);
-        // 19 written, Load is never written; null/NaN/Infinity values dropped.
-        assert_eq!(sensors.len(), 15);
+        // 21 written, Load is never written; null/NaN/Infinity values dropped.
+        assert_eq!(sensors.len(), 18);
         let package = sensors.iter().find(|s| s.name == "CPU Package").unwrap();
         assert_eq!(package.hardware, "Example Hybrid CPU");
         assert_eq!(package.id, "/intelcpu/0/temperature/16");
@@ -292,6 +294,15 @@ mod tests {
             .find(|s| s.kind == SensorKind::Control)
             .unwrap();
         assert_eq!(duty.value, 42.35);
+        // CPU voltage: the CPU's own channels and the board's VCore rail only.
+        let volts: Vec<_> = sensors
+            .iter()
+            .filter(|s| s.kind == SensorKind::Voltage)
+            .collect();
+        assert_eq!(volts.len(), 3);
+        assert_eq!(volts[0].name, "CPU Core");
+        assert_eq!(volts[0].value, 1.45);
+        assert_eq!((volts[2].name.as_str(), volts[2].value), ("Vcore", 1.24));
         assert!(!sensors.iter().any(|s| s.hardware.starts_with("Weird")));
         let net = net.unwrap();
         assert_eq!(net.ms, 1000);
@@ -355,8 +366,11 @@ mod tests {
                {"hw":"A","id":"x","name":"V","type":"Voltage","value":1.2}]}"#,
         )
         .unwrap();
-        assert_eq!(s.len(), 1);
+        // Parsing keeps what the helper sent; the CPU-only voltage rule is the
+        // helper's and the hub's (sensors::is_cpu_voltage).
+        assert_eq!(s.len(), 2);
         assert_eq!((s[0].name.as_str(), s[0].id.as_str()), ("T", ""));
+        assert_eq!((s[1].kind, s[1].value), (SensorKind::Voltage, 1.2));
         assert!(net.is_none()); // a helper without ETW sends no "net"
         let bad = parse_line(
             r#"{"ts":1,"sensors":[],"net":{"ms":500,"procs":[{"pid":-1},{"pid":7,"rx":10}]}}"#,

@@ -271,7 +271,7 @@ export interface Sensor {
   /** e.g. "/lpc/example/0/fan/1"; "" when the source has none. */
   id: string;
   name: string;
-  kind: "temperature" | "fan" | "control";
+  kind: "temperature" | "fan" | "control" | "voltage";
   value: number;
   source: string;
 }

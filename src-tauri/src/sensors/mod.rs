@@ -1,7 +1,8 @@
-//! winperf: temperatures and fan speeds. Each source sits behind `SensorSource`
-//! so it can be swapped without touching the sampler or the UI. Board sources
-//! are tried in order and the first that answers wins: winperf's own helper
-//! pipe, then LibreHardwareMonitor's web server. NVIDIA NVML is always merged.
+//! winperf: temperatures, fan speeds and CPU voltage. Each source sits behind
+//! `SensorSource` so it can be swapped without touching the sampler or the UI.
+//! Board sources are tried in order and the first that answers wins: winperf's
+//! own helper pipe, then LibreHardwareMonitor's web server. NVIDIA NVML is
+//! always merged.
 use crate::gpu::GpuDevice;
 use serde::Serialize;
 use std::fmt::Debug;
@@ -21,6 +22,8 @@ pub enum SensorKind {
     Fan,
     /// Fan duty, %
     Control,
+    /// V, CPU only: see `is_cpu_voltage`
+    Voltage,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize)]
@@ -53,6 +56,71 @@ pub trait SensorSource: Send + Debug {
     fn net(&mut self) -> Option<pipe::NetSample> {
         None
     }
+}
+
+/// Which device a sensor belongs to. LibreHardwareMonitor ids start with the
+/// hardware type ("/amdcpu/0/…", "/gpu-nvidia/0/…"), so an APU named
+/// "… w/ Radeon 780M Graphics" is still a CPU; NVML ids start "nvml/".
+/// Without an id, the hardware name decides, CPU words first. Same rules as
+/// sensorDevice() in src/lib/utils/dashboard.js.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Device {
+    Cpu,
+    Gpu,
+    Other,
+}
+
+pub fn device(s: &Sensor) -> Device {
+    let id = s.id.to_lowercase();
+    if !id.is_empty() {
+        let kind = id
+            .trim_start_matches('/')
+            .split('/')
+            .next()
+            .unwrap_or_default();
+        return match kind {
+            "amdcpu" | "intelcpu" | "cpu" => Device::Cpu,
+            "nvidiagpu" | "atigpu" | "nvml" => Device::Gpu,
+            k if k.starts_with("gpu-") => Device::Gpu,
+            _ => Device::Other,
+        };
+    }
+    let hw = s.hardware.to_lowercase();
+    let word = |w: &str| hw.split(|c: char| !c.is_alphanumeric()).any(|x| x == w);
+    if hw.contains("ryzen")
+        || hw.contains("intel core")
+        || hw.contains("core i")
+        || hw.contains("core ultra")
+        || word("cpu")
+        || hw.contains("processor")
+    {
+        Device::Cpu
+    } else if ["gpu", "nvidia", "geforce", "radeon"]
+        .iter()
+        .any(|w| hw.contains(w))
+        || word("arc")
+    {
+        Device::Gpu
+    } else {
+        Device::Other
+    }
+}
+
+/// Whether a voltage reading is the CPU's: its own hardware (`/intelcpu/`,
+/// `/amdcpu/`, `/cpu/`), or the Super I/O channel a board names after the CPU
+/// ("Vcore", "CPU Termination"). Every other channel of a board is a
+/// whole-board rail (AVCC, +3.3V, 5V, 12V, "Voltage #7") and never reaches
+/// the UI. Same rule as Wire.Wanted in sensors-helper/src/Wire.cs.
+pub fn is_cpu_voltage(s: &Sensor) -> bool {
+    let id = s.id.to_lowercase();
+    if ["/intelcpu/", "/amdcpu/", "/cpu/"]
+        .iter()
+        .any(|prefix| id.starts_with(prefix))
+    {
+        return true;
+    }
+    let name = s.name.to_lowercase();
+    name.contains("vcore") || name.contains("cpu")
 }
 
 /// NVIDIA GPU temperature / fan duty, read through NeoHtop's NVML GPU code.
@@ -116,7 +184,11 @@ impl SensorHub {
         for source in &mut self.sources {
             if let Some(sensors) = source.read() {
                 report.sources.push(source.name().into());
-                report.sensors.extend(sensors);
+                report.sensors.extend(
+                    sensors
+                        .into_iter()
+                        .filter(|s| s.kind != SensorKind::Voltage || is_cpu_voltage(s)),
+                );
                 report.net = source.net();
                 break;
             }
@@ -175,6 +247,53 @@ mod tests {
         let paired = from_gpus(&[gpu(crate::gpu::SOURCE_NVML_PDH, Some(51.0), Some(20.0))]);
         assert_eq!(paired.len(), 2);
         assert_eq!(paired[0].value, 51.0);
+    }
+    #[test]
+    fn cpu_voltage_is_the_only_voltage_fob_shows() {
+        let s = |id: &str, name: &str| Sensor {
+            hardware: "ASUS PRIME Z790-P D4".into(),
+            id: id.into(),
+            name: name.into(),
+            kind: SensorKind::Voltage,
+            value: 1.24,
+            source: "test".into(),
+        };
+        assert!(is_cpu_voltage(&s("/lpc/nct6798d/0/voltage/0", "Vcore")));
+        assert!(is_cpu_voltage(&s(
+            "/lpc/nct6798d/0/voltage/9",
+            "CPU Termination"
+        )));
+        assert!(is_cpu_voltage(&s("/intelcpu/0/voltage/0", "CPU Core")));
+        assert!(is_cpu_voltage(&s("/intelcpu/0/voltage/8", "P-Core #8")));
+        assert!(is_cpu_voltage(&s("/amdcpu/0/voltage/0", "Core (SVI2 TFN)")));
+        assert!(!is_cpu_voltage(&s("/lpc/nct6798d/0/voltage/2", "AVCC")));
+        assert!(!is_cpu_voltage(&s("/lpc/nct6798d/0/voltage/3", "+3.3V")));
+        assert!(!is_cpu_voltage(&s("/lpc/nct6798d/0/voltage/7", "+12V")));
+        assert!(!is_cpu_voltage(&s(
+            "/gpu-nvidia/0/voltage/0",
+            "GPU Core Voltage"
+        )));
+    }
+    #[test]
+    fn hub_drops_whole_board_rails() {
+        let rail = Sensor {
+            hardware: "Example Board".into(),
+            id: "/lpc/example/0/voltage/3".into(),
+            name: "+3.3V".into(),
+            kind: SensorKind::Voltage,
+            value: 3.328,
+            source: "Fixed".into(),
+        };
+        let vcore = Sensor {
+            id: "/lpc/example/0/voltage/0".into(),
+            name: "Vcore".into(),
+            value: 1.24,
+            ..rail.clone()
+        };
+        let mut hub = SensorHub {
+            sources: vec![Box::new(Fixed(Some(vec![rail, vcore.clone()])))],
+        };
+        assert_eq!(hub.read(&[]).sensors, vec![vcore]);
     }
     #[derive(Debug)]
     struct Fixed(Option<Vec<Sensor>>);

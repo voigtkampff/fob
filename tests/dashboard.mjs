@@ -20,6 +20,13 @@ import {
   cpuTempRank,
   groupByHardware,
   formatSensor,
+  voltageCard,
+  voltageCardRows,
+  voltageTip,
+  coreVoltageMean,
+  coreCluster,
+  voltageRank,
+  voltageReadings,
   fanGroups,
   fanText,
   byKind,
@@ -218,16 +225,40 @@ const sensors = [
     kind: "control",
     value: 42,
   },
+  {
+    hardware: "Example Chip",
+    id: "/lpc/example/0/voltage/0",
+    name: "Vcore",
+    kind: "voltage",
+    value: 1.24,
+  },
+  {
+    hardware: "Example Hybrid CPU",
+    id: "/intelcpu/0/voltage/0",
+    name: "CPU Core",
+    kind: "voltage",
+    value: 1.448608,
+  },
+  {
+    hardware: "Example Hybrid CPU",
+    id: "/intelcpu/0/voltage/1",
+    name: "P-Core #1",
+    kind: "voltage",
+    value: 1.428589,
+  },
 ];
 const sum = sensorSummary(sensors);
 assert.equal(sum.cpuTemp?.name, "CPU Package");
 assert.equal(sum.gpuTemp?.name, "GPU Core");
 assert.equal(sum.fan?.name, "Fan #2");
-assert.equal(sum.count, 7);
+// The board's real VCore rail beats the CPU's requested-VID readout.
+assert.equal(sum.cpuVoltage?.name, "Vcore");
+assert.equal(sum.count, 10);
 assert.deepEqual(sensorSummary([]), {
   cpuTemp: null,
   gpuTemp: null,
   fan: null,
+  cpuVoltage: null,
   count: 0,
 });
 // NVML only: GPU temp + fan duty, no CPU temp
@@ -251,66 +282,151 @@ assert.equal(nv.fan?.kind, "control");
 assert.deepEqual(
   groupByHardware(sensors).map((g) => [g.hardware, g.sensors.length]),
   [
-    ["Example Chip", 4],
-    ["Example Hybrid CPU", 2],
+    ["Example Chip", 5],
+    ["Example Hybrid CPU", 4],
     ["NVIDIA Example GPU", 1],
   ],
 );
 assert.equal(formatSensor(sensors[2]), "52 °C");
 assert.equal(formatSensor(sensors[5]), "1349 RPM");
 assert.equal(formatSensor(sensors[6]), "42 %");
-
-console.log(
-  "PASS: dashboard formatting, volume/GPU selection, top processes, sparkline series",
+assert.equal(formatSensor(sensors[7]), "1.240 V");
+assert.equal(voltageRank(" VCore "), 0);
+assert.equal(voltageRank("CPU Core"), 1);
+assert.equal(voltageRank("CPU Core Voltage (SVI2 TFN)"), 1);
+assert.equal(voltageRank("E-Core #3"), 2);
+assert.equal(voltageRank("CPU Termination"), 3);
+assert.deepEqual(
+  voltageReadings([
+    ...sensors,
+    { hardware: "B", name: "CPU Termination", kind: "voltage", value: 0.54 },
+  ]).map((s) => s.name),
+  ["Vcore", "CPU Core", "P-Core #1", "CPU Termination"],
 );
+assert.deepEqual(
+  voltageReadings(sensors).map((s) => s.name),
+  ["Vcore", "CPU Core", "P-Core #1"],
+);
+// A CPU with only its own rails: "CPU Core" first, then the per-core ones.
+assert.deepEqual(
+  voltageReadings(sensors.slice(8)).map((s) => s.name),
+  ["CPU Core", "P-Core #1"],
+);
+assert.deepEqual(voltageReadings([]), []);
+assert.deepEqual(
+  byKind([sensors[9], sensors[7], sensors[8], sensors[0]]).map((s) => s.name),
+  ["CPU", "CPU Core", "P-Core #1", "Vcore"],
+);
+// The mini window's four rows: the two CPU rails and the P/E cluster means.
+const v = (/** @type {string} */ name, /** @type {number} */ value) => ({
+  hardware: "Example Hybrid CPU",
+  name,
+  kind: "voltage",
+  value,
+});
+const card = voltageCard([
+  v("Vcore", 1.24),
+  v("CPU Core", 1.448608),
+  v("P-Core #1", 1.4),
+  v("P-Core #2", 1.42),
+  v("E-Core #1", 1.36),
+  v("E-Core #2", 1.38),
+]);
+assert.deepEqual(card, { vcore: 1.24, cpuCore: 1.448608, p: 1.41, e: 1.37 });
+assert.equal(
+  coreVoltageMean([v("P-Core #1", 1.4), v("P-Core #2", 1.42)], "p"),
+  1.41,
+);
+// Cores that report nothing are left out: two of three cores still average.
+assert.equal(
+  coreVoltageMean([v("P-Core #1", 1.4), v("P-Core #3", 1.42)], "p"),
+  1.41,
+);
+// A cluster with no reading at all, and a machine with no per-core rails.
+assert.equal(coreVoltageMean([v("P-Core #1", 1.4)], "e"), null);
+assert.equal(coreVoltageMean([], "p"), null);
+assert.deepEqual(voltageCard([]), {
+  vcore: null,
+  cpuCore: null,
+  p: null,
+  e: null,
+});
+assert.deepEqual(
+  voltageCard([v("Core #1", 1.1)]),
+  { vcore: null, cpuCore: null, p: null, e: null },
+  "an unnamed core is neither P nor E",
+);
+assert.deepEqual(
+  [coreCluster("P-Core #1"), coreCluster("e-core #4"), coreCluster("CPU Core")],
+  ["p", "e", null],
+);
+// Millivolt precision: 1.2345 rounds to 1.235, and formats like the rest.
+assert.equal(
+  coreVoltageMean([v("E-Core #1", 1.2345), v("E-Core #2", 1.2345)], "e"),
+  1.235,
+);
+assert.equal(
+  formatSensor({
+    kind: "voltage",
+    value: coreVoltageMean([v("E-Core #1", 1.3)], "e"),
+  }),
+  "1.300 V",
+);
+assert.equal(formatSensor({ kind: "voltage", value: card.p }), "1.410 V");
 
-// winperf v0.4: helper pipe sensors (same fixture the Rust and C# tests use).
-{
-  const kinds = { Temperature: "temperature", Fan: "fan", Control: "control" };
-  const line = readFileSync(
-    new URL("../src-tauri/tests/fixtures/sensors-pipe.jsonl", import.meta.url),
-    "utf8",
-  ).split("\n")[0];
-  const pipe = JSON.parse(line)
-    .sensors.filter((s) => kinds[s.type] && Number.isFinite(s.value))
-    .map((s) => ({
-      hardware: s.hw,
-      id: s.id,
-      name: s.name,
-      kind: kinds[s.type],
-      value: s.value,
-      source: "winperf sensor helper",
-    }));
-  const sum = sensorSummary(pipe);
-  assert.equal(sum.cpuTemp?.name, "CPU Package");
-  assert.equal(sum.cpuTemp?.value, 52);
-  assert.equal(sum.gpuTemp?.name, "GPU Core");
-  const groups = fanGroups(pipe);
-  assert.deepEqual(
-    groups.map((g) => [g.hardware, g.fans.map((f) => f.name)]),
-    [
-      ["Example Board", ["Fan #1", "Fan #2", "Fan #3"]],
-      ["NVIDIA Example GPU", ["GPU Fan 1"]],
-    ],
-  );
-  assert.equal(fanText(pipe), "1102 · 1349 RPM");
-  assert.equal(fanText(pipe, 1), "1102 RPM +1");
-  assert.equal(fanText([]), "");
-  const tenth = { hardware: "B", name: "Fan #10", kind: "fan", value: 900 };
-  const second = { hardware: "B", name: "Fan #2", kind: "fan", value: 800 };
-  assert.deepEqual(
-    fanGroups([tenth, second])[0].fans.map((f) => f.name),
-    ["Fan #2", "Fan #10"],
-  );
-  assert.deepEqual(
-    byKind([
-      { kind: "control", name: "Fan #2" },
-      { kind: "fan", name: "Fan #1" },
-      { kind: "temperature", name: "CPU" },
-    ]).map((s) => s.kind),
-    ["temperature", "fan", "control"],
-  );
-}
+// The card renders only the rows this machine has: no P/E core readings, no
+// empty P/E labels. The rule reads the data, not the vendor.
+const keys = (list) => voltageCardRows(list).map((r) => r.key);
+const rails = [v("Vcore", 1.24), v("CPU Core", 1.448608)];
+assert.deepEqual(keys(rails), ["vcore", "cpuCore"], "no P/E cores: two rows");
+assert.deepEqual(
+  keys([...rails, v("P-Core #1", 1.4)]),
+  ["vcore", "cpuCore", "p"],
+  "P cores only",
+);
+assert.deepEqual(
+  keys([...rails, v("E-Core #1", 1.36)]),
+  ["vcore", "cpuCore", "e"],
+  "E cores only",
+);
+assert.deepEqual(
+  keys([...rails, v("P-Core #1", 1.4), v("E-Core #1", 1.36)]),
+  ["vcore", "cpuCore", "p", "e"],
+  "a hybrid CPU keeps all four",
+);
+// A machine that only names per-core rails still gets a useful card.
+assert.deepEqual(keys([v("P-Core #1", 1.4), v("E-Core #1", 1.36)]), ["p", "e"]);
+assert.deepEqual(keys([]), [], "no readings at all: no card");
+// Hover text belongs to the four summary labels only. A per-core row is one
+// reading, so the sentence about the cluster mean must never appear on it.
+assert.deepEqual(
+  [
+    "Vcore",
+    "CPU Core",
+    "P-Core #3",
+    "E-Core #7",
+    "CPU Termination",
+    "Core #1",
+  ].map(voltageTip),
+  ["vcore", "cpuCore", null, null, null, null],
+);
+const perCore = [
+  ...Array.from({ length: 8 }, (_, i) => `P-Core #${i + 1}`),
+  ...Array.from({ length: 8 }, (_, i) => `E-Core #${i + 1}`),
+];
+assert.deepEqual(
+  perCore.map(voltageTip),
+  perCore.map(() => null),
+  "no per-core row carries the cluster-mean explanation",
+);
+// The card's rows are the four summary labels, so every row it draws has one.
+assert.deepEqual(
+  voltageCardRows([
+    ...rails,
+    ...perCore.map((n, i) => v(n, 1.3 + i * 0.01)),
+  ]).map((r) => r.key),
+  ["vcore", "cpuCore", "p", "e"],
+);
 {
   const base = {
     supported: true,
@@ -329,8 +445,15 @@ console.log(
   const done = { ...base, pawnio_installed: true, installed: true, task: "ok" };
   assert.equal(setupState({ ...done, running: true }), "ready");
   assert.equal(setupState(done), "starting");
-  assert.equal(setupState({ ...done, update_available: true,
-    installed_version: "0.8.1", bundled_version: "0.8.2" }), "update");
+  assert.equal(
+    setupState({
+      ...done,
+      update_available: true,
+      installed_version: "0.8.1",
+      bundled_version: "0.8.2",
+    }),
+    "update",
+  );
   assert.equal(setupState({ ...done, task: "mismatch" }), "repair");
   assert.equal(setupState({ ...base, task: "unknown" }), "repair");
   const fresh = setupSteps(base);
@@ -462,7 +585,10 @@ console.log("PASS: per-app network rows group, stick for 30 s and sort");
 {
   // Same machines as headline_temps in src-tauri/src/sampling.rs.
   const { cases } = JSON.parse(
-    readFileSync(new URL("./fixtures/headline-temps.json", import.meta.url), "utf8"),
+    readFileSync(
+      new URL("./fixtures/headline-temps.json", import.meta.url),
+      "utf8",
+    ),
   );
   const key = (s) => (s == null ? null : s.id || s.value);
   for (const c of cases) {
@@ -471,57 +597,149 @@ console.log("PASS: per-app network rows group, stick for 30 s and sort");
     assert.equal(key(sum.gpuTemp), c.gpu, `${c.machine}: GPU`);
   }
   assert.equal(
-    sensorDevice({ hardware: "AMD Ryzen 7 8845H w/ Radeon 780M Graphics", id: "/amdcpu/0/temperature/2" }),
+    sensorDevice({
+      hardware: "AMD Ryzen 7 8845H w/ Radeon 780M Graphics",
+      id: "/amdcpu/0/temperature/2",
+    }),
     "cpu",
     "an APU is a CPU whatever its name says",
   );
-  assert.equal(sensorDevice({ hardware: "Example Chip", id: "/lpc/example/0/temperature/0" }), "other");
+  assert.equal(
+    sensorDevice({
+      hardware: "Example Chip",
+      id: "/lpc/example/0/temperature/0",
+    }),
+    "other",
+  );
   assert.deepEqual(
-    ["Core #1", "Core Average", "CCDs Max (Tdie)", "Tdie", "Core (Tctl/Tdie)", "CPU Package"].map(cpuTempRank),
+    [
+      "Core #1",
+      "Core Average",
+      "CCDs Max (Tdie)",
+      "Tdie",
+      "Core (Tctl/Tdie)",
+      "CPU Package",
+    ].map(cpuTempRank),
     [5, 4, 3, 2, 1, 0],
   );
-  console.log("PASS: CPU and GPU temperature picked per machine (Intel, AMD desktop, AMD APU laptop)");
+  console.log(
+    "PASS: CPU and GPU temperature picked per machine (Intel, AMD desktop, AMD APU laptop)",
+  );
 }
 
 {
-  const { SERIES_COLOR, DASHED, sparkAreaPath } = await import("../src/lib/utils/chart-style.js");
-  const src = (p) => readFileSync(new URL(`../src/${p}`, import.meta.url), "utf8");
+  const { SERIES_COLOR, DASHED, sparkAreaPath } = await import(
+    "../src/lib/utils/chart-style.js"
+  );
+  const src = (p) =>
+    readFileSync(new URL(`../src/${p}`, import.meta.url), "utf8");
   assert.equal(
     sparkAreaPath("M0,10L5,4M8,2L9,3", 36),
     "M0,10L5,4L5,36L0,36ZM8,2L9,3L9,36L8,36Z",
     "each run of the line closes to the baseline",
   );
   assert.equal(SERIES_COLOR.received, "var(--chart-1)");
-  assert.ok(DASHED.has("sent") && DASHED.has("disk_write") && !DASHED.has("received"));
+  assert.ok(
+    DASHED.has("sent") && DASHED.has("disk_write") && !DASHED.has("received"),
+  );
   for (const p of [
     "lib/components/stats/ResourceTrend.svelte",
     "lib/components/dashboard/Dashboard.svelte",
     "lib/components/dashboard/CardDetail.svelte",
   ]) {
     const s = src(p);
-    assert.ok(s.includes("chart-style.js"), `${p} draws with the shared chart style`);
-    assert.ok(!/var\(--(peach|yellow|blue|green)\)"/.test(s), `${p}: no chart colour of its own`);
+    assert.ok(
+      s.includes("chart-style.js"),
+      `${p} draws with the shared chart style`,
+    );
+    assert.ok(
+      !/var\(--(peach|yellow|blue|green)\)"/.test(s),
+      `${p}: no chart colour of its own`,
+    );
   }
   assert.ok(
     !/@media[^{]*\{\s*\.resource-grid/.test(src("app.css")),
     "the Processes cards keep one spacing at every window width",
   );
+  // CPU and GPU detail headers are one block: model, specs line, then the
+  // reading in the same size and weight, left aligned. Two renders, one
+  // snippet, so the two panels cannot drift apart again.
+  const cardDetail = src("lib/components/dashboard/CardDetail.svelte");
+  assert.equal(
+    cardDetail.split("{@render detailHead(").length - 1,
+    2,
+    "the CPU and GPU details render the same header",
+  );
+  assert.ok(cardDetail.includes("{#snippet detailHead("), "one header snippet");
+  assert.ok(!cardDetail.includes("head-row"), "no header floating right");
+  assert.ok(
+    !/\.identity/.test(cardDetail),
+    "no second header layout of its own",
+  );
+  assert.match(
+    cardDetail,
+    /\.head-block \.big \{[^}]*line-height:/,
+    "the reading's line height belongs to the shared header",
+  );
+  // One trigger per mount point, on the row label itself: a trigger on the
+  // card or list container would pop the wrong sentence on every row under it.
+  assert.equal(
+    (cardDetail.match(/<Tooltip\.Root>/g) ?? []).length,
+    1,
+    "the card has one tooltip, on the voltage row label",
+  );
+  const sheet = src("lib/components/stats/ResourceDetailsContent.svelte");
+  assert.equal(
+    (sheet.match(/<Tooltip\.Root>/g) ?? []).length,
+    1,
+    "the detail list has one tooltip, on the row label",
+  );
+  assert.match(
+    sheet,
+    /\{@const tip = voltageTip\(s\.name\)\}/,
+    "the detail list asks voltageTip about each reading",
+  );
+  assert.match(
+    sheet,
+    /tip \? \$t\(`voltage\.tip\.\$\{tip\}`\) : null/,
+    "a row without an explanation gets no tooltip at all",
+  );
   const page = src("routes/+page.svelte");
   assert.ok(page.includes('= "processes";'), "Fob starts on the Processes tab");
-  console.log("PASS: one chart style everywhere; Processes tab default; card spacing fixed");
+  console.log(
+    "PASS: one chart style everywhere; Processes tab default; card spacing fixed",
+  );
 }
 
 {
-  const field = readFileSync(new URL("../src/lib/components/HotkeyField.svelte", import.meta.url), "utf8");
-  assert.ok(/class=\{`flex h-8 w-44 /.test(field), "every hotkey box has one fixed width");
-  assert.ok(field.includes('<span class="size-8 shrink-0" aria-hidden="true"></span>'), "an unset field keeps the clear button's slot");
+  const field = readFileSync(
+    new URL("../src/lib/components/HotkeyField.svelte", import.meta.url),
+    "utf8",
+  );
+  assert.ok(
+    /class=\{`flex h-8 w-44 /.test(field),
+    "every hotkey box has one fixed width",
+  );
+  assert.ok(
+    field.includes('<span class="size-8 shrink-0" aria-hidden="true"></span>'),
+    "an unset field keeps the clear button's slot",
+  );
   console.log("PASS: hotkey fields line up set or unset");
 }
 
 {
-  const field = readFileSync(new URL("../src/lib/components/HotkeyField.svelte", import.meta.url), "utf8");
+  const field = readFileSync(
+    new URL("../src/lib/components/HotkeyField.svelte", import.meta.url),
+    "utf8",
+  );
   const root = field.slice(field.indexOf("</script>"));
-  assert.ok(root.trimStart().includes('<div class="w-[13.5rem]">'), "the field, error included, has one fixed width");
-  assert.ok(root.indexOf('role="alert"') < root.lastIndexOf("</div>"), "the error sits inside that width");
+  assert.ok(
+    root.trimStart().includes('<div class="w-[13.5rem]">'),
+    "the field, error included, has one fixed width",
+  );
+  assert.ok(
+    root.indexOf('role="alert"') < root.lastIndexOf("</div>"),
+    "the error sits inside that width",
+  );
   console.log("PASS: a hotkey error wraps under its box without moving it");
 }

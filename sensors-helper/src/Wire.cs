@@ -1,5 +1,5 @@
 // fob-sensors wire format: one JSON object per line.
-// {"ts":<unix ms>,"sensors":[{"hw":..,"id":..,"name":..,"type":"Temperature"|"Fan"|"Control","value":<number|null>}],
+// {"ts":<unix ms>,"sensors":[{"hw":..,"id":..,"name":..,"type":"Temperature"|"Fan"|"Control"|"Voltage","value":<number|null>}],
 //  "net":{"ms":<interval>,"procs":[{"pid":..,"name":..,"rx":<bytes>,"tx":<bytes>}]}}
 //  ("net" only while ETW runs; "name" is the helper's best guess, winperf prefers its own by pid)
 // Hand-written (no System.Text.Json) so it is tiny, culture-proof and testable on any .NET.
@@ -25,9 +25,25 @@ namespace WinperfSensors
 
     public static class Wire
     {
-        public static readonly string[] Types = { "Temperature", "Fan", "Control" };
+        public static readonly string[] Types = { "Temperature", "Fan", "Control", "Voltage" };
 
-        public static bool Wanted(string type) => System.Array.IndexOf(Types, type) >= 0;
+        // Voltage goes on the wire for the CPU's own rails only: an identifier
+        // under /intelcpu/, /amdcpu/ or /cpu/, or a Super I/O channel the board
+        // labels for the CPU ("Vcore", "CPU Termination"). Every other channel
+        // of a Super I/O chip is a whole-board rail (AVCC, +3.3V, 5V, 12V,
+        // "Voltage #N") and stays here.
+        public static bool Wanted(Reading r)
+        {
+            if (System.Array.IndexOf(Types, r.Type) < 0) return false;
+            if (r.Type != "Voltage") return true;
+            var id = r.Id ?? "";
+            if (id.StartsWith("/intelcpu/", System.StringComparison.OrdinalIgnoreCase)
+                || id.StartsWith("/amdcpu/", System.StringComparison.OrdinalIgnoreCase)
+                || id.StartsWith("/cpu/", System.StringComparison.OrdinalIgnoreCase)) return true;
+            var name = r.Name ?? "";
+            return name.IndexOf("vcore", System.StringComparison.OrdinalIgnoreCase) >= 0
+                || name.IndexOf("cpu", System.StringComparison.OrdinalIgnoreCase) >= 0;
+        }
 
         public static string Line(long ts, IEnumerable<Reading> readings) => Line(ts, readings, null, 0);
 
@@ -39,7 +55,7 @@ namespace WinperfSensors
             var first = true;
             foreach (var r in readings)
             {
-                if (!Wanted(r.Type)) continue;
+                if (!Wanted(r)) continue;
                 if (!first) sb.Append(',');
                 first = false;
                 sb.Append("{\"hw\":"); Str(sb, r.Hw);

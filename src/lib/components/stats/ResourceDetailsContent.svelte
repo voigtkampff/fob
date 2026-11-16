@@ -20,6 +20,8 @@
     sensorSummary,
     setupState,
     uptimeInfo,
+    voltageReadings,
+    voltageTip,
   } from "$lib/utils/dashboard.js";
   import { sensorSetup } from "$lib/stores/sensorSetup";
   import SensorSetup from "$lib/components/dashboard/SensorSetup.svelte";
@@ -30,6 +32,7 @@
   import ResourceTrend from "./ResourceTrend.svelte";
   import DiskHealthSummary from "./DiskHealthSummary.svelte";
   import { locale, t } from "$lib/i18n";
+  import * as Tooltip from "$lib/components/ui/tooltip/index.js";
   import {
     engineLabel,
     engineTitle,
@@ -122,11 +125,16 @@
   const summary = $derived(sensorSummary(sensors));
   const fans = $derived(fanGroups(sensors));
   const sensorGroups = $derived(
-    groupByHardware(sensors.filter((s) => s.kind !== "fan")),
+    // Voltages have their own panel on the CPU card; Temp & fan stays temps,
+    // fans and duty.
+    groupByHardware(
+      sensors.filter((s) => s.kind !== "fan" && s.kind !== "voltage"),
+    ),
   );
   const fanCount = $derived(fans.reduce((n, g) => n + g.fans.length, 0));
   const setup = $derived(setupState($sensorSetup));
   const head = $derived(summary.cpuTemp ?? summary.gpuTemp);
+  const voltageGroups = $derived(groupByHardware(voltageReadings(sensors)));
   // Literal keys so the i18n check can see every one.
   const helperText = $derived(
     {
@@ -206,12 +214,28 @@
     {unavailable}
     {unsupported}
   />{/snippet}
-{#snippet row(label: string, value: string, muted = false)}<div
-    class="flex justify-between gap-4 text-sm"
-  >
-    <span class="min-w-0 truncate text-muted-foreground" title={label}
-      >{label}</span
-    ><span
+{#snippet row(
+  label: string,
+  value: string,
+  muted = false,
+  tip: string | null = null,
+  nativeTitle = true,
+)}<div class="flex justify-between gap-4 text-sm">
+    {#if tip}<Tooltip.Root>
+        <Tooltip.Trigger
+          class="min-w-0 truncate text-left text-muted-foreground"
+          >{label}</Tooltip.Trigger
+        >
+        <Tooltip.Content
+          side="top"
+          align="start"
+          sideOffset={6}
+          collisionPadding={8}>{tip}</Tooltip.Content
+        >
+      </Tooltip.Root>{:else}<span
+        class="min-w-0 truncate text-muted-foreground"
+        title={nativeTitle ? label : undefined}>{label}</span
+      >{/if}<span
       class={`shrink-0 text-right font-medium tabular-nums ${muted ? "text-muted-foreground" : ""}`}
       >{value}</span
     >
@@ -226,6 +250,10 @@
     })}
     facts={[
       [$t("stats.avgUtil"), percent(cpu)],
+      [
+        $t("details.cpuVoltage"),
+        summary.cpuVoltage ? formatSensor(summary.cpuVoltage) : na,
+      ],
       ...(coreGroups ?? []).map((g): [string, string] => [
         $t(g.label),
         percent(g.usage),
@@ -248,7 +276,25 @@
           where="detail"
           groups={coreGroups}
         /></DetailSection
-      >{/snippet}
+      >
+      {#each voltageGroups as group (group.hardware)}<DetailSection
+          title={$t("details.voltages")}
+          description={group.hardware}
+        >
+          <Tooltip.Provider delayDuration={300}
+            >{#each group.sensors as s (s.id || `${s.kind}:${s.name}`)}
+              {@const tip = voltageTip(s.name)}
+              {@render row(
+                s.name,
+                formatSensor(s),
+                false,
+                tip ? $t(`voltage.tip.${tip}`) : null,
+                false,
+              )}
+            {/each}</Tooltip.Provider
+          >
+        </DetailSection>{/each}
+    {/snippet}
   </DetailLayout>
 {:else if kind === "memory"}
   <DetailLayout

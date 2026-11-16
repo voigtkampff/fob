@@ -119,6 +119,7 @@ const dynamic = {
   "overlay.short": [
     "cpu",
     "cpuTemp",
+    "cpuVoltage",
     "gpu",
     "gpuTemp",
     "ram",
@@ -130,6 +131,7 @@ const dynamic = {
   "overlay.metric": [
     "cpu",
     "cpuTemp",
+    "cpuVoltage",
     "gpu",
     "gpuTemp",
     "ram",
@@ -139,6 +141,7 @@ const dynamic = {
     "power",
   ],
   "settings.overlayDock": ["top", "bottom", "free"],
+  "voltage.tip": ["vcore", "cpuCore", "p", "e"],
   "gpu.engine": [
     "3d",
     "copy",

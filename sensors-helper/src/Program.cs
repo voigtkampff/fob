@@ -149,9 +149,8 @@ namespace WinperfSensors
             var label = hw.Parent != null ? hw.Parent.Name : hw.Name;
             foreach (var s in hw.Sensors)
             {
-                var type = s.SensorType.ToString();
-                if (Wire.Wanted(type))
-                    list.Add(new Reading(label, s.Identifier.ToString(), s.Name, type, s.Value));
+                var reading = new Reading(label, s.Identifier.ToString(), s.Name, s.SensorType.ToString(), s.Value);
+                if (Wire.Wanted(reading)) list.Add(reading);
             }
             foreach (var sub in hw.SubHardware) Walk(sub, list);
         }

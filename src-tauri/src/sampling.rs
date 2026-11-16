@@ -2,6 +2,7 @@
 use crate::{
     gpu::GpuDevice,
     monitoring::{ProcessInfo, SystemStats},
+    sensors::{Device, Sensor, SensorKind},
     state::AppState,
 };
 use serde::{Deserialize, Serialize};
@@ -79,58 +80,12 @@ pub struct Sample {
     /// frontend's sensorSummary (CPU package first, then any CPU sensor).
     pub cpu_temp: Option<f64>,
     pub gpu_temp: Option<f64>,
+    /// Fob: CPU voltage (V), picked like the frontend's sensorSummary.
+    pub cpu_voltage: Option<f64>,
     /// Fob: storage read / write, bytes/s.
     pub disk_read: Option<u64>,
     pub disk_write: Option<u64>,
 }
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-enum Device {
-    Cpu,
-    Gpu,
-    Other,
-}
-
-/// Which device a sensor belongs to. LibreHardwareMonitor ids start with the
-/// hardware type ("/amdcpu/0/…", "/gpu-nvidia/0/…"), so an APU named
-/// "… w/ Radeon 780M Graphics" is still a CPU; NVML ids start "nvml/".
-/// Without an id, the hardware name decides, CPU words first. Same rules as
-/// sensorDevice() in src/lib/utils/dashboard.js.
-fn device(s: &crate::sensors::Sensor) -> Device {
-    let id = s.id.to_lowercase();
-    if !id.is_empty() {
-        let kind = id
-            .trim_start_matches('/')
-            .split('/')
-            .next()
-            .unwrap_or_default();
-        return match kind {
-            "amdcpu" | "intelcpu" | "cpu" => Device::Cpu,
-            "nvidiagpu" | "atigpu" | "nvml" => Device::Gpu,
-            k if k.starts_with("gpu-") => Device::Gpu,
-            _ => Device::Other,
-        };
-    }
-    let hw = s.hardware.to_lowercase();
-    let word = |w: &str| hw.split(|c: char| !c.is_alphanumeric()).any(|x| x == w);
-    if hw.contains("ryzen")
-        || hw.contains("intel core")
-        || hw.contains("core i")
-        || hw.contains("core ultra")
-        || word("cpu")
-        || hw.contains("processor")
-    {
-        Device::Cpu
-    } else if ["gpu", "nvidia", "geforce", "radeon"]
-        .iter()
-        .any(|w| hw.contains(w))
-        || word("arc")
-    {
-        Device::Gpu
-    } else {
-        Device::Other
-    }
-}
-
 /// CPU temperature order (lower first): package, Tctl/Tdie, Tdie, a CCD
 /// average or max, a core max or average, anything else (cpuTempRank()).
 fn cpu_rank(name: &str) -> u8 {
@@ -157,16 +112,31 @@ fn gpu_rank(name: &str) -> u8 {
     u8::from(n.contains("hot") || n.contains("memory"))
 }
 
+/// Voltage order (lower first): the board's real VCore rail, then the CPU's
+/// own "CPU Core" reading (its requested VID), then the per-core values,
+/// then the rest (voltageRank() in src/lib/utils/dashboard.js).
+fn voltage_rank(name: &str) -> u8 {
+    let n = name.trim().to_lowercase();
+    if n.contains("vcore") {
+        0
+    } else if n.contains("cpu core") {
+        1
+    } else if n.contains("core") {
+        2
+    } else {
+        3
+    }
+}
+
 /// The CPU and GPU temperature every view shows (status bar, charts); the
 /// pages use sensorSummary() with the same rules.
-fn headline_temps(sensors: &[crate::sensors::Sensor]) -> (Option<f64>, Option<f64>) {
-    use crate::sensors::SensorKind;
+fn headline_temps(sensors: &[Sensor]) -> (Option<f64>, Option<f64>) {
     let best = |want: Device, rank: fn(&str) -> u8| {
-        let mut pick: Option<&crate::sensors::Sensor> = None;
+        let mut pick: Option<&Sensor> = None;
         for s in sensors {
             if s.kind == SensorKind::Temperature
                 && s.value.is_finite()
-                && device(s) == want
+                && crate::sensors::device(s) == want
                 && pick.is_none_or(|p| rank(&s.name) < rank(&p.name))
             {
                 pick = Some(s);
@@ -178,6 +148,21 @@ fn headline_temps(sensors: &[crate::sensors::Sensor]) -> (Option<f64>, Option<f6
         best(Device::Cpu, cpu_rank).map(|s| s.value),
         best(Device::Gpu, gpu_rank).map(|s| s.value),
     )
+}
+
+/// The CPU voltage every view shows: the board's VCore rail first, then the
+/// CPU's own core reading. `None` when the machine reports none.
+fn headline_voltage(sensors: &[Sensor]) -> Option<f64> {
+    let mut pick: Option<&Sensor> = None;
+    for s in sensors {
+        if s.kind == SensorKind::Voltage
+            && s.value.is_finite()
+            && pick.is_none_or(|p| voltage_rank(&s.name) < voltage_rank(&p.name))
+        {
+            pick = Some(s);
+        }
+    }
+    pick.map(|s| s.value)
 }
 impl Sample {
     fn gap(timestamp: u64, interval: u64) -> Self {
@@ -191,6 +176,7 @@ impl Sample {
             gpus: BTreeMap::new(),
             cpu_temp: None,
             gpu_temp: None,
+            cpu_voltage: None,
             disk_read: None,
             disk_write: None,
         }
@@ -221,6 +207,7 @@ impl Sample {
                 .collect(),
             cpu_temp: temps.0,
             gpu_temp: temps.1,
+            cpu_voltage: headline_voltage(&frame.extra.sensors.sensors),
             disk_read: stats.disk_read_bytes,
             disk_write: stats.disk_write_bytes,
             ..Self::gap(frame.captured_at, interval)
@@ -711,7 +698,6 @@ mod tests {
 
     #[test]
     fn headline_temps_pick_the_cpu_package_and_the_gpu() {
-        use crate::sensors::{Sensor, SensorKind};
         let s = |hardware: &str, name: &str, kind, value| Sensor {
             hardware: hardware.into(),
             id: String::new(),
@@ -752,8 +738,34 @@ mod tests {
         assert_eq!(headline_temps(&[]), (None, None));
     }
     #[test]
+    fn headline_voltage_prefers_the_board_vcore_rail() {
+        let s = |id: &str, name: &str, value| Sensor {
+            hardware: "Example".into(),
+            id: id.into(),
+            name: name.into(),
+            kind: SensorKind::Voltage,
+            value,
+            source: "test".into(),
+        };
+        let vcore = s("/lpc/example/0/voltage/0", "Vcore", 1.24);
+        let core = s("/intelcpu/0/voltage/0", "CPU Core", 1.448608);
+        let p1 = s("/intelcpu/0/voltage/1", "P-Core #1", 1.428589);
+        // The board's rail is the real VCore; the CPU reports its request.
+        assert_eq!(
+            headline_voltage(&[p1.clone(), core.clone(), vcore]),
+            Some(1.24)
+        );
+        assert_eq!(headline_voltage(&[p1.clone(), core]), Some(1.448608));
+        assert_eq!(headline_voltage(&[p1.clone()]), Some(1.428589));
+        assert_eq!(headline_voltage(&[]), None);
+        let dead = s("/lpc/example/0/voltage/0", "Vcore", f64::NAN);
+        assert_eq!(headline_voltage(&[dead]), None);
+        // Per-core values rank above the other CPU rails (e.g. CPU Termination).
+        let term = s("/lpc/example/0/voltage/9", "CPU Termination", 0.54);
+        assert_eq!(headline_voltage(&[term, p1]), Some(1.428589));
+    }
+    #[test]
     fn headline_temps_match_each_machine() {
-        use crate::sensors::{Sensor, SensorKind};
         let fixture: serde_json::Value =
             serde_json::from_str(include_str!("../../tests/fixtures/headline-temps.json")).unwrap();
         for case in fixture["cases"].as_array().unwrap() {

@@ -32,6 +32,12 @@ static class WireTests
         yield return new Reading(Board, "/lpc/example/0/fan/2", "Fan #3", "Fan", 0);
         yield return new Reading(Board, "/lpc/example/0/fan/6", "Fan #7", "Fan", float.NaN);
         yield return new Reading(Board, "/lpc/example/0/control/1", "Fan #2", "Control", 42.35294f);
+        yield return new Reading(Cpu, "/intelcpu/0/voltage/0", "CPU Core", "Voltage", 1.448608f);
+        yield return new Reading(Cpu, "/intelcpu/0/voltage/1", "P-Core #1", "Voltage", 1.428589f);
+        yield return new Reading(Board, "/lpc/example/0/voltage/0", "Vcore", "Voltage", 1.24f);
+        yield return new Reading(Board, "/lpc/example/0/voltage/2", "AVCC", "Voltage", 3.36f); // filtered out
+        yield return new Reading(Board, "/lpc/example/0/voltage/3", "+3.3V", "Voltage", 3.328f); // filtered out
+        yield return new Reading(Gpu, "/gpu-nvidia/0/voltage/0", "GPU Core Voltage", "Voltage", 0.875f); // filtered out: CPU only
         yield return new Reading(Gpu, "/gpu-nvidia/0/temperature/0", "GPU Core", "Temperature", 48.5f + d);
         yield return new Reading(Gpu, "/gpu-nvidia/0/temperature/2", "GPU Hot Spot", "Temperature", 58.9f + d);
         yield return new Reading(Gpu, "/gpu-nvidia/0/fan/1", "GPU Fan 1", "Fan", 0);
@@ -108,6 +114,18 @@ static class WireTests
         Check(lines[0].Contains(",\"net\":{\"ms\":1000,\"procs\":[{\"pid\":7788,\"name\":\"steam\",\"rx\":2400000,\"tx\":0},{\"pid\":10412,\"name\":\"chrome\",\"rx\":1200000,\"tx\":35000}"),
             "net: busiest first, TCP/UDP v4/v6 summed per pid");
         Check(!lines[0].Contains("\"pid\":6200"), "ignored event ids");
+        Check(lines[0].Contains("\"id\":\"/intelcpu/0/voltage/0\",\"name\":\"CPU Core\",\"type\":\"Voltage\",\"value\":1.45}"),
+            "CPU voltage keeps two decimals at most");
+        Check(lines[0].Contains("\"id\":\"/intelcpu/0/voltage/1\",\"name\":\"P-Core #1\",\"type\":\"Voltage\",\"value\":1.43}"),
+            "every /intelcpu/ voltage rail is sent");
+        Check(lines[0].Contains("\"id\":\"/lpc/example/0/voltage/0\",\"name\":\"Vcore\",\"type\":\"Voltage\",\"value\":1.24}"),
+            "Super I/O Vcore is the CPU rail and is sent");
+        Check(!lines[0].Contains("AVCC") && !lines[0].Contains("+3.3V"),
+            "whole-board Super I/O rails (AVCC, +3.3V) are never sent");
+        Check(!lines[0].Contains("GPU Core Voltage"), "GPU voltage is not CPU voltage");
+        Check(!Wire.Wanted(new Reading(Board, null, "Voltage #4", "Voltage", 1.2f))
+            && !Wire.Wanted(new Reading(Board, "", null, "Voltage", 1.2f)),
+            "voltage without an id or a CPU word in its name is dropped (null-safe)");
         Check(NetAgg.Direction(10) == 1 && NetAgg.Direction(59) == -1 && NetAgg.Direction(18) == 0, "directions");
         var onDisk = File.Exists(fixture) ? File.ReadAllText(fixture) : "";
         Check(onDisk == text, "fixture " + Path.GetFullPath(fixture) + " is up to date (run with --write)");

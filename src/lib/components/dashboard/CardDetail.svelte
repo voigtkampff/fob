@@ -27,8 +27,10 @@
     mergeNetApps,
     sortedNetRows,
     series,
+    voltageCardRows,
   } from "$lib/utils/dashboard.js";
   import { ChevronLeft, ChevronRight, LayoutGrid } from "@lucide/svelte";
+  import * as Tooltip from "$lib/components/ui/tooltip/index.js";
   import ChartCursor from "$lib/components/charts/ChartCursor.svelte";
   import { percentText as pct1 } from "$lib/utils/chart-cursor.js";
   import SensorSetup from "./SensorSetup.svelte";
@@ -109,8 +111,52 @@
   $: appMax = Math.max(1, ...appRows.map((r) => Math.max(r.rx, r.tx)));
   $: summary = sensorSummary(sensors);
   $: fans = fanGroups(sensors);
-  // Fans are listed on their own above; the per-hardware lists show the rest.
-  $: groups = groupByHardware(sensors.filter((s) => s.kind !== "fan"));
+  // The card only lists readings this machine actually has: an AMD CPU with
+  // no P/E cores gets two rows, not two empty ones. Per-core values stay in
+  // the main window's CPU panel.
+  $: voltageRows = voltageCardRows(sensors).map((row) => ({
+    key: row.key,
+    label: voltageLabel(row.key),
+    value: row.value,
+  }));
+  /** One voltage reading's text (a row only exists when its reading does). */
+  function voltText(value: number) {
+    return formatSensor({ kind: "voltage", value });
+  }
+  /** Card label for one voltage row. */
+  function voltageLabel(key: string) {
+    return key === "vcore"
+      ? $t("details.voltageVcore")
+      : key === "cpuCore"
+        ? $t("details.voltageCpuCore")
+        : key === "p"
+          ? $t("details.voltageP")
+          : $t("details.voltageE");
+  }
+  /** The GPU's specs line: memory, temperature, fan. */
+  function gpuSpecs(g: GpuDevice) {
+    const parts = [
+      g.memory_total
+        ? `${g.memory_used != null ? formatGB(g.memory_used, 1) + " / " : ""}${formatGB(g.memory_total, 0)} ${memoryKind(g.memory_kind)}`
+        : memoryKind(g.memory_kind),
+    ];
+    if (g.temperature != null) parts.push(`${g.temperature.toFixed(0)} °C`);
+    if (g.fan_percent != null)
+      parts.push($t("detail.fanPct", { v: g.fan_percent.toFixed(0) }));
+    return parts.join(" · ");
+  }
+  // The CPU header: the model on its own line (ellipsised, never wrapped) and
+  // cores/threads under it, which stays whole even in the mini window.
+  $: cpuModel = systemStats.details.identity.cpu_model ?? "";
+  $: coresText = $t("detail.coresThreads", {
+    c: systemStats.details.identity.physical_cores ?? "?",
+    n: cores.length,
+  });
+  // Fans are listed on their own above; the per-hardware lists show the rest
+  // (voltages are on the CPU detail).
+  $: groups = groupByHardware(
+    sensors.filter((s) => s.kind !== "fan" && s.kind !== "voltage"),
+  );
   $: memAvail = systemStats.memory_total - systemStats.memory_used;
   const pct = (part: number, total: number) =>
     total > 0 ? Math.min(100, Math.max(0, (part / total) * 100)) : 0;
@@ -120,6 +166,17 @@
     return `${r.value} ${r.unit}`.trim();
   };
 </script>
+
+{#snippet detailHead(model: string, sub: string, percent: number | null)}
+  <div class="head-block">
+    <span class="model" title={model}>{model}</span>
+    <span class="muted" title={sub}>{sub}</span>
+    <span class="big"
+      >{formatPercent(percent, $t)}{#if percent != null}<small>%</small
+        >{/if}</span
+    >
+  </div>
+{/snippet}
 
 <section class="detail" class:compact aria-label={$t("detail.aria", { title })}>
   <header class="head">
@@ -131,20 +188,7 @@
 
   {#if kind === "cpu"}
     <div class="panel">
-      <div class="row">
-        <span class="big"
-          >{formatPercent(averageCpu(cores), $t)}<small>%</small></span
-        >
-        <span class="muted"
-          >{systemStats.details.identity.cpu_model ?? ""} · {$t(
-            "detail.coresThreads",
-            {
-              c: systemStats.details.identity.physical_cores ?? "?",
-              n: cores.length,
-            },
-          )}</span
-        >
-      </div>
+      {@render detailHead(cpuModel, coresText, averageCpu(cores))}
       <ChartCursor
         {history}
         max={100}
@@ -162,6 +206,31 @@
       </ChartCursor>
       <CoreGrid usage={cores} where="detail" groups={coreGroups} />
     </div>
+    {#if voltageRows.length}
+      <Tooltip.Provider delayDuration={300}
+        ><div class="panel">
+          <div class="list-head"><span>{$t("details.voltages")}</span></div>
+          {#each voltageRows as row (row.key)}
+            <div class="item">
+              <Tooltip.Root>
+                <Tooltip.Trigger
+                  >{#snippet child({ props })}<span class="name tip" {...props}
+                      >{row.label}</span
+                    >{/snippet}</Tooltip.Trigger
+                >
+                <Tooltip.Content
+                  side="top"
+                  align="start"
+                  sideOffset={6}
+                  collisionPadding={8}
+                  >{$t(`voltage.tip.${row.key}`)}</Tooltip.Content
+                >
+              </Tooltip.Root><span class="num">{voltText(row.value)}</span>
+            </div>
+          {/each}
+        </div></Tooltip.Provider
+      >
+    {/if}
     <div class="panel">
       <div class="list-head">
         <span>{$t("detail.topProcs")}</span><span>% CPU</span>
@@ -177,23 +246,7 @@
   {:else if kind === "gpu"}
     {#each gpus as g (g.id)}
       <div class="panel">
-        <div class="row">
-          <span class="name strong">{g.name}</span>
-          <span class="num strong"
-            >{g.utilization == null
-              ? $t("common.na")
-              : `${g.utilization.toFixed(0)} %`}</span
-          >
-        </div>
-        <div class="muted small">
-          {g.memory_total
-            ? `${g.memory_used != null ? formatGB(g.memory_used, 1) + " / " : ""}${formatGB(g.memory_total, 0)} ${memoryKind(g.memory_kind)}`
-            : memoryKind(g.memory_kind)}
-          {g.temperature != null ? ` · ${g.temperature.toFixed(0)} °C` : ""}
-          {g.fan_percent != null
-            ? ` · ${$t("detail.fanPct", { v: g.fan_percent.toFixed(0) })}`
-            : ""}
-        </div>
+        {@render detailHead(g.name, gpuSpecs(g), g.utilization)}
         <ChartCursor
           {history}
           max={100}
@@ -604,6 +657,31 @@
     gap: 10px;
     min-width: 0;
   }
+  /* One header for the CPU and GPU details: model, one specs line, then the
+     reading in the same size, weight and colour on both. Left aligned, in the
+     panel's flow rather than floating right. */
+  .head-block {
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+    min-width: 0;
+  }
+  .head-block .model {
+    font-size: 12.5px;
+    font-weight: 600;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .head-block .muted {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .head-block .big {
+    margin-top: 3px;
+    line-height: 1.1;
+  }
   .rates {
     justify-content: flex-start;
     gap: 28px;
@@ -716,6 +794,16 @@
   .num {
     font-variant-numeric: tabular-nums;
     white-space: nowrap;
+  }
+  /* A voltage label is the tooltip trigger: a span (not a button) so the row
+     keeps its layout, styled like the plain label, and reachable with Tab. */
+  .name.tip {
+    cursor: default;
+  }
+  .name.tip:focus-visible {
+    outline: 2px solid var(--ring);
+    outline-offset: 2px;
+    border-radius: 3px;
   }
   .kv {
     display: flex;

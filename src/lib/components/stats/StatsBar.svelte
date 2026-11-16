@@ -62,6 +62,7 @@
             stats={systemStats}
             {capturedAt}
             cpuUsage={systemStats.cpu_usage}
+            {sensors}
             {history}
             {isFrozen}
             {unavailable}
