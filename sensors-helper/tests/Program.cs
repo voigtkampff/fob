@@ -126,6 +126,21 @@ static class WireTests
         Check(!Wire.Wanted(new Reading(Board, null, "Voltage #4", "Voltage", 1.2f))
             && !Wire.Wanted(new Reading(Board, "", null, "Voltage", 1.2f)),
             "voltage without an id or a CPU word in its name is dropped (null-safe)");
+        Check(!Wire.Wanted(new Reading(Board, "/lpc/example/0/voltage/9", "CPU Termination", "Voltage", 0.54f)),
+            "CPU Termination is not the core supply");
+        Check(!Wire.Wanted(new Reading(Board, "/lpc/example/0/voltage/10", "CPU VCCIO", "Voltage", 1.05f)),
+            "CPU VCCIO is not the core supply");
+        Check(!Wire.Wanted(new Reading("Example APU", "/amdcpu/0/voltage/1", "SoC (SVI2 TFN)", "Voltage", 1.05f)),
+            "an APU SoC rail is not the core supply");
+        Check(Wire.Wanted(new Reading(Cpu, "/intelcpu/0/power/0", "CPU Package", "Power", 85.3f)),
+            "CPU package power is sent (LHM reports W)");
+        Check(!Wire.Wanted(new Reading(Gpu, "/gpu-nvidia/0/power/0", "GPU Package", "Power", 200f)),
+            "GPU power stays out: it comes from NVML");
+        Check(!Wire.Wanted(new Reading(Cpu, "/intelcpu/0/power/1", "CPU Cores", "Power", 60f)),
+            "only the package power sensor is sent");
+        Check(Wire.Line(1793612400000, new[] { new Reading(Cpu, "/intelcpu/0/power/0", "CPU Package", "Power", 85.3f) })
+                .Contains("\"id\":\"/intelcpu/0/power/0\",\"name\":\"CPU Package\",\"type\":\"Power\",\"value\":85.3"),
+            "power goes on the wire with its W value");
         Check(NetAgg.Direction(10) == 1 && NetAgg.Direction(59) == -1 && NetAgg.Direction(18) == 0, "directions");
         var onDisk = File.Exists(fixture) ? File.ReadAllText(fixture) : "";
         Check(onDisk == text, "fixture " + Path.GetFullPath(fixture) + " is up to date (run with --write)");

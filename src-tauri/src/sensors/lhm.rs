@@ -26,6 +26,7 @@ fn kind_of(node: &Value) -> Option<SensorKind> {
         "fan" => Some(SensorKind::Fan),
         "control" => Some(SensorKind::Control),
         "voltage" => Some(SensorKind::Voltage),
+        "power" => Some(SensorKind::Power),
         _ => None,
     }
 }
@@ -84,8 +85,10 @@ fn walk(node: &Value, path: &mut Vec<String>, hardware: Option<&str>, out: &mut 
     path.pop();
 }
 
-/// Temperatures, fan RPMs, fan duty (%) and voltages from a data.json document.
-/// Whole-board rails are dropped later, by the hub (sensors::is_cpu_voltage).
+/// Temperatures, fan RPMs, fan duty (%) and CPU voltages from a data.json
+/// document. Whole-board rails and power sensors for anything but the CPU
+/// package are dropped later, by the hub (sensors::is_cpu_voltage,
+/// sensors::is_cpu_power).
 pub fn parse_data_json(json: &str) -> Result<Vec<Sensor>, String> {
     let root: Value = serde_json::from_str(json).map_err(|e| e.to_string())?;
     if !root.is_object() || !root["Children"].is_array() {
@@ -214,6 +217,11 @@ mod tests {
         assert_eq!(core.hardware, "Example Hybrid CPU");
         assert_eq!((core.kind, core.value), (SensorKind::Voltage, 1.448608));
         assert_eq!(find("Vcore").kind, SensorKind::Voltage);
+        let power = sensors
+            .iter()
+            .find(|s| s.kind == SensorKind::Power)
+            .unwrap();
+        assert_eq!((power.name.as_str(), power.value), ("CPU Package", 65.3));
         let gpu = find("GPU Core");
         assert_eq!(gpu.hardware, "NVIDIA Example GPU");
         assert_eq!(gpu.value, 48.5);
@@ -224,7 +232,7 @@ mod tests {
         assert!(sensors
             .iter()
             .all(|s| s.name != "Fan #7" && s.name != "Temperature #6"));
-        assert_eq!(sensors.len(), 12);
+        assert_eq!(sensors.len(), 13);
     }
 
     #[test]

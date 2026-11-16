@@ -42,13 +42,17 @@
     "overlayEnabled": false,
     "overlayMetrics": [
       "cpu",
+      "cpuPower",
       "cpuTemp",
       "cpuVoltage",
+      "cpuClock",
       "gpu",
+      "power",
       "gpuTemp",
       "ram",
       "net"
     ],
+    "overlayOrder": ["cpu", "gpu", "ram", "vram", "disk", "net"],
     "overlayDock": "top",
     "overlayOpacity": 60,
     "overlayLocked": false,

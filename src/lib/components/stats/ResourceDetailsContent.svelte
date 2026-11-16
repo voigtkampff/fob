@@ -240,6 +240,10 @@
         $t("details.cpuVoltage"),
         summary.cpuVoltage ? formatSensor(summary.cpuVoltage) : na,
       ],
+      [
+        $t("details.cpuPower"),
+        summary.cpuPower ? `${summary.cpuPower.value.toFixed(1)} W` : na,
+      ],
       ...(coreGroups ?? []).map((g): [string, string] => [
         $t(g.label),
         percent(g.usage),

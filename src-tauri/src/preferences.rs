@@ -4,23 +4,30 @@ use serde_json::Value;
 use std::{fs, path::Path, sync::Mutex};
 use tauri::{AppHandle, Emitter, Manager, WebviewWindow};
 
-/// Readings the status bar can show (METRICS in src/lib/utils/overlay.js).
-/// The metrics with a history to chart (no video memory or GPU power);
-/// CHART_METRICS in src/lib/utils/overlay.js.
-pub const OVERLAY_CHART_METRICS: [&str; 7] =
-    ["cpu", "cpuTemp", "gpu", "gpuTemp", "ram", "disk", "net"];
-pub const OVERLAY_METRICS: [&str; 10] = [
+/// Fields the status bar can show (METRICS in src/lib/utils/overlay.js). The
+/// enabled ones are one flat set; their position on the bar comes from
+/// `overlayOrder`, which lists blocks, not fields.
+pub const OVERLAY_METRICS: [&str; 12] = [
     "cpu",
+    "cpuPower",
     "cpuTemp",
     "cpuVoltage",
+    "cpuClock",
     "gpu",
+    "power",
     "gpuTemp",
     "ram",
     "vram",
     "disk",
     "net",
-    "power",
 ];
+/// The fields with a history to chart (CHART_METRICS in overlay.js): CPU/GPU
+/// usage and the single readings that already had one. Power, temperature,
+/// voltage and frequency have no chart.
+pub const OVERLAY_CHART_METRICS: [&str; 5] = ["cpu", "gpu", "ram", "disk", "net"];
+/// The bar's blocks, in the default order (BLOCKS in overlay.js). A block is
+/// dragged as a whole; the fields inside it keep a fixed order.
+pub const OVERLAY_BLOCKS: [&str; 6] = ["cpu", "gpu", "ram", "vram", "disk", "net"];
 /// Cards of the Dashboard tab and of the Processes tab's stats row, in their
 /// default order (DASHBOARD_CARDS and PROCESS_CARDS in src/lib/utils/layout-order.js).
 pub const DASHBOARD_CARDS: [&str; 6] = ["cpu", "gpu", "memory", "disk", "network", "temp"];
@@ -137,6 +144,9 @@ fn merge(config: &mut Value, patch: &Value) {
                         && ids.iter().all(|id| OVERLAY_METRICS.contains(id))
                         && ids.iter().enumerate().all(|(i, id)| !ids[..i].contains(id))
                 }),
+                // 0.8.13: the order of whole blocks on the bar. A field never
+                // appears here, so moving a block cannot move its children.
+                "overlayOrder" => known_order(value, &OVERLAY_BLOCKS),
                 // Fob: mini window opacity in percent (Settings and the mini window).
                 "miniOpacity" => value.as_u64().is_some_and(|n| (0..=100).contains(&n)),
                 "processView" => matches!(value.as_str(), Some("flat" | "tree")),
@@ -181,6 +191,71 @@ fn merge(config: &mut Value, patch: &Value) {
     }
     config["appearance"]["columnVisibility"]["name"] = Value::Bool(true);
 }
+
+/// 0.8.13: an old configuration has overlayMetrics (a flat list) but no
+/// overlayOrder. Keep its arrangement by deriving the block order from the
+/// first block it mentions, then fill in the blocks it never showed at their
+/// default places. A saved order that fails validation is treated the same
+/// way; the field set itself is left exactly as the user saved it.
+fn migrate_overlay_order(config: &mut Value, saved: &Value) {
+    let behavior = &saved["behavior"];
+    if let Some(order) = behavior["overlayOrder"].as_array() {
+        let ids: Vec<&str> = order.iter().filter_map(Value::as_str).collect();
+        if ids.len() == order.len()
+            && ids.iter().all(|id| OVERLAY_BLOCKS.contains(id))
+            && ids.iter().enumerate().all(|(i, id)| !ids[..i].contains(id))
+        {
+            // Complete a partial order the same way the frontend does: a
+            // missing block goes after its nearest default neighbour.
+            let mut full: Vec<&str> = ids;
+            for (i, block) in OVERLAY_BLOCKS.iter().enumerate() {
+                if full.contains(block) {
+                    continue;
+                }
+                let at = OVERLAY_BLOCKS[..i]
+                    .iter()
+                    .rev()
+                    .find_map(|before| full.iter().position(|id| id == before))
+                    .map_or(0, |at| at + 1);
+                full.insert(at, block);
+            }
+            config["behavior"]["overlayOrder"] =
+                Value::Array(full.into_iter().map(Value::from).collect());
+            return;
+        }
+    }
+    let mut order: Vec<&str> = Vec::new();
+    for field in behavior["overlayMetrics"].as_array().into_iter().flatten() {
+        let Some(field) = field.as_str() else {
+            continue;
+        };
+        let Some(block) = block_of(field) else {
+            continue;
+        };
+        if !order.contains(&block) {
+            order.push(block);
+        }
+    }
+    for block in OVERLAY_BLOCKS {
+        if !order.contains(&block) {
+            order.push(block);
+        }
+    }
+    config["behavior"]["overlayOrder"] = Value::Array(order.into_iter().map(Value::from).collect());
+}
+
+/// The block a status-bar field belongs to (BLOCKS in overlay.js).
+fn block_of(field: &str) -> Option<&'static str> {
+    match field {
+        "cpu" | "cpuPower" | "cpuTemp" | "cpuVoltage" | "cpuClock" => Some("cpu"),
+        "gpu" | "power" | "gpuTemp" => Some("gpu"),
+        "ram" => Some("ram"),
+        "vram" => Some("vram"),
+        "disk" => Some("disk"),
+        "net" => Some("net"),
+        _ => None,
+    }
+}
 fn persist(path: &Path, config: &Value) -> Result<(), String> {
     let parent = path.parent().ok_or("Settings location unavailable")?;
     fs::create_dir_all(parent).map_err(|e| format!("Could not create settings folder: {e}"))?;
@@ -210,6 +285,7 @@ fn load(path: &Path, legacy: Option<&Value>) -> Result<Option<Value>, String> {
     let mut config = defaults();
     merge(&mut config, source);
     migrate_columns(&mut config, source);
+    migrate_overlay_order(&mut config, source);
     if existing.is_none() {
         persist(path, &config)?;
     }
@@ -617,6 +693,71 @@ mod tests {
         );
         merge(&mut config, &json!({"behavior":{"overlayMetrics":[]}}));
         assert_eq!(b(&config, "overlayMetrics"), json!([]));
+    }
+    #[test]
+    fn an_old_status_bar_config_keeps_its_fields_and_gets_a_block_order() {
+        // 0.8.12 saved a flat field list only. The fields are untouched; the
+        // block order comes from the first blocks that list mentions.
+        let saved = json!({"behavior":{"overlayMetrics":["net","gpuTemp","cpu"]}});
+        let mut config = defaults();
+        merge(&mut config, &saved);
+        migrate_overlay_order(&mut config, &saved);
+        assert_eq!(
+            config["behavior"]["overlayMetrics"],
+            json!(["net", "gpuTemp", "cpu"])
+        );
+        assert_eq!(
+            config["behavior"]["overlayOrder"],
+            json!(["net", "gpu", "cpu", "ram", "vram", "disk"])
+        );
+
+        // A complete saved block order is kept as it is.
+        let saved = json!({"behavior":{"overlayOrder":["net","cpu","gpu","ram","vram","disk"]}});
+        let mut config = defaults();
+        merge(&mut config, &saved);
+        migrate_overlay_order(&mut config, &saved);
+        assert_eq!(
+            config["behavior"]["overlayOrder"],
+            json!(["net", "cpu", "gpu", "ram", "vram", "disk"])
+        );
+
+        // A partial one is completed at the missing blocks' default places.
+        let saved = json!({"behavior":{"overlayOrder":["gpu","net"]}});
+        let mut config = defaults();
+        merge(&mut config, &saved);
+        migrate_overlay_order(&mut config, &saved);
+        assert_eq!(
+            config["behavior"]["overlayOrder"],
+            json!(["cpu", "gpu", "ram", "vram", "disk", "net"])
+        );
+
+        // An invalid order is ignored; the old fields decide instead.
+        let saved =
+            json!({"behavior":{"overlayOrder":["cpu","cpu"],"overlayMetrics":["cpu","ram"]}});
+        let mut config = defaults();
+        merge(&mut config, &saved);
+        migrate_overlay_order(&mut config, &saved);
+        assert_eq!(
+            config["behavior"]["overlayOrder"],
+            json!(["cpu", "ram", "gpu", "vram", "disk", "net"])
+        );
+        // A partial update without an order never resets the saved one.
+        let before = config["behavior"]["overlayOrder"].clone();
+        merge(&mut config, &json!({"behavior":{"language":"zh"}}));
+        assert_eq!(config["behavior"]["overlayOrder"], before);
+
+        // Unchecking and re-checking fields only changes the enabled set;
+        // the block order (and so every block's position) stays put.
+        merge(
+            &mut config,
+            &json!({"behavior":{"overlayMetrics":["net","gpu"]}}),
+        );
+        assert_eq!(config["behavior"]["overlayOrder"], before);
+        merge(
+            &mut config,
+            &json!({"behavior":{"overlayMetrics":["net","gpu","cpu"]}}),
+        );
+        assert_eq!(config["behavior"]["overlayOrder"], before);
     }
     #[test]
     fn the_mini_hotkey_is_off_by_default_and_only_saved_canonical() {

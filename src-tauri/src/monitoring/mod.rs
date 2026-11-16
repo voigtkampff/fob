@@ -5,8 +5,10 @@
 //! and data structures for representing system state.
 
 mod accounts;
+mod cpu_clock;
 #[cfg(any(target_os = "windows", test))]
 mod cpu_rates;
+pub use cpu_clock::{base_mhz as cpu_base_mhz, CpuClock};
 mod cpu_topology;
 pub use cpu_topology::*;
 mod gpu_process_monitor;

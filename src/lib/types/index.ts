@@ -271,7 +271,7 @@ export interface Sensor {
   /** e.g. "/lpc/example/0/fan/1"; "" when the source has none. */
   id: string;
   name: string;
-  kind: "temperature" | "fan" | "control" | "voltage";
+  kind: "temperature" | "fan" | "control" | "voltage" | "power";
   value: number;
   source: string;
 }
@@ -279,6 +279,8 @@ export interface Sensor {
 export interface SensorSetupStatus {
   supported: boolean;
   bundled: boolean;
+  /** The first missing file or hash mismatch when bundled is false. */
+  bundle_error: string | null;
   pawnio_installed: boolean;
   installed: boolean;
   task: "missing" | "ok" | "mismatch" | "unknown";

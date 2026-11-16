@@ -37,16 +37,28 @@ const reducedMotion = () =>
 function layoutBox(el) {
   const parent = /** @type {HTMLElement | null} */ (el.offsetParent);
   const origin = parent?.getBoundingClientRect() ?? { left: 0, top: 0 };
-  const left =
+  let left =
     origin.left +
     el.offsetLeft +
     (parent?.clientLeft ?? 0) -
     (parent?.scrollLeft ?? 0);
-  const top =
+  let top =
     origin.top +
     el.offsetTop +
     (parent?.clientTop ?? 0) -
     (parent?.scrollTop ?? 0);
+  // A scroll container between the item and its offsetParent is not part of
+  // offsetTop, so its scroll has to be removed by hand. Without this, items
+  // in a scrolling settings pane report their unscrolled position and a
+  // lifted row jumps away from the pointer.
+  for (
+    let node = el.parentElement;
+    node && node !== parent;
+    node = node.parentElement
+  ) {
+    left -= node.scrollLeft;
+    top -= node.scrollTop;
+  }
   return {
     left,
     top,
@@ -225,6 +237,51 @@ export function dragReorder(node, options) {
     void reflow();
   };
 
+  /** The scrolling ancestor a drag at the edge should scroll. */
+  const scrollParent = () => {
+    for (
+      let el = node.parentElement;
+      el && el !== document.body;
+      el = el.parentElement
+    ) {
+      const style = getComputedStyle(el);
+      if (
+        /(auto|scroll)/.test(style.overflowY) &&
+        el.scrollHeight > el.clientHeight
+      )
+        return el;
+    }
+    return null;
+  };
+
+  /** Keep scrolling while the pointer sits near the top or bottom edge. */
+  let autoScrollFrame = 0;
+  const autoScroll = () => {
+    if (!drag) {
+      autoScrollFrame = 0;
+      return;
+    }
+    const box = scrollParent();
+    if (box) {
+      const rect = box.getBoundingClientRect();
+      const y = drag.last.clientY;
+      const edge = 32;
+      let delta = 0;
+      if (y < rect.top + edge) delta = -Math.ceil((rect.top + edge - y) / 5);
+      else if (y > rect.bottom - edge)
+        delta = Math.ceil((y - (rect.bottom - edge)) / 5);
+      if (delta) {
+        const before = box.scrollTop;
+        box.scrollTop += delta;
+        if (box.scrollTop !== before) {
+          follow();
+          void reflow();
+        }
+      }
+    }
+    autoScrollFrame = requestAnimationFrame(autoScroll);
+  };
+
   const swallowClick = () => {
     const stop = (/** @type {Event} */ e) => {
       e.preventDefault();
@@ -244,6 +301,10 @@ export function dragReorder(node, options) {
     const it = press;
     press = null;
     drag = null;
+    if (autoScrollFrame) {
+      cancelAnimationFrame(autoScrollFrame);
+      autoScrollFrame = 0;
+    }
     if (!was || !it) return;
     swallowClick();
     delete document.documentElement.dataset.reordering;
@@ -287,6 +348,7 @@ export function dragReorder(node, options) {
         if (layer) el.dataset.dragSlot = "";
         else el.dataset.dragging = "";
       document.documentElement.dataset.reordering = "";
+      if (!autoScrollFrame) autoScrollFrame = requestAnimationFrame(autoScroll);
     }
     drag.last = e;
     follow();

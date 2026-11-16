@@ -22,15 +22,18 @@
     ChevronDown,
     GripVertical,
     ChartSpline,
+    Gauge,
+    Plug,
+    Thermometer,
+    Zap,
+    Clock,
   } from "@lucide/svelte";
   import {
     overlaySettings,
-    settingsRows,
+    settingsBlocks,
+    toggleBlock,
     toggleMetric,
-    moveMetric,
-    reorderMetric,
-    dropSlot,
-    CHART_METRICS,
+    moveBlock,
     chartsPatch,
     toggleChart,
     overlayThemeOptions,
@@ -40,9 +43,28 @@
     DEFAULT_OPACITY,
     type MetricId,
   } from "$lib/utils/overlay.js";
+  import { dragReorder } from "$lib/utils/drag-reorder.js";
+  import { moveNextTo, previewOrder } from "$lib/utils/layout-order.js";
   import { themes } from "$lib/definitions/themes";
   import { themeStore } from "$lib/stores/theme";
   import ThemeDots from "./ThemeDots.svelte";
+  // One icon per status-bar field (0.8.13). The chart is its own button.
+  const FIELD_ICONS = /** @type {Record<string, typeof Gauge>} */ {
+    cpu: Gauge,
+    gpu: Gauge,
+    cpuPower: Plug,
+    power: Plug,
+    cpuTemp: Thermometer,
+    gpuTemp: Thermometer,
+    cpuVoltage: Zap,
+    cpuClock: Clock,
+    // Non-CPU/GPU blocks are single rows and never use these icons, but the
+    // field type covers every metric id.
+    ram: Gauge,
+    vram: Gauge,
+    disk: Gauge,
+    net: Gauge,
+  };
   import * as DropdownMenu from "$lib/components/ui/dropdown-menu/index.js";
   import { t } from "$lib/i18n";
   let pane = "general";
@@ -88,38 +110,12 @@
   // The theme the bar shows: its own, or the main window's when following.
   $: overlayOwn = overlayTheme(overlay.theme, null, themes);
   $: overlayShown = overlayOwn ?? $themeStore;
-  // Drag to reorder with pointer events, not HTML5 drag and drop: Tauri's
-  // file drop handler (dragDropEnabled, on by default) takes over OLE drag
-  // and drop in WebView2, so dragover/drop never reach the page on Windows.
-  // dragFrom: the shown row being dragged; dropAt: the slot (0 to
-  // shown.length) it would land in.
-  let dragFrom = -1;
-  let dropAt = -1;
-  let list: HTMLUListElement | undefined;
-  function shownRects() {
-    return [...(list?.querySelectorAll<HTMLElement>("li[data-on]") ?? [])].map(
-      (li) => {
-        const r = li.getBoundingClientRect();
-        return { top: r.top, bottom: r.bottom };
-      },
-    );
-  }
-  function gripDown(event: PointerEvent, i: number) {
-    if (event.button !== 0) return;
-    event.preventDefault();
-    (event.currentTarget as HTMLElement).setPointerCapture(event.pointerId);
-    dragFrom = i;
-    dropAt = i;
-  }
-  function gripMove(event: PointerEvent) {
-    if (dragFrom < 0) return;
-    dropAt = dropSlot(event.clientY, shownRects());
-  }
-  function gripUp() {
-    if (dragFrom >= 0 && dropAt >= 0)
-      setMetrics(reorderMetric(overlay.metrics, dragFrom, dropAt));
-    dragFrom = dropAt = -1;
-  }
+  // 0.8.13: dragging reorders whole blocks. The reused dragReorder action
+  // moves the block <li> (with its indented switches) as one item, so a
+  // field can never be left behind. Block order saves under overlayOrder.
+  let move: { id: string; target: string; after: boolean } | null = null;
+  $: shownBlocks = previewOrder(overlay.order, move);
+  $: blockRows = settingsBlocks(overlay.metrics, shownBlocks, overlay.charts);
   function saveOverlay(patch: Record<string, unknown>) {
     settingsStore.updateConfig({
       behavior: { ...$settingsStore.behavior, ...patch },
@@ -379,82 +375,139 @@
               >
                 {$t("settings.overlayMetricsNote")}
               </p>
-              <ul class="overlay-metrics" bind:this={list}>
-                {#each settingsRows(overlay.metrics) as row, i (row.id)}
-                  {@const name = $t(`overlay.metric.${row.id}`)}
-                  {@const charted = overlay.charts.includes(row.id)}
-                  {@const chartable = CHART_METRICS.includes(row.id)}
-                  <li
-                    class:dragging={row.on && dragFrom === i}
-                    class:drop-before={dragFrom >= 0 && dropAt === i}
-                    class:drop-after={dragFrom >= 0 &&
-                      row.on &&
-                      dropAt === overlay.metrics.length &&
-                      i === overlay.metrics.length - 1}
-                    data-on={row.on ? "" : undefined}
-                  >
-                    <span
-                      class="grip"
-                      class:off={!row.on}
-                      title={row.on ? $t("settings.overlayDrag") : undefined}
-                      aria-hidden="true"
-                      onpointerdown={(e) => row.on && gripDown(e, i)}
-                      onpointermove={gripMove}
-                      onpointerup={gripUp}
-                      onpointercancel={() => (dragFrom = dropAt = -1)}
-                      ><GripVertical class="size-3.5" /></span
-                    >
-                    <Checkbox
-                      id={`overlay-m-${row.id}`}
-                      checked={row.on}
-                      onCheckedChange={(value) =>
-                        setMetrics(
-                          toggleMetric(overlay.metrics, row.id, value),
-                        )}
-                    />
-                    <button
-                      type="button"
-                      class="chart-toggle"
-                      class:on={charted}
-                      disabled={!chartable}
-                      aria-pressed={charted}
-                      aria-label={chartable
-                        ? $t("settings.overlayChartFor", { name })
-                        : $t("settings.overlayNoChart", { name })}
-                      title={chartable
-                        ? $t("settings.overlayChartFor", { name })
-                        : $t("settings.overlayNoChart", { name })}
-                      onclick={() =>
-                        saveOverlay(
-                          chartsPatch(
-                            toggleChart(overlay.charts, row.id, !charted),
-                          ),
-                        )}><ChartSpline class="size-3.5" /></button
-                    >
-                    <Label for={`overlay-m-${row.id}`} class="flex-1"
-                      >{name}</Label
-                    >
-                    {#if row.on}
-                      <Button
-                        variant="ghost"
-                        size="icon-sm"
-                        disabled={i === 0}
-                        aria-label={$t("settings.overlayUp", { name })}
-                        title={$t("settings.overlayUp", { name })}
-                        onclick={() =>
-                          setMetrics(moveMetric(overlay.metrics, row.id, -1))}
-                        ><ChevronUp /></Button
-                      ><Button
-                        variant="ghost"
-                        size="icon-sm"
-                        disabled={i === overlay.metrics.length - 1}
-                        aria-label={$t("settings.overlayDown", { name })}
-                        title={$t("settings.overlayDown", { name })}
-                        onclick={() =>
-                          setMetrics(moveMetric(overlay.metrics, row.id, 1))}
-                        ><ChevronDown /></Button
+              <ul
+                class="overlay-metrics"
+                use:dragReorder={{
+                  ids: shownBlocks,
+                  handle: ".grip",
+                  vertical: true,
+                  onMove: (id, target, after) =>
+                    saveOverlay({
+                      overlayOrder: moveNextTo(
+                        overlay.order,
+                        id,
+                        target,
+                        after,
+                      ),
+                    }),
+                  onPreview: (next) => (move = next),
+                }}
+              >
+                {#each blockRows as block, i (block.id)}
+                  {@const name = $t(block.label)}
+                  <li class="block" class:off={!block.on}>
+                    <div class="block-head">
+                      <span
+                        class="grip"
+                        title={$t("settings.overlayDrag")}
+                        aria-hidden="true"
+                        ><GripVertical class="size-3.5" /></span
                       >
-                    {/if}
+                      <Checkbox
+                        id={`overlay-b-${block.id}`}
+                        checked={block.on}
+                        onCheckedChange={(value) =>
+                          setMetrics(
+                            toggleBlock(overlay.metrics, block.id, value),
+                          )}
+                      />
+                      <Label for={`overlay-b-${block.id}`} class="flex-1"
+                        >{name}</Label
+                      >
+                      {#if block.single}
+                        <button
+                          type="button"
+                          class="icon-toggle"
+                          class:on={block.charted}
+                          disabled={!block.chartable}
+                          aria-pressed={block.charted}
+                          aria-label={block.chartable
+                            ? $t("settings.overlayChartFor", { name })
+                            : $t("settings.overlayNoChart", { name })}
+                          title={block.chartable
+                            ? $t("settings.overlayChartFor", { name })
+                            : $t("settings.overlayNoChart", { name })}
+                          onclick={() =>
+                            block.field &&
+                            saveOverlay(
+                              chartsPatch(
+                                toggleChart(
+                                  overlay.charts,
+                                  block.field,
+                                  !block.charted,
+                                ),
+                              ),
+                            )}><ChartSpline class="size-3.5" /></button
+                        >
+                      {/if}
+                      {#if !block.single}
+                        <div class="field-icons">
+                          {#each block.rows as row (row.kind + row.id)}
+                            {@const Icon =
+                              row.kind === "chart"
+                                ? ChartSpline
+                                : (FIELD_ICONS[row.id] ?? Gauge)}
+                            <button
+                              type="button"
+                              class="icon-toggle"
+                              class:on={row.on}
+                              aria-pressed={row.on}
+                              aria-label={$t(row.label)}
+                              title={$t(row.label)}
+                              onclick={() =>
+                                row.kind === "chart"
+                                  ? saveOverlay(
+                                      chartsPatch(
+                                        toggleChart(
+                                          overlay.charts,
+                                          row.id,
+                                          !row.on,
+                                        ),
+                                      ),
+                                    )
+                                  : setMetrics(
+                                      toggleMetric(
+                                        overlay.metrics,
+                                        row.id,
+                                        !row.on,
+                                      ),
+                                    )}><Icon class="size-3.5" /></button
+                            >
+                          {/each}
+                        </div>
+                      {/if}
+                      {#if block.on}
+                        <Button
+                          variant="ghost"
+                          size="icon-sm"
+                          disabled={i === 0}
+                          aria-label={$t("settings.overlayUp", { name })}
+                          title={$t("settings.overlayUp", { name })}
+                          onclick={() =>
+                            saveOverlay({
+                              overlayOrder: moveBlock(
+                                overlay.order,
+                                block.id,
+                                -1,
+                              ),
+                            })}><ChevronUp /></Button
+                        ><Button
+                          variant="ghost"
+                          size="icon-sm"
+                          disabled={i === blockRows.length - 1}
+                          aria-label={$t("settings.overlayDown", { name })}
+                          title={$t("settings.overlayDown", { name })}
+                          onclick={() =>
+                            saveOverlay({
+                              overlayOrder: moveBlock(
+                                overlay.order,
+                                block.id,
+                                1,
+                              ),
+                            })}><ChevronDown /></Button
+                        >
+                      {/if}
+                    </div>
                   </li>
                 {/each}
               </ul>
@@ -671,32 +724,35 @@
   .overlay-metrics {
     display: flex;
     flex-direction: column;
-    gap: 2px;
+    gap: 6px;
   }
-  .overlay-metrics li {
+  /* One block per row: the header is the drag handle (the whole block moves),
+     its fields are the row of icon switches, never reordered on their own. */
+  .overlay-metrics > li {
+    display: block;
+    border-radius: 6px;
+    box-shadow: none;
+  }
+  .block-head {
     display: flex;
     align-items: center;
     gap: 10px;
-    min-height: 28px;
+    min-height: 30px;
     border-radius: 6px;
-    box-shadow: none;
-    border-top: 2px solid transparent;
-    border-bottom: 2px solid transparent;
   }
-  .grip:not(.off) {
+  .overlay-metrics > li.off > .block-head > .block-name {
+    color: var(--muted-foreground);
+  }
+  .field-icons {
+    display: flex;
+    align-items: center;
+    gap: 2px;
+  }
+  .grip {
     cursor: grab;
     touch-action: none;
   }
-  .overlay-metrics li.dragging {
-    opacity: 0.45;
-  }
-  .overlay-metrics li.drop-before {
-    border-top-color: var(--primary);
-  }
-  .overlay-metrics li.drop-after {
-    border-bottom-color: var(--primary);
-  }
-  .chart-toggle {
+  .icon-toggle {
     display: inline-flex;
     align-items: center;
     justify-content: center;
@@ -707,25 +763,22 @@
     color: var(--muted-foreground);
     opacity: 0.6;
   }
-  .chart-toggle:hover:not(:disabled) {
+  .icon-toggle:hover:not(:disabled) {
     background: var(--accent);
     opacity: 1;
   }
-  .chart-toggle.on {
+  .icon-toggle.on {
     color: var(--primary);
     border-color: color-mix(in oklab, var(--primary), transparent 60%);
     background: color-mix(in oklab, var(--primary), transparent 88%);
     opacity: 1;
   }
-  .chart-toggle:disabled {
+  .icon-toggle:disabled {
     opacity: 0.25;
     cursor: not-allowed;
   }
   .grip {
     display: inline-flex;
     color: var(--muted-foreground);
-  }
-  .grip.off {
-    visibility: hidden;
   }
 </style>

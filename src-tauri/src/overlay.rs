@@ -591,6 +591,63 @@ pub async fn overlay_fit(app: AppHandle, width: f64) -> Result<(), String> {
     Ok(())
 }
 
+/// Whether the CPU was limited in the last samples, and the likeliest
+/// reason. Windows and the sensor helper expose no PROCHOT / thermal /
+/// power / current flag, so this is inferred from two things Fob really
+/// reads: the effective frequency (below the machine's nominal frequency)
+/// while the CPU is busy, and the package temperature. The UI calls it
+/// "suspected" and never claims a measured reason.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Throttle {
+    /// Busy and below nominal while the temperature is not at the limit:
+    /// a power or current limit is the likely cause.
+    Power,
+    /// Busy, below nominal and at/above [`HOT_C`].
+    Thermal,
+}
+
+/// At or above this package temperature a limit is called thermal. Intel's
+/// TjMax is 100 °C on desktop parts; 90 leaves room for a real thermal wall
+/// rather than a momentary spike.
+const HOT_C: f64 = 90.0;
+/// Busier than this for the whole window: an idle CPU clocking down is not
+/// throttling.
+const BUSY: f64 = 70.0;
+/// Below this fraction of the nominal frequency while busy counts as held
+/// back (turbo sits above 1.0, so only a real limit gets here).
+const HELD_BACK: f64 = 0.95;
+/// Two consecutive samples must agree, so one odd reading does not flash it.
+const WINDOW: usize = 2;
+
+fn held_back(s: &crate::sampling::Sample, base_mhz: f64) -> bool {
+    s.cpu.is_some_and(|load| load >= BUSY)
+        && s.cpu_clock
+            .is_some_and(|mhz| mhz.is_finite() && mhz < base_mhz * HELD_BACK)
+}
+
+fn throttled_from(history: &[crate::sampling::Sample], base_mhz: Option<f64>) -> Option<Throttle> {
+    let base = base_mhz.filter(|mhz| mhz.is_finite() && *mhz > 0.0)?;
+    let recent: Vec<_> = history.iter().rev().take(WINDOW).collect();
+    if recent.len() < WINDOW || !recent.iter().all(|s| held_back(s, base)) {
+        return None;
+    }
+    let hot = recent
+        .first()
+        .and_then(|s| s.cpu_temp)
+        .is_some_and(|t| t >= HOT_C);
+    Some(if hot {
+        Throttle::Thermal
+    } else {
+        Throttle::Power
+    })
+}
+
+/// The marker for the status bar, from the sampler's retained history.
+pub fn throttled(history: &[crate::sampling::Sample]) -> Option<Throttle> {
+    throttled_from(history, crate::monitoring::cpu_base_mhz())
+}
+
 /// The readings the bar can show, from the shared sampler's last frame.
 #[derive(Serialize, Default)]
 #[serde(rename_all = "camelCase")]
@@ -598,6 +655,15 @@ pub struct Reading {
     pub cpu: Option<f64>,
     pub cpu_temp: Option<f64>,
     pub cpu_voltage: Option<f64>,
+    /// "measured" (board Vcore / CPU SVI2) or "requested" (CPU VID); the
+    /// bar writes Vcore or VID from it, and no prefix when both are missing.
+    pub cpu_voltage_source: Option<crate::sampling::VoltageSource>,
+    /// Effective CPU frequency, MHz (see monitoring::cpu_clock).
+    pub cpu_clock: Option<f64>,
+    /// CPU package power, W; separate from `gpu_power`.
+    pub cpu_power: Option<f64>,
+    /// Set while the CPU looks held back (suspected, not a measured flag).
+    pub throttle: Option<Throttle>,
     pub gpu: Option<f64>,
     pub gpu_temp: Option<f64>,
     pub ram_used: Option<u64>,
@@ -624,6 +690,10 @@ pub async fn overlay_reading(app: AppHandle) -> Result<Reading, String> {
         cpu: last.and_then(|s| s.cpu),
         cpu_temp: last.and_then(|s| s.cpu_temp),
         cpu_voltage: last.and_then(|s| s.cpu_voltage),
+        cpu_voltage_source: last.and_then(|s| s.cpu_voltage_source),
+        cpu_clock: last.and_then(|s| s.cpu_clock),
+        cpu_power: last.and_then(|s| s.cpu_power),
+        throttle: throttled(&snap.history),
         gpu: gpu.and_then(|g| g.utilization),
         gpu_temp: last
             .and_then(|s| s.gpu_temp)
@@ -771,6 +841,38 @@ mod tests {
         assert!(every[..200].contains("raise(&w);"), "{every}");
         let raise = &src[src.find("fn raise(").unwrap()..src.find("fn place(").unwrap()];
         assert!(raise.contains("HWND_TOPMOST") && raise.contains("SWP_NOACTIVATE"));
+    }
+
+    #[test]
+    fn the_throttle_marker_is_inferred_from_two_busy_samples() {
+        let sample = |load, clock, temp| {
+            let mut s = crate::sampling::Sample::gap(0, 3000);
+            s.cpu = Some(load);
+            s.cpu_clock = Some(clock);
+            s.cpu_temp = Some(temp);
+            s
+        };
+        let base = Some(3418.0);
+        // Busy and below nominal twice in a row: likely a power/current wall.
+        let held = [sample(90.0, 3000.0, 70.0), sample(85.0, 3100.0, 72.0)];
+        assert_eq!(throttled_from(&held, base), Some(Throttle::Power));
+        // Same, but at the thermal limit.
+        let hot = [sample(90.0, 3000.0, 96.0), sample(85.0, 3100.0, 95.0)];
+        assert_eq!(throttled_from(&hot, base), Some(Throttle::Thermal));
+        // One sample is not a window; an idle CPU clocking down is not a limit.
+        assert_eq!(throttled_from(&held[..1], base), None);
+        let idle = [sample(5.0, 800.0, 45.0), sample(4.0, 900.0, 45.0)];
+        assert_eq!(throttled_from(&idle, base), None);
+        // Turbo above nominal is never a limit, even at full load.
+        let turbo = [sample(100.0, 5000.0, 80.0), sample(100.0, 5000.0, 80.0)];
+        assert_eq!(throttled_from(&turbo, base), None);
+        // No nominal frequency, no claim.
+        assert_eq!(throttled_from(&held, None), None);
+        // A missing temperature cannot be called thermal.
+        let mut unknown = [sample(90.0, 3000.0, 0.0), sample(90.0, 3000.0, 0.0)];
+        unknown[0].cpu_temp = None;
+        unknown[1].cpu_temp = None;
+        assert_eq!(throttled_from(&unknown, base), Some(Throttle::Power));
     }
 
     #[test]

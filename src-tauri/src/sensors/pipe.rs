@@ -2,8 +2,10 @@
 //! elevated by the `fob-sensors` scheduled task) serves one JSON line per
 //! second on `\\.\pipe\fob-sensors`:
 //! `{"ts":<unix ms>,"sensors":[{"hw","id","name","type","value"}]}` with
-//! `type` = Temperature | Fan | Control | Voltage and `value` a number or null.
-//! Voltage is CPU-only: the helper drops every whole-board rail.
+//! `type` = Temperature | Fan | Control | Voltage | Power and `value` a
+//! number or null. Voltage is CPU-only: the helper drops every whole-board
+//! rail and every rail that is not the core supply. Power is the CPU's
+//! package sensor in W; GPU power comes from NVML, not from here.
 //! The line format is produced by sensors-helper/src/Wire.cs; both sides are
 //! tested against tests/fixtures/sensors-pipe.jsonl.
 // Most of this is only reachable on Windows.
@@ -37,6 +39,7 @@ fn kind(text: &str) -> Option<SensorKind> {
         "Fan" => Some(SensorKind::Fan),
         "Control" => Some(SensorKind::Control),
         "Voltage" => Some(SensorKind::Voltage),
+        "Power" => Some(SensorKind::Power),
         _ => None,
     }
 }

@@ -62,7 +62,7 @@ mkdir -p dist/PawnIO dist/licenses
 cp "$PAWNIO_CACHE" dist/PawnIO/PawnIO_setup.exe
 cp licenses/* dist/licenses/
 
-( cd dist && find sensors PawnIO -type f | LC_ALL=C sort | xargs sha256sum ) > dist/manifest.sha256
+( cd dist && find sensors PawnIO -type f | LC_ALL=C sort | xargs sha256sum --text ) > dist/manifest.sha256
 if [ -f "$RELEASED" ] && ! diff -u "$RELEASED" dist/manifest.sha256; then
   echo "The helper differs from the released $HELPER_VER helper. Raise its version in src/winperf-sensors.csproj." >&2
   exit 1

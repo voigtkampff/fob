@@ -71,7 +71,9 @@ for (const file of files("src")) {
   for (const m of text.matchAll(/\bkey:\s*"([a-z]+\.[\w.]+)"/g)) used.add(m[1]);
   for (const m of text.matchAll(/(?:\$?\bt\(|\bkey:)\s*`([\w.]+)\.\$\{/g))
     prefixes.add(m[1]);
-  for (const m of text.matchAll(/"([a-z]+\.\w+)"/g)) mentioned.add(m[1]);
+  // Any dotted literal, including fully spelled keys a helper hands to $t
+  // (overlay.metric.cpu, overlay.child.usage).
+  for (const m of text.matchAll(/"([a-z]+(?:\.[\w]+)+)"/g)) mentioned.add(m[1]);
 }
 assert.ok(used.size > 140, `found only ${used.size} keys in use`);
 for (const key of used) assert.ok(key in en, `missing key: ${key}`);
@@ -89,6 +91,7 @@ const dynamic = {
     "missing-files",
     "install",
     "update",
+    "retask",
     "repair",
     "current",
     "stopped",
@@ -120,6 +123,8 @@ const dynamic = {
     "cpu",
     "cpuTemp",
     "cpuVoltage",
+    "cpuClock",
+    "cpuPower",
     "gpu",
     "gpuTemp",
     "ram",
@@ -128,18 +133,7 @@ const dynamic = {
     "net",
     "power",
   ],
-  "overlay.metric": [
-    "cpu",
-    "cpuTemp",
-    "cpuVoltage",
-    "gpu",
-    "gpuTemp",
-    "ram",
-    "vram",
-    "disk",
-    "net",
-    "power",
-  ],
+  "overlay.throttle": ["badge", "power", "thermal"],
   "settings.overlayDock": ["top", "bottom", "free"],
   "voltage.tip": ["vcore", "cpuCore", "p", "e"],
   "gpu.engine": [
