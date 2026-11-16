@@ -353,27 +353,27 @@ const settingsSource = readFileSync(
   new URL("../src/lib/components/SettingsWindow.svelte", import.meta.url),
   "utf8",
 );
+assert.ok(!settingsSource.includes("native-tip"), "no custom tooltip CSS");
+assert.ok(!settingsSource.includes("showTitle"), "no custom tooltip timer");
+assert.ok(!settingsSource.includes("clearTitle"), "no custom tooltip timer");
 const settingsLines = settingsSource.split("\n");
 const iconLines = settingsLines
   .map((line, i) => (line.includes('class="icon-toggle"') ? i : -1))
   .filter((i) => i >= 0);
 assert.ok(iconLines.length >= 3, "settings has icon switches");
+assert.ok(
+  settingsLines.filter((line) => line.includes("<Tooltip.Root>")).length >=
+    iconLines.length,
+  "every icon is inside a Tooltip.Root",
+);
 for (const at of iconLines) {
-  const button = settingsLines.slice(at, at + 20).join("\n");
-  assert.match(
-    button,
-    /data-title=\{/,
-    "every icon switch has a non-empty tooltip value",
-  );
-  assert.match(
-    button,
-    /onpointerenter=\{showTitle\}/,
-    "moving between adjacent icons re-opens the native title",
-  );
+  const around = settingsLines.slice(Math.max(0, at - 14), at + 40).join("\n");
+  assert.match(around, /<Tooltip\.Trigger>/, "icon wrapped in Tooltip.Trigger");
+  assert.match(around, /<Tooltip\.Content/, "icon has Tooltip.Content");
   assert.doesNotMatch(
-    button,
+    around,
     /\n\s*disabled=\{/,
-    "icon titles must not sit on a disabled button",
+    "tooltip triggers must not be disabled",
   );
 }
 

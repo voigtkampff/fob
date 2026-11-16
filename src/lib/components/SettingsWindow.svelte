@@ -15,6 +15,7 @@
   import * as Card from "$lib/components/ui/card/index.js";
   import * as NativeSelect from "$lib/components/ui/native-select/index.js";
   import * as ToggleGroup from "$lib/components/ui/toggle-group/index.js";
+  import * as Tooltip from "$lib/components/ui/tooltip/index.js";
   import {
     Settings2,
     Palette,
@@ -132,25 +133,6 @@
     saveOverlay({ overlayMetrics: metrics });
   /** Parent checkbox: visibility only. A single-reading block also turns its
    * field on when shown; CPU/GPU keep every child choice untouched. */
-  /** Native titles do not re-open when the pointer moves from one icon to
-   * the next, so show a small Windows-style tooltip ourselves after 400 ms. */
-  let tip: { text: string; x: number; y: number } | null = null;
-  let tipTimer: ReturnType<typeof setTimeout> | undefined;
-  function showTitle(event: PointerEvent) {
-    const el = event.currentTarget as HTMLElement;
-    const text = el.dataset.title ?? "";
-    clearTimeout(tipTimer);
-    tip = null;
-    if (!text) return;
-    const rect = el.getBoundingClientRect();
-    tipTimer = setTimeout(() => {
-      tip = { text, x: rect.left, y: rect.bottom + 4 };
-    }, 400);
-  }
-  function clearTitle() {
-    clearTimeout(tipTimer);
-    tip = null;
-  }
   function setBlockVisible(
     block: { id: string; single: boolean; field: MetricId | null },
     on: boolean,
@@ -229,7 +211,6 @@
     })();
     return () => {
       disposed = true;
-      clearTimeout(tipTimer);
       stops.forEach((stop) => stop());
     };
   });
@@ -452,165 +433,190 @@
               >
                 {$t("settings.overlayMetricsNote")}
               </p>
-              <ul
-                class="overlay-metrics"
-                use:dragReorder={{
-                  ids: shownBlocks,
-                  handle: ".grip",
-                  vertical: true,
-                  // The ghost stays inside this list and is portalled out of
-                  // the scrolling pane so no ancestor can clip it.
-                  clampToNode: true,
-                  portal: true,
-                  onMove: (id, target, after) =>
-                    saveOverlay({
-                      overlayOrder: moveNextTo(
-                        overlay.order,
-                        id,
-                        target,
-                        after,
-                      ),
-                    }),
-                  onPreview: (next) => (move = next),
-                }}
-              >
-                {#each blockRows as block (block.id)}
-                  {@const name = $t(block.label)}
-                  <li class="block" class:off={!block.on}>
-                    <div class="block-head">
-                      <span
-                        class="grip"
-                        title={$t("settings.overlayDrag")}
-                        aria-hidden="true"
-                        ><GripVertical class="size-3.5" /></span
-                      >
-                      <Checkbox
-                        id={`overlay-b-${block.id}`}
-                        checked={block.on}
-                        onCheckedChange={(value) =>
-                          setBlockVisible(block, value)}
-                      />
-                      <Label for={`overlay-b-${block.id}`} class="flex-1"
-                        >{name}</Label
-                      >
-                      {#if block.single}
-                        <button
-                          type="button"
-                          class="icon-toggle"
-                          class:on={block.charted}
-                          class:blocked={!block.chartable || !block.on}
-                          aria-disabled={!block.chartable || !block.on}
-                          aria-pressed={block.charted}
-                          aria-label={singleChartTitle(block)}
-                          data-title={singleChartTitle(block)}
-                          onpointerenter={showTitle}
-                          onpointerleave={clearTitle}
-                          onpointerdown={clearTitle}
-                          onclick={() => {
-                            if (!block.chartable || !block.on || !block.field)
-                              return;
-                            saveOverlay(
-                              chartsPatch(
-                                toggleChart(
-                                  overlay.charts,
-                                  block.field,
-                                  !block.charted,
-                                ),
-                              ),
-                            );
-                          }}><ChartSpline class="size-3.5" /></button
+              <Tooltip.Provider delayDuration={300}>
+                <ul
+                  class="overlay-metrics"
+                  use:dragReorder={{
+                    ids: shownBlocks,
+                    handle: ".grip",
+                    vertical: true,
+                    // The ghost stays inside this list and is portalled out of
+                    // the scrolling pane so no ancestor can clip it.
+                    clampToNode: true,
+                    portal: true,
+                    onMove: (id, target, after) =>
+                      saveOverlay({
+                        overlayOrder: moveNextTo(
+                          overlay.order,
+                          id,
+                          target,
+                          after,
+                        ),
+                      }),
+                    onPreview: (next) => (move = next),
+                  }}
+                >
+                  {#each blockRows as block (block.id)}
+                    {@const name = $t(block.label)}
+                    <li class="block" class:off={!block.on}>
+                      <div class="block-head">
+                        <span
+                          class="grip"
+                          title={$t("settings.overlayDrag")}
+                          aria-hidden="true"
+                          ><GripVertical class="size-3.5" /></span
                         >
-                      {/if}
-                      {#if !block.single}
-                        <div class="field-icons">
-                          <div
-                            class="field-slots"
-                            use:dragReorder={{
-                              ids: block.on
-                                ? block.rows.map((row) => row.id)
-                                : [],
-                              handle: ".icon-toggle",
-                              clampToClosest: ".overlay-metrics",
-                              portal: true,
-                              rejectOutside: true,
-                              ignoreY: true,
-                              onMove: (id, target, after) =>
-                                saveOverlay({
-                                  overlayFieldOrder: {
-                                    ...overlay.fieldOrder,
-                                    [block.id]: moveNextTo(
-                                      overlay.fieldOrder[block.id],
-                                      id,
-                                      target,
-                                      after,
-                                    ),
-                                  },
-                                }),
-                              onPreview: (next) =>
-                                (fieldMoves = {
-                                  ...fieldMoves,
-                                  [block.id]: next,
-                                }),
-                            }}
-                          >
-                            {#each block.rows as row (row.id)}
-                              {@const Icon = FIELD_ICONS[row.id] ?? Gauge}
-                              <button
-                                type="button"
-                                class="icon-toggle"
-                                class:on={row.on}
-                                class:blocked={!block.on}
-                                aria-disabled={!block.on}
-                                aria-pressed={row.on}
-                                aria-label={fieldTitle(block, row)}
-                                title={fieldTitle(block, row)}
-                                data-title={fieldTitle(block, row)}
-                                onpointerenter={showTitle}
-                                onpointerleave={clearTitle}
-                                onclick={() => {
-                                  if (!block.on) return;
-                                  setMetrics(
-                                    toggleMetric(
-                                      overlay.metrics,
-                                      row.id,
-                                      !row.on,
-                                    ),
-                                  );
-                                }}><Icon class="size-3.5" /></button
+                        <Checkbox
+                          id={`overlay-b-${block.id}`}
+                          checked={block.on}
+                          onCheckedChange={(value) =>
+                            setBlockVisible(block, value)}
+                        />
+                        <Label for={`overlay-b-${block.id}`} class="flex-1"
+                          >{name}</Label
+                        >
+                        {#if block.single}
+                          <Tooltip.Root>
+                            <Tooltip.Trigger>
+                              {#snippet child({ props })}
+                                <button
+                                  {...props}
+                                  type="button"
+                                  class="icon-toggle"
+                                  class:on={block.charted}
+                                  class:blocked={!block.chartable || !block.on}
+                                  aria-disabled={!block.chartable || !block.on}
+                                  aria-pressed={block.charted}
+                                  aria-label={singleChartTitle(block)}
+                                  onclick={() => {
+                                    if (
+                                      !block.chartable ||
+                                      !block.on ||
+                                      !block.field
+                                    )
+                                      return;
+                                    saveOverlay(
+                                      chartsPatch(
+                                        toggleChart(
+                                          overlay.charts,
+                                          block.field,
+                                          !block.charted,
+                                        ),
+                                      ),
+                                    );
+                                  }}><ChartSpline class="size-3.5" /></button
+                                >
+                              {/snippet}
+                            </Tooltip.Trigger>
+                            <Tooltip.Content side="bottom" sideOffset={4}
+                              >{singleChartTitle(block)}</Tooltip.Content
+                            >
+                          </Tooltip.Root>
+                        {/if}
+                        {#if !block.single}
+                          <div class="field-icons">
+                            <div
+                              class="field-slots"
+                              use:dragReorder={{
+                                ids: block.on
+                                  ? block.rows.map((row) => row.id)
+                                  : [],
+                                handle: ".icon-toggle",
+                                clampToClosest: ".overlay-metrics",
+                                portal: true,
+                                rejectOutside: true,
+                                ignoreY: true,
+                                onMove: (id, target, after) =>
+                                  saveOverlay({
+                                    overlayFieldOrder: {
+                                      ...overlay.fieldOrder,
+                                      [block.id]: moveNextTo(
+                                        overlay.fieldOrder[block.id],
+                                        id,
+                                        target,
+                                        after,
+                                      ),
+                                    },
+                                  }),
+                                onPreview: (next) =>
+                                  (fieldMoves = {
+                                    ...fieldMoves,
+                                    [block.id]: next,
+                                  }),
+                              }}
+                            >
+                              {#each block.rows as row (row.id)}
+                                {@const Icon = FIELD_ICONS[row.id] ?? Gauge}
+                                <Tooltip.Root>
+                                  <Tooltip.Trigger>
+                                    {#snippet child({ props })}
+                                      <button
+                                        {...props}
+                                        type="button"
+                                        class="icon-toggle"
+                                        class:on={row.on}
+                                        class:blocked={!block.on}
+                                        aria-disabled={!block.on}
+                                        aria-pressed={row.on}
+                                        aria-label={fieldTitle(block, row)}
+                                        onclick={() => {
+                                          if (!block.on) return;
+                                          setMetrics(
+                                            toggleMetric(
+                                              overlay.metrics,
+                                              row.id,
+                                              !row.on,
+                                            ),
+                                          );
+                                        }}><Icon class="size-3.5" /></button
+                                      >
+                                    {/snippet}
+                                  </Tooltip.Trigger>
+                                  <Tooltip.Content side="bottom" sideOffset={4}
+                                    >{fieldTitle(block, row)}</Tooltip.Content
+                                  >
+                                </Tooltip.Root>
+                              {/each}
+                            </div>
+                            <Tooltip.Root>
+                              <Tooltip.Trigger>
+                                {#snippet child({ props })}
+                                  <button
+                                    {...props}
+                                    type="button"
+                                    class="icon-toggle"
+                                    class:on={block.charted}
+                                    class:blocked={!block.on}
+                                    aria-disabled={!block.on}
+                                    aria-pressed={block.charted}
+                                    aria-label={chartTitle(block)}
+                                    onclick={() => {
+                                      if (!block.on || !block.chartField)
+                                        return;
+                                      saveOverlay(
+                                        chartsPatch(
+                                          toggleChart(
+                                            overlay.charts,
+                                            block.chartField,
+                                            !block.charted,
+                                          ),
+                                        ),
+                                      );
+                                    }}><ChartSpline class="size-3.5" /></button
+                                  >
+                                {/snippet}
+                              </Tooltip.Trigger>
+                              <Tooltip.Content side="bottom" sideOffset={4}
+                                >{chartTitle(block)}</Tooltip.Content
                               >
-                            {/each}
+                            </Tooltip.Root>
                           </div>
-                          <button
-                            type="button"
-                            class="icon-toggle"
-                            class:on={block.charted}
-                            class:blocked={!block.on}
-                            aria-disabled={!block.on}
-                            aria-pressed={block.charted}
-                            aria-label={chartTitle(block)}
-                            title={chartTitle(block)}
-                            data-title={chartTitle(block)}
-                            onpointerenter={showTitle}
-                            onpointerleave={clearTitle}
-                            onclick={() => {
-                              if (!block.on || !block.chartField) return;
-                              saveOverlay(
-                                chartsPatch(
-                                  toggleChart(
-                                    overlay.charts,
-                                    block.chartField,
-                                    !block.charted,
-                                  ),
-                                ),
-                              );
-                            }}><ChartSpline class="size-3.5" /></button
-                          >
-                        </div>
-                      {/if}
-                    </div>
-                  </li>
-                {/each}
-              </ul>
+                        {/if}
+                      </div>
+                    </li>
+                  {/each}
+                </ul>
+              </Tooltip.Provider>
             </div>
             <div class="flex items-start justify-between gap-6">
               <div>
@@ -818,16 +824,6 @@
             : $t("settings.saved")}
       </p>{/if}
   </footer>
-  {#if tip}
-    <div
-      class="native-tip"
-      role="tooltip"
-      style:left={`${tip.x}px`}
-      style:top={`${tip.y}px`}
-    >
-      {tip.text}
-    </div>
-  {/if}
 </div>
 
 <style>
@@ -905,21 +901,8 @@
   .field-slots > [data-drag-slot] > * {
     opacity: 0;
   }
-  .native-tip {
-    position: fixed;
-    z-index: 1000;
-    pointer-events: none;
-    padding: 1px 3px;
-    border: 1px solid #767676;
-    background: #ffffe1;
-    color: #000;
-    font:
-      12px "Segoe UI",
-      sans-serif;
-    line-height: 1.3;
-    white-space: nowrap;
-    border-radius: 0;
-    box-shadow: none;
+  :global(html[data-reordering] [data-slot="tooltip-content"]) {
+    display: none;
   }
   .grip {
     display: inline-flex;
