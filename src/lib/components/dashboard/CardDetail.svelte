@@ -27,7 +27,7 @@
     mergeNetApps,
     sortedNetRows,
     series,
-    voltageCard,
+    voltageCardRows,
   } from "$lib/utils/dashboard.js";
   import { ChevronLeft, ChevronRight, LayoutGrid } from "@lucide/svelte";
   import ChartCursor from "$lib/components/charts/ChartCursor.svelte";
@@ -110,26 +110,39 @@
   $: appMax = Math.max(1, ...appRows.map((r) => Math.max(r.rx, r.tx)));
   $: summary = sensorSummary(sensors);
   $: fans = fanGroups(sensors);
-  // The mini window has a fixed height, so the card is a fixed four rows:
-  // the two CPU rails and the P/E cluster means. Per-core values stay in the
-  // main window's CPU panel.
-  $: volts = voltageCard(sensors);
-  /** @returns {[string, number | null]} */
-  const vrow = (
-    label: string,
-    value: number | null,
-  ): [string, number | null] => [label, value];
-  $: voltageRows = [
-    vrow($t("details.voltageVcore"), volts.vcore),
-    vrow($t("details.voltageCpuCore"), volts.cpuCore),
-    vrow($t("details.voltageP"), volts.p),
-    vrow($t("details.voltageE"), volts.e),
-  ];
-  /** One voltage row's text; a reading the machine doesn't report stays a dash. */
-  function voltText(value: number | null) {
-    return value == null
-      ? $t("common.na")
-      : formatSensor({ kind: "voltage", value });
+  // The card only lists readings this machine actually has: an AMD CPU with
+  // no P/E cores gets two rows, not two empty ones. Per-core values stay in
+  // the main window's CPU panel.
+  $: voltageRows = voltageCardRows(sensors).map((row) => ({
+    key: row.key,
+    label: voltageLabel(row.key),
+    value: row.value,
+  }));
+  /** One voltage reading's text (a row only exists when its reading does). */
+  function voltText(value: number) {
+    return formatSensor({ kind: "voltage", value });
+  }
+  /** Card label for one voltage row. */
+  function voltageLabel(key: string) {
+    return key === "vcore"
+      ? $t("details.voltageVcore")
+      : key === "cpuCore"
+        ? $t("details.voltageCpuCore")
+        : key === "p"
+          ? $t("details.voltageP")
+          : $t("details.voltageE");
+  }
+  /** The GPU's specs line: memory, temperature, fan. */
+  function gpuSpecs(g: GpuDevice) {
+    const parts = [
+      g.memory_total
+        ? `${g.memory_used != null ? formatGB(g.memory_used, 1) + " / " : ""}${formatGB(g.memory_total, 0)} ${memoryKind(g.memory_kind)}`
+        : memoryKind(g.memory_kind),
+    ];
+    if (g.temperature != null) parts.push(`${g.temperature.toFixed(0)} °C`);
+    if (g.fan_percent != null)
+      parts.push($t("detail.fanPct", { v: g.fan_percent.toFixed(0) }));
+    return parts.join(" · ");
   }
   // The CPU header: the model on its own line (ellipsised, never wrapped) and
   // cores/threads under it, which stays whole even in the mini window.
@@ -153,6 +166,17 @@
   };
 </script>
 
+{#snippet detailHead(model: string, sub: string, percent: number | null)}
+  <div class="head-block">
+    <span class="model" title={model}>{model}</span>
+    <span class="muted" title={sub}>{sub}</span>
+    <span class="big"
+      >{formatPercent(percent, $t)}{#if percent != null}<small>%</small
+        >{/if}</span
+    >
+  </div>
+{/snippet}
+
 <section class="detail" class:compact aria-label={$t("detail.aria", { title })}>
   <header class="head">
     <button class="back" onclick={onBack} aria-label={$t("detail.backAria")}
@@ -163,15 +187,7 @@
 
   {#if kind === "cpu"}
     <div class="panel">
-      <div class="row head-row">
-        <div class="identity">
-          <span class="model" title={cpuModel}>{cpuModel}</span>
-          <span class="muted">{coresText}</span>
-        </div>
-        <span class="big"
-          >{formatPercent(averageCpu(cores), $t)}<small>%</small></span
-        >
-      </div>
+      {@render detailHead(cpuModel, coresText, averageCpu(cores))}
       <ChartCursor
         {history}
         max={100}
@@ -189,14 +205,13 @@
       </ChartCursor>
       <CoreGrid usage={cores} where="detail" groups={coreGroups} />
     </div>
-    {#if (volts.vcore ?? volts.cpuCore ?? volts.p ?? volts.e) != null}
+    {#if voltageRows.length}
       <div class="panel">
         <div class="list-head"><span>{$t("details.voltages")}</span></div>
-        {#each voltageRows as [label, value] (label)}
+        {#each voltageRows as row (row.key)}
           <div class="item">
-            <span class="name">{label}</span><span
-              class="num"
-              class:muted={value == null}>{voltText(value)}</span
+            <span class="name">{row.label}</span><span class="num"
+              >{voltText(row.value)}</span
             >
           </div>
         {/each}
@@ -217,23 +232,7 @@
   {:else if kind === "gpu"}
     {#each gpus as g (g.id)}
       <div class="panel">
-        <div class="row">
-          <span class="name strong">{g.name}</span>
-          <span class="num strong"
-            >{g.utilization == null
-              ? $t("common.na")
-              : `${g.utilization.toFixed(0)} %`}</span
-          >
-        </div>
-        <div class="muted small">
-          {g.memory_total
-            ? `${g.memory_used != null ? formatGB(g.memory_used, 1) + " / " : ""}${formatGB(g.memory_total, 0)} ${memoryKind(g.memory_kind)}`
-            : memoryKind(g.memory_kind)}
-          {g.temperature != null ? ` · ${g.temperature.toFixed(0)} °C` : ""}
-          {g.fan_percent != null
-            ? ` · ${$t("detail.fanPct", { v: g.fan_percent.toFixed(0) })}`
-            : ""}
-        </div>
+        {@render detailHead(g.name, gpuSpecs(g), g.utilization)}
         <ChartCursor
           {history}
           max={100}
@@ -644,29 +643,30 @@
     gap: 10px;
     min-width: 0;
   }
-  /* The CPU identity is two lines, so it centres against the big number
-     instead of sharing its baseline. */
-  .head-row {
-    align-items: center;
-  }
-  .identity {
+  /* One header for the CPU and GPU details: model, one specs line, then the
+     reading in the same size, weight and colour on both. Left aligned, in the
+     panel's flow rather than floating right. */
+  .head-block {
     display: flex;
     flex-direction: column;
     gap: 1px;
     min-width: 0;
   }
-  .identity .model {
+  .head-block .model {
     font-size: 12.5px;
     font-weight: 600;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
   }
-  .identity .muted {
+  .head-block .muted {
     white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
   }
-  .head-row .big {
-    flex: none;
+  .head-block .big {
+    margin-top: 3px;
+    line-height: 1.1;
   }
   .rates {
     justify-content: flex-start;

@@ -21,6 +21,7 @@ import {
   groupByHardware,
   formatSensor,
   voltageCard,
+  voltageCardRows,
   coreVoltageMean,
   coreCluster,
   voltageRank,
@@ -372,6 +373,38 @@ assert.equal(
 );
 assert.equal(formatSensor({ kind: "voltage", value: card.p }), "1.410 V");
 
+// The card renders only the rows this machine has: no P/E core readings, no
+// empty P/E labels. The rule reads the data, not the vendor.
+const keys = (list) => voltageCardRows(list).map((r) => r.key);
+const rails = [v("Vcore", 1.24), v("CPU Core", 1.448608)];
+assert.deepEqual(keys(rails), ["vcore", "cpuCore"], "no P/E cores: two rows");
+assert.deepEqual(
+  keys([...rails, v("P-Core #1", 1.4)]),
+  ["vcore", "cpuCore", "p"],
+  "P cores only",
+);
+assert.deepEqual(
+  keys([...rails, v("E-Core #1", 1.36)]),
+  ["vcore", "cpuCore", "e"],
+  "E cores only",
+);
+assert.deepEqual(
+  keys([...rails, v("P-Core #1", 1.4), v("E-Core #1", 1.36)]),
+  ["vcore", "cpuCore", "p", "e"],
+  "a hybrid CPU keeps all four",
+);
+// A machine that only names per-core rails still gets a useful card.
+assert.deepEqual(keys([v("P-Core #1", 1.4), v("E-Core #1", 1.36)]), ["p", "e"]);
+assert.deepEqual(keys([]), [], "no readings at all: no card");
+assert.deepEqual(
+  keys([v("CPU Termination", 0.54)]),
+  [],
+  "a rail the card has no row for is not one of them",
+);
+// Every rendered row carries a number, so the card never draws a dash.
+for (const row of voltageCardRows([...rails, v("P-Core #1", 1.4)]))
+  assert.ok(Number.isFinite(row.value), row.key);
+
 console.log(
   "PASS: dashboard formatting, volume/GPU selection, top processes, sparkline series",
 );
@@ -661,6 +694,26 @@ console.log("PASS: per-app network rows group, stick for 30 s and sort");
   assert.ok(
     !/@media[^{]*\{\s*\.resource-grid/.test(src("app.css")),
     "the Processes cards keep one spacing at every window width",
+  );
+  // CPU and GPU detail headers are one block: model, specs line, then the
+  // reading in the same size and weight, left aligned. Two renders, one
+  // snippet, so the two panels cannot drift apart again.
+  const cardDetail = src("lib/components/dashboard/CardDetail.svelte");
+  assert.equal(
+    cardDetail.split("{@render detailHead(").length - 1,
+    2,
+    "the CPU and GPU details render the same header",
+  );
+  assert.ok(cardDetail.includes("{#snippet detailHead("), "one header snippet");
+  assert.ok(!cardDetail.includes("head-row"), "no header floating right");
+  assert.ok(
+    !/\.identity/.test(cardDetail),
+    "no second header layout of its own",
+  );
+  assert.match(
+    cardDetail,
+    /\.head-block \.big \{[^}]*line-height:/,
+    "the reading's line height belongs to the shared header",
   );
   const page = src("routes/+page.svelte");
   assert.ok(page.includes('= "processes";'), "Fob starts on the Processes tab");

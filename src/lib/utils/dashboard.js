@@ -388,9 +388,9 @@ export function coreVoltageMean(sensors, cluster) {
   return Math.round(mean * 1000) / 1000;
 }
 
-/** The four readings the mini window's voltage card shows: the board's VCore
- * rail, the CPU's own core reading, and the P/E cluster means. Each is null
- * when the machine reports nothing for it.
+/** The four readings the mini window's voltage card can show: the board's
+ * VCore rail, the CPU's own core reading, and the P/E cluster means. Each is
+ * null when the machine reports nothing for it.
  * @param {{ kind: string, name: string, value: number }[]} sensors */
 export function voltageCard(sensors) {
   const list = voltageReadings(sensors);
@@ -402,6 +402,30 @@ export function voltageCard(sensors) {
     p: coreVoltageMean(list, "p"),
     e: coreVoltageMean(list, "e"),
   };
+}
+
+/**
+ * @typedef {"vcore" | "cpuCore" | "p" | "e"} VoltageRowKey
+ */
+
+/** The voltage rows the card shows for this machine: only the readings it has,
+ * so a CPU without P/E cores gets a two-row card instead of empty labels. The
+ * decision comes from the data (a "P-Core"/"E-Core" reading exists), never
+ * from the vendor or model, so a hybrid AMD CPU works the same way.
+ * @param {{ kind: string, name: string, value: number }[]} sensors
+ * @returns {{ key: VoltageRowKey, value: number }[]} */
+export function voltageCardRows(sensors) {
+  const card = voltageCard(sensors);
+  /** @type {{ key: VoltageRowKey, value: number | null }[]} */
+  const rows = [
+    { key: "vcore", value: card.vcore },
+    { key: "cpuCore", value: card.cpuCore },
+    { key: "p", value: card.p },
+    { key: "e", value: card.e },
+  ];
+  return rows
+    .filter((row) => row.value != null)
+    .map((row) => ({ key: row.key, value: /** @type {number} */ (row.value) }));
 }
 
 /** Fan RPM sensors grouped by hardware (board first-seen order), names in
