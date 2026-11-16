@@ -35,7 +35,9 @@
   // text of a resized transparent window; a fresh row is painted whole.
   let paint = $state(0);
   const config = $derived(overlaySettings($settingsStore.behavior));
-  const shown = $derived(cells(reading, config.metrics, config.order));
+  const shown = $derived(
+    cells(reading, config.metrics, config.order, config.fieldOrder),
+  );
   // Its own appearance or the main window's theme (theme-change keeps
   // $themeStore current); only the bar's few colours come from it.
   const theme = $derived(

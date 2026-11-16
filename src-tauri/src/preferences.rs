@@ -28,6 +28,10 @@ pub const OVERLAY_CHART_METRICS: [&str; 5] = ["cpu", "gpu", "ram", "disk", "net"
 /// The bar's blocks, in the default order (BLOCKS in overlay.js). A block is
 /// dragged as a whole; the fields inside it keep a fixed order.
 pub const OVERLAY_BLOCKS: [&str; 6] = ["cpu", "gpu", "ram", "vram", "disk", "net"];
+/// Reorderable status-bar slots of each family (FIELD_SLOTS in overlay.js).
+pub const OVERLAY_FIELD_SLOTS_CPU: [&str; 5] =
+    ["cpu", "cpuPower", "cpuTemp", "cpuVoltage", "cpuClock"];
+pub const OVERLAY_FIELD_SLOTS_GPU: [&str; 3] = ["gpu", "power", "gpuTemp"];
 /// Cards of the Dashboard tab and of the Processes tab's stats row, in their
 /// default order (DASHBOARD_CARDS and PROCESS_CARDS in src/lib/utils/layout-order.js).
 pub const DASHBOARD_CARDS: [&str; 6] = ["cpu", "gpu", "memory", "disk", "network", "temp"];
@@ -147,6 +151,16 @@ fn merge(config: &mut Value, patch: &Value) {
                 // 0.8.13: the order of whole blocks on the bar. A field never
                 // appears here, so moving a block cannot move its children.
                 "overlayOrder" => known_order(value, &OVERLAY_BLOCKS),
+                // 0.8.13: per-family slot order (CPU/GPU only).
+                "overlayFieldOrder" => value.as_object().is_some_and(|obj| {
+                    obj.len() == 2
+                        && obj
+                            .get("cpu")
+                            .is_some_and(|v| field_order_valid(v, &OVERLAY_FIELD_SLOTS_CPU))
+                        && obj
+                            .get("gpu")
+                            .is_some_and(|v| field_order_valid(v, &OVERLAY_FIELD_SLOTS_GPU))
+                }),
                 // Fob: mini window opacity in percent (Settings and the mini window).
                 "miniOpacity" => value.as_u64().is_some_and(|n| (0..=100).contains(&n)),
                 "processView" => matches!(value.as_str(), Some("flat" | "tree")),
@@ -244,6 +258,64 @@ fn migrate_overlay_order(config: &mut Value, saved: &Value) {
     config["behavior"]["overlayOrder"] = Value::Array(order.into_iter().map(Value::from).collect());
 }
 
+/// A valid distinct slot list for one family, completed with missing slots
+/// at their default places. `None` when any entry is unknown, repeated or not
+/// a string.
+fn ordered_slots(value: &Value, defaults: &[&'static str]) -> Option<Vec<&'static str>> {
+    let list = value.as_array()?;
+    let ids: Vec<&str> = list.iter().filter_map(Value::as_str).collect();
+    if ids.len() != list.len()
+        || !ids.iter().all(|id| defaults.contains(id))
+        || !ids.iter().enumerate().all(|(i, id)| !ids[..i].contains(id))
+    {
+        return None;
+    }
+    let mut full: Vec<&'static str> = ids
+        .iter()
+        .map(|id| {
+            defaults
+                .iter()
+                .find(|slot| **slot == *id)
+                .copied()
+                .expect("validated slot")
+        })
+        .collect();
+    // Missing slots follow the saved ones in their default order, so a
+    // custom prefix stays exactly where the user put it.
+    for slot in defaults {
+        if !full.contains(slot) {
+            full.push(slot);
+        }
+    }
+    Some(full)
+}
+
+fn field_order_valid(value: &Value, defaults: &[&'static str]) -> bool {
+    ordered_slots(value, defaults).is_some()
+}
+
+/// 0.8.13: old configurations have no per-family slot order, so those get
+/// the default order; a partial or invalid saved order is completed or
+/// replaced. This never derives from the old flat field list.
+fn migrate_overlay_field_order(config: &mut Value, saved: &Value) {
+    let source = saved["behavior"]["overlayFieldOrder"].as_object();
+    let mut out = serde_json::Map::new();
+    for (family, defaults) in [
+        ("cpu", &OVERLAY_FIELD_SLOTS_CPU[..]),
+        ("gpu", &OVERLAY_FIELD_SLOTS_GPU[..]),
+    ] {
+        let order = source
+            .and_then(|obj| obj.get(family))
+            .and_then(|value| ordered_slots(value, defaults))
+            .unwrap_or_else(|| defaults.to_vec());
+        out.insert(
+            family.to_string(),
+            Value::Array(order.into_iter().map(Value::from).collect()),
+        );
+    }
+    config["behavior"]["overlayFieldOrder"] = Value::Object(out);
+}
+
 /// The block a status-bar field belongs to (BLOCKS in overlay.js).
 fn block_of(field: &str) -> Option<&'static str> {
     match field {
@@ -286,6 +358,7 @@ fn load(path: &Path, legacy: Option<&Value>) -> Result<Option<Value>, String> {
     merge(&mut config, source);
     migrate_columns(&mut config, source);
     migrate_overlay_order(&mut config, source);
+    migrate_overlay_field_order(&mut config, source);
     if existing.is_none() {
         persist(path, &config)?;
     }
@@ -746,8 +819,49 @@ mod tests {
         merge(&mut config, &json!({"behavior":{"language":"zh"}}));
         assert_eq!(config["behavior"]["overlayOrder"], before);
 
+        // Old configurations have no per-family slot order: default order.
+        let saved = json!({"behavior":{"overlayMetrics":["cpu","gpu"]}});
+        let mut config = defaults();
+        merge(&mut config, &saved);
+        migrate_overlay_field_order(&mut config, &saved);
+        assert_eq!(
+            config["behavior"]["overlayFieldOrder"],
+            json!({
+                "cpu": ["cpu", "cpuPower", "cpuTemp", "cpuVoltage", "cpuClock"],
+                "gpu": ["gpu", "power", "gpuTemp"]
+            })
+        );
+        // A saved order is kept; a partial one is completed in place, and an
+        // unknown/repeated slot is replaced by the default order.
+        let saved = json!({"behavior":{"overlayFieldOrder":{
+            "cpu":["cpuVoltage","cpu","cpuPower"],
+            "gpu":["gpuTemp","gpu","power"]
+        }}});
+        let mut config = defaults();
+        merge(&mut config, &saved);
+        migrate_overlay_field_order(&mut config, &saved);
+        assert_eq!(
+            config["behavior"]["overlayFieldOrder"]["cpu"],
+            json!(["cpuVoltage", "cpu", "cpuPower", "cpuTemp", "cpuClock"])
+        );
+        assert_eq!(
+            config["behavior"]["overlayFieldOrder"]["gpu"],
+            json!(["gpuTemp", "gpu", "power"])
+        );
+        let saved = json!({"behavior":{"overlayFieldOrder":{
+            "cpu":["cpu","cpu","cpuTemp"], "gpu":["gpu","power"]
+        }}});
+        let mut config = defaults();
+        merge(&mut config, &saved);
+        migrate_overlay_field_order(&mut config, &saved);
+        assert_eq!(
+            config["behavior"]["overlayFieldOrder"]["cpu"],
+            json!(["cpu", "cpuPower", "cpuTemp", "cpuVoltage", "cpuClock"])
+        );
+
         // Unchecking and re-checking fields only changes the enabled set;
         // the block order (and so every block's position) stays put.
+        let before = config["behavior"]["overlayOrder"].clone();
         merge(
             &mut config,
             &json!({"behavior":{"overlayMetrics":["net","gpu"]}}),

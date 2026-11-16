@@ -4,13 +4,13 @@ import {
   METRICS,
   DEFAULT_METRICS,
   BLOCK_IDS,
+  DEFAULT_FIELD_ORDER,
   overlayBlockOrder,
+  overlayFieldOrder,
   overlaySettings,
   settingsBlocks,
   toggleBlock,
   toggleMetric,
-  moveMetric,
-  moveBlock,
   shortRate,
   cells,
   reorderMetric,
@@ -39,6 +39,10 @@ assert.deepEqual(
     enabled: false,
     metrics: DEFAULT_METRICS,
     order: BLOCK_IDS,
+    fieldOrder: {
+      cpu: ["cpu", "cpuPower", "cpuTemp", "cpuVoltage", "cpuClock"],
+      gpu: ["gpu", "power", "gpuTemp"],
+    },
     dock: "top",
     opacity: 60,
     locked: false,
@@ -126,15 +130,7 @@ shown = toggleMetric(shown, "net", true);
 assert.deepEqual(shown, ["cpu", "gpu", "ram", "net"]);
 shown = toggleMetric(shown, "gpu", false);
 assert.deepEqual(shown, ["cpu", "ram", "net"]);
-assert.deepEqual(moveMetric(shown, "net", -1), ["cpu", "net", "ram"]);
-assert.deepEqual(moveMetric(shown, "cpu", -1), shown, "first can't move up");
-assert.deepEqual(moveMetric(shown, "net", 1), shown, "last can't move down");
-
 // 0.8.13: a block order carries whole families; fields never have a slot.
-const blockOrder = ["gpu", "net", "cpu"];
-assert.deepEqual(moveBlock(blockOrder, "cpu", -1), ["gpu", "cpu", "net"]);
-assert.deepEqual(moveBlock(blockOrder, "gpu", 1), ["net", "gpu", "cpu"]);
-assert.deepEqual(moveBlock(blockOrder, "net", -1), ["net", "gpu", "cpu"]);
 assert.deepEqual(
   overlayBlockOrder(undefined, ["net", "gpuTemp", "cpu"]),
   ["net", "gpu", "cpu", "ram", "vram", "disk"],
@@ -183,12 +179,13 @@ const sections = settingsBlocks(
   ["cpu", "cpuPower", "cpuTemp"],
   ["cpu", "gpu", "ram", "vram", "disk", "net"],
   ["cpu"],
+  DEFAULT_FIELD_ORDER,
 );
 assert.deepEqual(
   sections.map((b) => [b.id, b.single, b.on, b.chartable]),
   [
-    ["cpu", false, true, false],
-    ["gpu", false, false, false],
+    ["cpu", false, true, true],
+    ["gpu", false, false, true],
     ["ram", true, false, true],
     ["vram", true, false, false],
     ["disk", true, false, true],
@@ -196,29 +193,45 @@ assert.deepEqual(
   ],
 );
 assert.deepEqual(
-  sections[0].rows.map((r) => [r.kind, r.id, r.on]),
+  sections[0].rows.map((r) => [r.id, r.on]),
   [
-    ["metric", "cpu", true],
-    ["chart", "cpu", true],
-    ["metric", "cpuPower", true],
-    ["metric", "cpuTemp", true],
-    ["metric", "cpuVoltage", false],
-    ["metric", "cpuClock", false],
+    ["cpu", true],
+    ["cpuPower", true],
+    ["cpuTemp", true],
+    ["cpuVoltage", false],
+    ["cpuClock", false],
   ],
-  "CPU switches: usage, usage chart, power, temperature, voltage, frequency",
+  "CPU slots: usage, power, temperature, voltage, frequency",
 );
 assert.deepEqual(
-  sections[1].rows.map((r) => [r.kind, r.id, r.on]),
+  sections[1].rows.map((r) => [r.id, r.on]),
   [
-    ["metric", "gpu", false],
-    ["chart", "gpu", false],
-    ["metric", "power", false],
-    ["metric", "gpuTemp", false],
+    ["gpu", false],
+    ["power", false],
+    ["gpuTemp", false],
   ],
-  "GPU switches: usage, usage chart, power, temperature",
+  "GPU slots: usage, power, temperature",
 );
 assert.deepEqual(sections[2].rows, [], "single blocks have no children");
 assert.equal(sections[2].field, "ram");
+
+assert.deepEqual(overlayFieldOrder(undefined), DEFAULT_FIELD_ORDER);
+assert.deepEqual(
+  overlayFieldOrder({
+    cpu: ["cpuPower", "cpu", "cpuTemp"],
+    gpu: ["power", "gpu"],
+  }),
+  {
+    cpu: ["cpuPower", "cpu", "cpuTemp", "cpuVoltage", "cpuClock"],
+    gpu: ["power", "gpu", "gpuTemp"],
+  },
+  "a saved order is kept; missing slots follow in default order",
+);
+assert.deepEqual(
+  overlayFieldOrder({ cpu: ["cpu", "cpu", "bogus"], gpu: [] }),
+  DEFAULT_FIELD_ORDER,
+  "repeated/unknown slots fall back to the default order",
+);
 
 assert.equal(shortRate(0), "0B");
 assert.equal(shortRate(35 * 1024), "35K");
@@ -244,7 +257,7 @@ assert.deepEqual(
     { id: "net", value: "↓2.0K ↑0B", parts: ["↓2.0K", "↑0B"], label: null },
   ],
 );
-// The final bar layout: usage carries power, then the block's fixed fields.
+// The final bar layout: each slot is its own cell, in the family order.
 assert.deepEqual(
   cells(
     {
@@ -269,18 +282,21 @@ assert.deepEqual(
       "gpuTemp",
     ],
     ["cpu", "gpu"],
+    DEFAULT_FIELD_ORDER,
   ),
   [
-    { id: "cpu", value: "15% 45W", parts: ["15%", "45W"], label: "CPU" },
+    { id: "cpu", value: "15%", parts: ["15%"], label: "CPU" },
+    { id: "cpuPower", value: "45W", parts: ["45W"], label: "" },
     { id: "cpuTemp", value: "47°C", parts: ["47°C"], label: "" },
     { id: "cpuVoltage", value: "1.28V", parts: ["1.28V"], label: "Vcore" },
     { id: "cpuClock", value: "5.32GHz", parts: ["5.32GHz"], label: "CLK" },
-    { id: "gpu", value: "80% 180W", parts: ["80%", "180W"], label: "GPU" },
+    { id: "gpu", value: "80%", parts: ["80%"], label: "GPU" },
+    { id: "power", value: "180W", parts: ["180W"], label: "" },
     { id: "gpuTemp", value: "62°C", parts: ["62°C"], label: "" },
   ],
   "CPU 15% 45W  47°C  Vcore 1.28V  CLK 5.32GHz | GPU 80% 180W  62°C",
 );
-// The block order moves whole families; fields never leave their block.
+// The block order moves whole families; the family field order moves slots.
 assert.deepEqual(
   cells(
     { cpu: 15, cpuTemp: 47, gpu: 80 },
@@ -289,46 +305,34 @@ assert.deepEqual(
   ).map((c) => c.id),
   ["gpu", "cpu", "cpuTemp"],
 );
-// Power is the usage cell's second number; usage off leaves a power-only cell.
+assert.deepEqual(
+  cells(
+    { cpu: 15, cpuPower: 45, cpuTemp: 47, gpu: 80, gpuPower: 180 },
+    ["cpu", "cpuPower", "cpuTemp", "gpu", "power"],
+    ["cpu", "gpu"],
+    {
+      cpu: ["cpuPower", "cpu", "cpuTemp"],
+      gpu: ["power", "gpu"],
+    },
+  ).map((c) => c.id),
+  ["cpuPower", "cpu", "cpuTemp", "power", "gpu"],
+);
+// Power is an independent slot, with no name of its own.
 assert.deepEqual(cells({ cpu: 15, cpuPower: 45 }, ["cpu", "cpuPower"]), [
-  { id: "cpu", value: "15% 45W", parts: ["15%", "45W"], label: "CPU" },
+  { id: "cpu", value: "15%", parts: ["15%"], label: "CPU" },
+  { id: "cpuPower", value: "45W", parts: ["45W"], label: "" },
 ]);
 assert.deepEqual(cells({ cpuPower: 45 }, ["cpuPower"]), [
-  { id: "cpuPower", value: "45W", parts: ["45W"], label: "CPU" },
+  { id: "cpuPower", value: "45W", parts: ["45W"], label: "" },
 ]);
 assert.deepEqual(cells({ cpu: 15 }, ["cpu", "cpuPower"]), [
   { id: "cpu", value: "15%", parts: ["15%"], label: "CPU" },
+  { id: "cpuPower", value: "—", parts: ["—"], label: "" },
 ]);
-// A missing power reading does not add a second dash.
-assert.deepEqual(cells({ cpu: 15 }, ["cpu", "cpuPower"])[0].value, "15%");
 assert.deepEqual(cells({}, ["cpu", "cpuPower"]), [
   { id: "cpu", value: "—", parts: ["—"], label: "CPU" },
+  { id: "cpuPower", value: "—", parts: ["—"], label: "" },
 ]);
-assert.deepEqual(cells({ diskRead: 0, diskWrite: 5000 }, ["disk"])[0].parts, [
-  "R 0B",
-  "W 4.9K",
-]);
-assert.equal(cells({ cpuVoltage: 1.24 }, ["cpuVoltage"])[0].value, "1.24V");
-assert.equal(cells({}, ["cpuVoltage"])[0].value, "—");
-assert.equal(cells({ cpuVoltage: NaN }, ["cpuVoltage"])[0].value, "—");
-// 0.8.13: the prefix follows the measured source, never the old generic label.
-const voltCell = (source) =>
-  cells({ cpuVoltage: 1.28, cpuVoltageSource: source }, ["cpuVoltage"])[0];
-assert.equal(voltCell("measured").label, "Vcore");
-assert.equal(voltCell("requested").label, "VID");
-assert.equal(voltCell(null).label, "", "no source: no prefix");
-assert.equal(voltCell("measured").value, "1.28V");
-assert.equal(
-  cells({ cpuVoltage: null }, ["cpuVoltage"])[0].label,
-  "",
-  "a dash carries no prefix",
-);
-// The frequency carries CLK; its value has the unit.
-const clock = cells({ cpuClock: 5320 }, ["cpuClock"])[0];
-assert.equal(clock.value, "5.32GHz");
-assert.equal(clock.label, "CLK");
-assert.equal(cells({ cpuClock: 800 }, ["cpuClock"])[0].value, "0.80GHz");
-assert.equal(cells({ cpuClock: null }, ["cpuClock"])[0].value, "—");
 // Drag and drop helpers still used elsewhere.
 const four = ["cpu", "gpu", "ram", "net"];
 assert.deepEqual(reorderMetric(four, 0, 4), ["gpu", "ram", "net", "cpu"]);

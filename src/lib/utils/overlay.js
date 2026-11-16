@@ -1,11 +1,11 @@
 // Fob status bar (v0.7.0): which readings it shows, in what order, and how
 // each is written. Saved in behavior.overlay* (validated in
 // src-tauri/src/preferences.rs; OVERLAY_METRICS there lists the same ids).
-import { normalizeOrder } from "./layout-order.js";
+import { normalizeOrder, previewOrder } from "./layout-order.js";
 
 /** Every field the bar can show. A field belongs to one block; the block
- * order is saved separately (overlayOrder), so a field never carries an
- * order of its own. No FPS: that would need injecting into the game. */
+ * order is saved separately (overlayOrder), and the fields inside CPU/GPU
+ * have their own per-family order (overlayFieldOrder). No FPS. */
 export const METRICS = /** @type {const} */ ([
   "cpu",
   "cpuPower",
@@ -22,28 +22,33 @@ export const METRICS = /** @type {const} */ ([
 ]);
 /** @typedef {typeof METRICS[number]} MetricId */
 
-/** The bar's blocks, in their default order, with the fields each one draws
- * and the switches its settings section offers. Field order inside a block
- * is fixed: usage (carrying power) → temperature → voltage → clock for the
- * CPU, usage (carrying power) → temperature for the GPU.
- * `rows` lists the settings switches a block opens: metric rows toggle the
- * field in overlayMetrics, chart rows toggle it in overlayChartMetrics.
- * A block with one metric row and no chart row is a single-row block
- * (memory, video memory, disk, network).
- * @type {{ id: string, label: string, fields: MetricId[],
- *   rows: { kind: "metric" | "chart", id: MetricId, label: string }[] }[]} */
+/** The reorderable status-bar slots of each family, in their default order.
+ * The chart switch is not a slot: it belongs to the usage reading. */
+export const FIELD_SLOTS = /** @type {const} */ ({
+  cpu: ["cpu", "cpuPower", "cpuTemp", "cpuVoltage", "cpuClock"],
+  gpu: ["gpu", "power", "gpuTemp"],
+});
+export const DEFAULT_FIELD_ORDER = {
+  cpu: [...FIELD_SLOTS.cpu],
+  gpu: [...FIELD_SLOTS.gpu],
+};
+
+/** The bar's blocks, in their default order. `fields` is the full slot set;
+ * `rows` only names the settings switches. A single-row block (memory,
+ * video memory, disk, network) has one field and no child slots. */
+/** @type {{ id: string, label: string, fields: MetricId[],
+ *   rows: { id: MetricId, label: string }[] }[]} */
 export const BLOCKS = [
   {
     id: "cpu",
     label: "overlay.metric.cpu",
     fields: ["cpu", "cpuPower", "cpuTemp", "cpuVoltage", "cpuClock"],
     rows: [
-      { kind: "metric", id: "cpu", label: "overlay.child.usage" },
-      { kind: "chart", id: "cpu", label: "overlay.child.chart" },
-      { kind: "metric", id: "cpuPower", label: "overlay.metric.cpuPower" },
-      { kind: "metric", id: "cpuTemp", label: "overlay.child.temp" },
-      { kind: "metric", id: "cpuVoltage", label: "overlay.child.voltage" },
-      { kind: "metric", id: "cpuClock", label: "overlay.child.clock" },
+      { id: "cpu", label: "overlay.child.usage" },
+      { id: "cpuPower", label: "overlay.metric.cpuPower" },
+      { id: "cpuTemp", label: "overlay.child.temp" },
+      { id: "cpuVoltage", label: "overlay.child.voltage" },
+      { id: "cpuClock", label: "overlay.child.clock" },
     ],
   },
   {
@@ -51,40 +56,43 @@ export const BLOCKS = [
     label: "overlay.metric.gpu",
     fields: ["gpu", "power", "gpuTemp"],
     rows: [
-      { kind: "metric", id: "gpu", label: "overlay.child.usage" },
-      { kind: "chart", id: "gpu", label: "overlay.child.chart" },
-      { kind: "metric", id: "power", label: "overlay.metric.power" },
-      { kind: "metric", id: "gpuTemp", label: "overlay.child.temp" },
+      { id: "gpu", label: "overlay.child.usage" },
+      { id: "power", label: "overlay.metric.power" },
+      { id: "gpuTemp", label: "overlay.child.temp" },
     ],
   },
   {
     id: "ram",
     label: "overlay.metric.ram",
     fields: ["ram"],
-    rows: [{ kind: "metric", id: "ram", label: "overlay.metric.ram" }],
+    rows: [{ id: "ram", label: "overlay.metric.ram" }],
   },
   {
     id: "vram",
     label: "overlay.metric.vram",
     fields: ["vram"],
-    rows: [{ kind: "metric", id: "vram", label: "overlay.metric.vram" }],
+    rows: [{ id: "vram", label: "overlay.metric.vram" }],
   },
   {
     id: "disk",
     label: "overlay.metric.disk",
     fields: ["disk"],
-    rows: [{ kind: "metric", id: "disk", label: "overlay.metric.disk" }],
+    rows: [{ id: "disk", label: "overlay.metric.disk" }],
   },
   {
     id: "net",
     label: "overlay.metric.net",
     fields: ["net"],
-    rows: [{ kind: "metric", id: "net", label: "overlay.metric.net" }],
+    rows: [{ id: "net", label: "overlay.metric.net" }],
   },
 ];
 export const BLOCK_IDS = BLOCKS.map((block) => block.id);
 /** @type {Record<string, typeof BLOCKS[number]>} */
 const BLOCK_OF = Object.fromEntries(BLOCKS.map((block) => [block.id, block]));
+/** @type {Record<string, string>} */
+const FIELD_LABELS = Object.fromEntries(
+  BLOCKS.flatMap((block) => block.rows.map((row) => [row.id, row.label])),
+);
 
 export const DEFAULT_METRICS = [
   "cpu",
@@ -118,6 +126,33 @@ export function overlayOpacity(value) {
   return Math.min(100, Math.max(OPACITY_FLOOR, Math.round(n)));
 }
 
+/** Per-family field order made valid: only that family's slots, distinct,
+ * with missing slots back at their default place. Old configurations have
+ * no field order, so they get the default order. */
+/** @param {unknown} saved */
+export function overlayFieldOrder(saved = undefined) {
+  const source =
+    saved && typeof saved === "object"
+      ? /** @type {Record<string, unknown>} */ (saved)
+      : {};
+  /** @type {Record<string, MetricId[]>} */
+  const order = {};
+  for (const [family, slots] of Object.entries(FIELD_SLOTS)) {
+    /** @type {MetricId[]} */
+    const ids = [...slots];
+    const list = Array.isArray(source[family])
+      ? source[family].filter(
+          (id) =>
+            typeof id === "string" &&
+            ids.includes(/** @type {MetricId} */ (id)),
+        )
+      : slots;
+    const seen = [...new Set(list)];
+    order[family] = [...seen, ...ids.filter((id) => !seen.includes(id))];
+  }
+  return order;
+}
+
 /**
  * The saved overlay settings, with anything missing or invalid replaced by
  * its default.
@@ -126,10 +161,8 @@ export function overlayOpacity(value) {
 export function overlaySettings(behavior) {
   const b = behavior ?? {};
   const list = Array.isArray(b.overlayMetrics) ? b.overlayMetrics : null;
-  // One flat enabled set, in METRICS order: the block order lives in
-  // overlayOrder, so a field never has a position of its own. The order of
-  // the saved list still decides the block order when overlayOrder is
-  // missing (pre-0.8.13 configuration).
+  // One flat enabled set, in METRICS order. Block order lives in
+  // overlayOrder; field order inside CPU/GPU lives in overlayFieldOrder.
   /** @type {MetricId[]} */
   const savedFields = list
     ? list.filter((id) => METRICS.includes(/** @type {MetricId} */ (id)))
@@ -142,6 +175,7 @@ export function overlaySettings(behavior) {
     enabled: b.overlayEnabled === true,
     metrics,
     order: overlayBlockOrder(b.overlayOrder, savedFields),
+    fieldOrder: overlayFieldOrder(b.overlayFieldOrder),
     dock: DOCKS.includes(/** @type {any} */ (b.overlayDock))
       ? /** @type {typeof DOCKS[number]} */ (b.overlayDock)
       : "top",
@@ -194,32 +228,45 @@ export function overlayBlockOrder(saved, metrics) {
   return derivedBlockOrder(metrics);
 }
 
-/** The settings sections: one block per row, with the switches it opens
- * indented under it. Single-row blocks (memory, video memory, disk, network)
- * keep their field switch and chart toggle on the row itself.
- * @param {MetricId[]} metrics @param {string[]} order @param {MetricId[]} charts */
-export function settingsBlocks(metrics, order, charts) {
+/** The settings sections: one block per row, with its slot switches in the
+ * saved per-family order. Single-row blocks (memory, video memory, disk,
+ * network) keep their switch and chart toggle on the row itself.
+ * @param {MetricId[]} metrics @param {string[]} order @param {MetricId[]} charts
+ * @param {Record<string, MetricId[]>} [fieldOrder]
+ * @param {Record<string, { id: string, target: string, after: boolean } | null>} [fieldMoves] */
+export function settingsBlocks(
+  metrics,
+  order,
+  charts,
+  fieldOrder = DEFAULT_FIELD_ORDER,
+  fieldMoves = {},
+) {
   const on = new Set(metrics);
   const charted = new Set(charts);
   return order
     .map((id) => BLOCK_OF[id])
     .filter(Boolean)
     .map((block) => {
-      const rows = block.rows.map((row) => ({
-        ...row,
-        on: row.kind === "chart" ? charted.has(row.id) : on.has(row.id),
+      const single = block.fields.length === 1;
+      const saved = fieldOrder?.[block.id] ?? block.fields;
+      const preview = previewOrder(saved, fieldMoves?.[block.id] ?? null);
+      const rows = preview.map((id) => ({
+        id: /** @type {MetricId} */ (id),
+        label: FIELD_LABELS[id] ?? `overlay.metric.${id}`,
+        on: on.has(/** @type {MetricId} */ (id)),
       }));
-      const fields = rows.filter((row) => row.kind === "metric");
-      const single = fields.length === 1;
-      const field = fields[0]?.id;
+      const field = block.fields[0];
       return {
         id: block.id,
         label: block.label,
         single,
         field: single ? field : null,
-        on: fields.some((row) => row.on),
-        chartable: single && chartable(field),
-        charted: single && charted.has(field),
+        on: rows.some((row) => row.on),
+        chartable: single ? chartable(field) : true,
+        charted: charted.has(
+          single ? field : /** @type {MetricId} */ (block.id),
+        ),
+        chartField: single ? null : /** @type {MetricId} */ (block.id),
         rows: single ? [] : rows,
       };
     });
@@ -240,22 +287,13 @@ export function toggleBlock(metrics, id, on) {
   if (!block) return metrics;
   const rest = metrics.filter((field) => !block.fields.includes(field));
   if (!on) return rest;
-  const first = block.fields[0];
+  const first = block.fields.includes(/** @type {MetricId} */ (block.id))
+    ? /** @type {MetricId} */ (block.id)
+    : block.fields[0];
   return METRICS.filter(
     (field) =>
       rest.includes(field) || metrics.includes(field) || field === first,
   );
-}
-
-/** One block moved earlier (-1) or later (+1) in the block order.
- * @param {string[]} order @param {string} id @param {-1 | 1} dir */
-export function moveBlock(order, id, dir) {
-  const i = order.indexOf(id);
-  const j = i + dir;
-  if (i < 0 || j < 0 || j >= order.length) return order;
-  const next = [...order];
-  [next[i], next[j]] = [next[j], next[i]];
-  return next;
 }
 
 /** Status bar appearance (0.7.5): "" follows the main window's theme, any
@@ -346,17 +384,6 @@ export function toggleMetric(shown, id, on) {
   return on ? [...rest, id] : rest;
 }
 
-/** Shown metrics with `id` moved one place earlier (-1) or later (+1).
- * @param {MetricId[]} shown @param {MetricId} id @param {-1 | 1} dir */
-export function moveMetric(shown, id, dir) {
-  const i = shown.indexOf(id);
-  const j = i + dir;
-  if (i < 0 || j < 0 || j >= shown.length) return shown;
-  const next = [...shown];
-  [next[i], next[j]] = [next[j], next[i]];
-  return next;
-}
-
 /** Shown metrics with the one at `from` dropped at index `to` (drag and
  * drop in Settings; `to` is the slot it lands in, counted before removal).
  * @param {MetricId[]} shown @param {number} from @param {number} to */
@@ -429,26 +456,21 @@ const gb = (/** @type {number | null | undefined} */ v) =>
  * }} Reading  (overlay_reading in overlay.rs)
  */
 
-/** The cells the bar draws, in block order. A block draws only the fields
- * that are switched on, in its fixed internal order: usage (carrying power)
- * → temperature → voltage → clock for the CPU, usage (carrying power) →
- * temperature for the GPU. Dragging reorders blocks, never fields, so this
- * function reads the block order, not the order of the enabled set.
- *
- * Power never gets a cell of its own: CPU package power follows CPU usage and
- * GPU power follows GPU usage (`CPU 15% 45W`). Leaving usage off still shows
- * a power-only cell (`CPU 45W`); a missing power number is left out instead
- * of adding a second dash. Charts only ever read a usage cell's id.
- *
- * Each metric carries its short name (0.8.13): `CPU`, `GPU`, `CLK`, and
- * `Vcore`/`VID` for the voltage, which follows its source. Temperature is
- * bare inside its block (`47°C`); memory, disk and network keep their names.
- * `label: ""` means no name; null means `overlay.short.<id>`.
+/** The cells the bar draws, in block order, then in each family's saved
+ * slot order. Power is an independent slot with only its wattage (`188W`);
+ * usage carries `CPU`/`GPU`, temperature is bare, voltage says `Vcore`/`VID`
+ * and frequency says `CLK`. The chart switch is not a slot.
  * @param {Reading | null} r @param {MetricId[]} shown
  * @param {string[]} [order] block order (defaults to the old flat order)
+ * @param {Record<string, MetricId[]>} [fieldOrder]
  * @returns {{ id: MetricId, value: string, parts: string[],
  *   label: string | null }[]} */
-export function cells(r, shown, order = derivedBlockOrder(shown)) {
+export function cells(
+  r,
+  shown,
+  order = derivedBlockOrder(shown),
+  fieldOrder = overlayFieldOrder(),
+) {
   const x = r ?? {};
   const on = new Set(shown);
   /** The voltage prefix only when the source is known and the value exists;
@@ -480,57 +502,30 @@ export function cells(r, shown, order = derivedBlockOrder(shown)) {
   /** @type {Partial<Record<MetricId, string>>} */
   const labels = {
     cpu: "CPU",
-    cpuPower: "CPU",
     gpu: "GPU",
-    power: "GPU",
-    cpuClock: "CLK",
-    cpuVoltage: voltLabel,
+    cpuPower: "",
+    power: "",
     cpuTemp: "",
     gpuTemp: "",
+    cpuClock: "CLK",
+    cpuVoltage: voltLabel,
   };
   /** @type {{ id: MetricId, value: string, parts: string[], label: string | null }[]} */
   const out = [];
-  /** @param {MetricId} id */
-  const pushScalar = (id) => {
-    const parts = text[id]().split("	");
-    out.push({
-      id,
-      value: parts.join(" "),
-      parts,
-      label: labels[id] ?? null,
-    });
-  };
   for (const blockId of order) {
     const block = BLOCK_OF[blockId];
     if (!block) continue;
-    if (blockId === "cpu" || blockId === "gpu") {
-      const usageId = /** @type {MetricId} */ (blockId);
-      const powerId = /** @type {MetricId} */ (
-        blockId === "cpu" ? "cpuPower" : "power"
-      );
-      const usageOn = on.has(usageId);
-      const powerOn = on.has(powerId);
-      if (usageOn || powerOn) {
-        /** @type {string[]} */
-        const parts = [];
-        if (usageOn && text[usageId]() !== "—") parts.push(text[usageId]());
-        if (powerOn && text[powerId]() !== "—") parts.push(text[powerId]());
-        if (!parts.length) parts.push("—");
-        const id = usageOn ? usageId : powerId;
-        out.push({
-          id,
-          value: parts.join(" "),
-          parts,
-          label: labels[id] ?? null,
-        });
-      }
-      for (const id of block.fields) {
-        if (id === usageId || id === powerId) continue;
-        if (on.has(id)) pushScalar(id);
-      }
-      continue;
+    const fields = fieldOrder?.[blockId] ?? block.fields;
+    for (const id of fields) {
+      if (!on.has(id)) continue;
+      const parts = text[id]().split("	");
+      out.push({
+        id,
+        value: parts.join(" "),
+        parts,
+        label: labels[id] ?? null,
+      });
     }
-    for (const id of block.fields) if (on.has(id)) pushScalar(id);
   }
   return out;
 }

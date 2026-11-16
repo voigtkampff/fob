@@ -29,6 +29,7 @@ const SLIDE = { duration: 160, easing: "cubic-bezier(0.2, 0, 0, 1)" };
  * @property {(id: string) => HTMLElement[]} [cells] other elements that belong to an item (a column's body cells) and move with it; items without cells lift as a copy in the top layer
  * @property {boolean} [clampToNode] keep the lifted copy inside the visible box of `node` (a scrolling list)
  * @property {boolean} [portal] append the lifted copy to document.body, outside any transformed or clipped ancestor
+ * @property {boolean} [rejectOutside] no reorder while the pointer is outside the node's box
  */
 
 const reducedMotion = () =>
@@ -236,6 +237,11 @@ export function dragReorder(node, options) {
   const wanted = () => {
     if (!press || !drag) return null;
     const { clientX: x, clientY: y } = drag.last;
+    if (o.rejectOutside) {
+      const box = node.getBoundingClientRect();
+      if (x < box.left || x > box.right || y < box.top || y > box.bottom)
+        return null;
+    }
     const list = items();
     const from = list.findIndex((it) => it.id === press?.id);
     let best = null;

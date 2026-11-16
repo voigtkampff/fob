@@ -694,8 +694,6 @@ export const en = {
   "settings.overlayDrag": "Drag to reorder",
   "settings.overlayChartFor": "Chart for {name}",
   "settings.overlayNoChart": "No chart for {name}",
-  "settings.overlayUp": "Move {name} left",
-  "settings.overlayDown": "Move {name} right",
   "settings.overlayDock": "Position",
   "settings.overlayDockNote":
     "Drag it near the top or bottom edge to snap it there",
@@ -1461,8 +1459,6 @@ export const zh = {
   "settings.overlayDrag": "拖动可调整顺序",
   "settings.overlayChartFor": "{name}的小图表",
   "settings.overlayNoChart": "{name}没有图表",
-  "settings.overlayUp": "把{name}往前移",
-  "settings.overlayDown": "把{name}往后移",
   "settings.overlayDock": "位置",
   "settings.overlayDockNote": "拖到屏幕上下边缘附近会自动吸附",
   "settings.overlayDock.top": "顶部",

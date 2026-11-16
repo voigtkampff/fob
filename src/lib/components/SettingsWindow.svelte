@@ -18,9 +18,8 @@
   import {
     Settings2,
     Palette,
-    ChevronUp,
-    ChevronDown,
     GripVertical,
+    ChevronDown,
     ChartSpline,
     Gauge,
     Plug,
@@ -33,7 +32,6 @@
     settingsBlocks,
     toggleBlock,
     toggleMetric,
-    moveBlock,
     chartsPatch,
     toggleChart,
     overlayThemeOptions,
@@ -114,8 +112,16 @@
   // moves the block <li> (with its indented switches) as one item, so a
   // field can never be left behind. Block order saves under overlayOrder.
   let move: { id: string; target: string; after: boolean } | null = null;
+  /** @type {Record<string, { id: string, target: string, after: boolean } | null>} */
+  let fieldMoves = {};
   $: shownBlocks = previewOrder(overlay.order, move);
-  $: blockRows = settingsBlocks(overlay.metrics, shownBlocks, overlay.charts);
+  $: blockRows = settingsBlocks(
+    overlay.metrics,
+    shownBlocks,
+    overlay.charts,
+    overlay.fieldOrder,
+    fieldMoves,
+  );
   function saveOverlay(patch: Record<string, unknown>) {
     settingsStore.updateConfig({
       behavior: { ...$settingsStore.behavior, ...patch },
@@ -397,7 +403,7 @@
                   onPreview: (next) => (move = next),
                 }}
               >
-                {#each blockRows as block, i (block.id)}
+                {#each blockRows as block (block.id)}
                   {@const name = $t(block.label)}
                   <li class="block" class:off={!block.on}>
                     <div class="block-head">
@@ -446,70 +452,73 @@
                       {/if}
                       {#if !block.single}
                         <div class="field-icons">
-                          {#each block.rows as row (row.kind + row.id)}
-                            {@const Icon =
-                              row.kind === "chart"
-                                ? ChartSpline
-                                : (FIELD_ICONS[row.id] ?? Gauge)}
-                            <button
-                              type="button"
-                              class="icon-toggle"
-                              class:on={row.on}
-                              aria-pressed={row.on}
-                              aria-label={$t(row.label)}
-                              title={$t(row.label)}
-                              onclick={() =>
-                                row.kind === "chart"
-                                  ? saveOverlay(
-                                      chartsPatch(
-                                        toggleChart(
-                                          overlay.charts,
-                                          row.id,
-                                          !row.on,
-                                        ),
-                                      ),
-                                    )
-                                  : setMetrics(
-                                      toggleMetric(
-                                        overlay.metrics,
-                                        row.id,
-                                        !row.on,
-                                      ),
-                                    )}><Icon class="size-3.5" /></button
-                            >
-                          {/each}
+                          <div
+                            class="field-slots"
+                            use:dragReorder={{
+                              ids: block.rows.map((row) => row.id),
+                              handle: ".icon-toggle",
+                              clampToNode: true,
+                              portal: true,
+                              rejectOutside: true,
+                              onMove: (id, target, after) =>
+                                saveOverlay({
+                                  overlayFieldOrder: {
+                                    ...overlay.fieldOrder,
+                                    [block.id]: moveNextTo(
+                                      overlay.fieldOrder[block.id],
+                                      id,
+                                      target,
+                                      after,
+                                    ),
+                                  },
+                                }),
+                              onPreview: (next) =>
+                                (fieldMoves = {
+                                  ...fieldMoves,
+                                  [block.id]: next,
+                                }),
+                            }}
+                          >
+                            {#each block.rows as row (row.id)}
+                              {@const Icon = FIELD_ICONS[row.id] ?? Gauge}
+                              <button
+                                type="button"
+                                class="icon-toggle"
+                                class:on={row.on}
+                                aria-pressed={row.on}
+                                aria-label={$t(row.label)}
+                                title={$t(row.label)}
+                                onclick={() =>
+                                  setMetrics(
+                                    toggleMetric(
+                                      overlay.metrics,
+                                      row.id,
+                                      !row.on,
+                                    ),
+                                  )}><Icon class="size-3.5" /></button
+                              >
+                            {/each}
+                          </div>
+                          <button
+                            type="button"
+                            class="icon-toggle"
+                            class:on={block.charted}
+                            aria-pressed={block.charted}
+                            aria-label={$t("overlay.child.chart")}
+                            title={$t("overlay.child.chart")}
+                            onclick={() =>
+                              block.chartField &&
+                              saveOverlay(
+                                chartsPatch(
+                                  toggleChart(
+                                    overlay.charts,
+                                    block.chartField,
+                                    !block.charted,
+                                  ),
+                                ),
+                              )}><ChartSpline class="size-3.5" /></button
+                          >
                         </div>
-                      {/if}
-                      {#if block.on}
-                        <Button
-                          variant="ghost"
-                          size="icon-sm"
-                          disabled={i === 0}
-                          aria-label={$t("settings.overlayUp", { name })}
-                          title={$t("settings.overlayUp", { name })}
-                          onclick={() =>
-                            saveOverlay({
-                              overlayOrder: moveBlock(
-                                overlay.order,
-                                block.id,
-                                -1,
-                              ),
-                            })}><ChevronUp /></Button
-                        ><Button
-                          variant="ghost"
-                          size="icon-sm"
-                          disabled={i === blockRows.length - 1}
-                          aria-label={$t("settings.overlayDown", { name })}
-                          title={$t("settings.overlayDown", { name })}
-                          onclick={() =>
-                            saveOverlay({
-                              overlayOrder: moveBlock(
-                                overlay.order,
-                                block.id,
-                                1,
-                              ),
-                            })}><ChevronDown /></Button
-                        >
                       {/if}
                     </div>
                   </li>
@@ -747,9 +756,15 @@
   .overlay-metrics > li.off > .block-head > .block-name {
     color: var(--muted-foreground);
   }
-  .field-icons {
+  .field-icons,
+  .field-slots {
     display: flex;
     align-items: center;
+  }
+  .field-icons {
+    gap: 6px;
+  }
+  .field-slots {
     gap: 2px;
   }
   .grip {
