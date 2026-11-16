@@ -43,8 +43,12 @@ pub enum TaskState {
 pub struct SetupStatus {
     /// Windows build that carries a helper manifest.
     pub supported: bool,
-    /// sensors\ and PawnIO\ folders are next to fob.exe.
+    /// sensors\ and PawnIO\ folders are next to fob.exe and match the
+    /// manifest embedded in this exe.
     pub bundled: bool,
+    /// When `bundled` is false: the first missing file or hash mismatch, so
+    /// the UI can name it instead of only saying "files are missing".
+    pub bundle_error: Option<String>,
     pub pawnio_installed: bool,
     /// Helper copied to %ProgramFiles%\Fob\sensors.
     pub installed: bool,
@@ -85,12 +89,23 @@ impl Drop for SetupGuard<'_> {
 }
 
 /// Parse `sha256  path` lines (sha256sum format).
+///
+/// Both separators are accepted: Linux `sha256sum` writes two spaces
+/// (`hash  path`), while Git Bash / coreutils in binary mode writes
+/// `hash *path`. 0.8.13's local Windows package was built with the latter,
+/// and the old parser (two spaces only) produced an empty manifest, which
+/// made every bundled helper look missing on the user's machine.
 pub fn manifest_entries(text: &str) -> Vec<(String, String)> {
     text.lines()
         .filter_map(|line| {
-            let (hash, path) = line.split_once("  ")?;
-            let hash = hash.trim().to_ascii_lowercase();
-            let path = path.trim().trim_start_matches("./").to_owned();
+            let line = line.trim();
+            let separator = line.find(char::is_whitespace)?;
+            let hash = line[..separator].trim().to_ascii_lowercase();
+            let path = line[separator..]
+                .trim_start()
+                .trim_start_matches('*')
+                .trim_start_matches("./")
+                .to_owned();
             (hash.len() == 64
                 && hash.bytes().all(|b| b.is_ascii_hexdigit())
                 && !path.is_empty()
@@ -381,10 +396,13 @@ mod win {
         let source = exe_dir();
         let bundled_helper = bundled_dir().join(HELPER_EXE);
         let installed = installed_helper();
+        let bundle_error = verify(&source.join("sensors"), MANIFEST, "sensors/")
+            .err()
+            .or_else(|| verify(&source.join("PawnIO"), MANIFEST, "PawnIO/").err());
         SetupStatus {
             supported: !MANIFEST.trim().is_empty(),
-            bundled: verify(&source.join("sensors"), MANIFEST, "sensors/").is_ok()
-                && verify(&source.join("PawnIO"), MANIFEST, "PawnIO/").is_ok(),
+            bundled: bundle_error.is_none(),
+            bundle_error,
             pawnio_installed: pawnio_installed(),
             installed: installed.exists(),
             task: task_state(query_task().as_deref().map_err(|e| *e), &installed),
@@ -552,8 +570,16 @@ pub async fn sensor_setup(enable: bool) -> Result<SetupStatus, SetupFailure> {
                 "Debug build: sensor setup is simulated and does nothing.".into(),
             ));
         }
-        if enable && !status().bundled {
-            return Err(SetupFailure::Failed(exit_message(10)));
+        if enable {
+            let current = status();
+            if !current.bundled {
+                // Name the file that is missing or differs, and stay
+                // unelevated: no UAC prompt for a bundle we already know
+                // cannot pass the elevated check.
+                return Err(SetupFailure::Failed(
+                    current.bundle_error.unwrap_or_else(|| exit_message(10)),
+                ));
+            }
         }
         run_elevated(if enable {
             "--sensors-setup"
@@ -598,13 +624,50 @@ mod tests {
         let h = "a".repeat(64);
         let text = format!(
             "{h}  sensors/fob-sensors.exe\n{h}  ./PawnIO/PawnIO_setup.exe\n\
-             {h}  sensors/../evil.exe\nzz  sensors/x.dll\n{h} sensors/one-space.dll\n"
+             {h}  sensors/../evil.exe\nzz  sensors/x.dll\n{h} sensors/one-space.dll\n{h} *sensors/Windows-binary.exe\n"
         );
         let e = manifest_entries(&text);
         assert_eq!(
             e.iter().map(|(_, p)| p.as_str()).collect::<Vec<_>>(),
-            ["sensors/fob-sensors.exe", "PawnIO/PawnIO_setup.exe"]
+            [
+                "sensors/fob-sensors.exe",
+                "PawnIO/PawnIO_setup.exe",
+                "sensors/one-space.dll",
+                "sensors/Windows-binary.exe"
+            ]
         );
+    }
+
+    #[test]
+    fn the_embedded_manifest_is_parseable_and_matches_the_staged_helper() {
+        // The manifest is embedded by build.rs from
+        // sensors-helper/dist/manifest.sha256. Every line must parse, or the
+        // whole bundle looks missing at run time.
+        // CI compiles without sensors-helper/dist; the local/packaging build
+        // and the unit test above cover the Windows marker format.
+        if MANIFEST.trim().is_empty() {
+            return;
+        }
+        let entries = manifest_entries(MANIFEST);
+        assert!(!entries.is_empty(), "the embedded manifest has no entries");
+        assert!(
+            entries.iter().any(|(_, p)| p == "sensors/fob-sensors.exe"),
+            "the CPU helper is not in the embedded manifest"
+        );
+        // The staged folder exists after sensors-helper/build.sh (or the local
+        // staging step); check the exact bytes that go into the zip.
+        let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../sensors-helper/dist/sensors");
+        if root.exists() {
+            let expected = entries
+                .iter()
+                .filter(|(_, p)| p.starts_with("sensors/"))
+                .count();
+            assert_eq!(
+                verify(&root, MANIFEST, "sensors/").ok(),
+                Some(expected),
+                "the embedded manifest does not match the staged helper"
+            );
+        }
     }
 
     #[test]

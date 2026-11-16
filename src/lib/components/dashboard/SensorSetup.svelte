@@ -26,7 +26,9 @@
       ? "helper.install"
       : view.kind === "update"
         ? "helper.update"
-        : "helper.repair",
+        : view.kind === "retask"
+          ? "helper.retask"
+          : "helper.repair",
   );
   onMount(() => {
     void refreshSensorSetup();
@@ -42,8 +44,9 @@
       <p class="note">{$t("helper.privacy")}</p>
       <div class="versions note">
         <span
-          >{$t("helper.installedVersion")}: {status?.installed_version ??
-            $t("helper.unknownVersion")}</span
+          >{$t("helper.installedVersion")}: {status?.installed
+            ? (status.installed_version ?? $t("helper.unknownVersion"))
+            : $t("helper.notInstalled")}</span
         >
         <span
           >{$t("helper.bundledVersion")}: {status?.bundled_version ??
@@ -61,6 +64,9 @@
     {#if view.kind === "missing-files"}
       <!-- eslint-disable-next-line svelte/no-at-html-tags -->
       <p class="note">{@html $t("setup.missingFiles")}</p>
+      {#if status?.bundle_error}
+        <p class="error" role="alert">{status.bundle_error}</p>
+      {/if}
     {/if}
     {#if confirming?.enable && status}
       <p class="note">{$t("setup.willDo")}</p>

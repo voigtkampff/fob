@@ -27,6 +27,11 @@ const SLIDE = { duration: 160, easing: "cubic-bezier(0.2, 0, 0, 1)" };
  * @property {string} [handle] a drag only starts on an element matching this selector (the title)
  * @property {boolean} [vertical] the items wrap into rows and follow the pointer up and down too
  * @property {(id: string) => HTMLElement[]} [cells] other elements that belong to an item (a column's body cells) and move with it; items without cells lift as a copy in the top layer
+ * @property {boolean} [clampToNode] keep the lifted copy inside the visible box of `node` (a scrolling list)
+ * @property {string} [clampToClosest] use the nearest ancestor matching this selector as the visible bounds
+ * @property {boolean} [portal] append the lifted copy to document.body, outside any transformed or clipped ancestor
+ * @property {boolean} [rejectOutside] no reorder while the pointer is outside the node's box
+ * @property {boolean} [ignoreY] horizontal list: choose the slot from X even when the pointer is on another row
  */
 
 const reducedMotion = () =>
@@ -37,22 +42,68 @@ const reducedMotion = () =>
 function layoutBox(el) {
   const parent = /** @type {HTMLElement | null} */ (el.offsetParent);
   const origin = parent?.getBoundingClientRect() ?? { left: 0, top: 0 };
-  const left =
+  let left =
     origin.left +
     el.offsetLeft +
     (parent?.clientLeft ?? 0) -
     (parent?.scrollLeft ?? 0);
-  const top =
+  let top =
     origin.top +
     el.offsetTop +
     (parent?.clientTop ?? 0) -
     (parent?.scrollTop ?? 0);
+  // A scroll container between the item and its offsetParent is not part of
+  // offsetTop, so its scroll has to be removed by hand. Without this, items
+  // in a scrolling settings pane report their unscrolled position and a
+  // lifted row jumps away from the pointer.
+  for (
+    let node = el.parentElement;
+    node && node !== parent;
+    node = node.parentElement
+  ) {
+    left -= node.scrollLeft;
+    top -= node.scrollTop;
+  }
   return {
     left,
     top,
     right: left + el.offsetWidth,
     bottom: top + el.offsetHeight,
   };
+}
+
+/** The visible part of a node: its box intersected with every scrolling
+ * ancestor. Used to keep a lifted row inside the list instead of letting it
+ * cover the rest of the window.
+ * @param {HTMLElement} el */
+function visibleBox(el) {
+  const rect = el.getBoundingClientRect();
+  let box = {
+    left: rect.left,
+    top: rect.top,
+    right: rect.right,
+    bottom: rect.bottom,
+  };
+  for (
+    let p = el.parentElement;
+    p && p !== document.body;
+    p = p.parentElement
+  ) {
+    const style = getComputedStyle(p);
+    if (
+      !/(auto|scroll)/.test(style.overflowY) &&
+      !/(auto|scroll)/.test(style.overflowX)
+    )
+      continue;
+    const r = p.getBoundingClientRect();
+    box = {
+      left: Math.max(box.left, r.left),
+      top: Math.max(box.top, r.top),
+      right: Math.min(box.right, r.right),
+      bottom: Math.min(box.bottom, r.bottom),
+    };
+  }
+  return box;
 }
 
 /** Animate elements from where they are drawn now (or from `drawn`) to
@@ -85,7 +136,9 @@ async function slide(elements, change, drawn = new Map()) {
  * shallow copy of `list` placed next to it, so the selectors that style the
  * item (`.grid > [data-dragging]`, scoped classes) still match.
  * @param {HTMLElement} list @param {HTMLElement} el */
-function liftCopy(list, el) {
+/** @param {HTMLElement} list @param {HTMLElement} el
+ * @param {HTMLElement | null} [parent] */
+function liftCopy(list, el, parent = null) {
   const layer = /** @type {HTMLElement} */ (list.cloneNode(false));
   const copy = /** @type {HTMLElement} */ (el.cloneNode(true));
   for (const e of [layer, copy, ...copy.querySelectorAll("[id]")])
@@ -115,8 +168,13 @@ function liftCopy(list, el) {
   });
   copy.dataset.dragging = "";
   layer.append(copy);
-  list.after(layer);
-  layer.showPopover();
+  if (parent) parent.append(layer);
+  else list.after(layer);
+  // The popover top layer escapes scroll/overflow clipping; the portal is a
+  // second guard against a transformed ancestor becoming the fixed
+  // containing block.
+  if ("showPopover" in HTMLElement.prototype) layer.showPopover();
+  else layer.style.zIndex = "9999";
   return layer;
 }
 
@@ -146,27 +204,30 @@ export function dragReorder(node, options) {
   const everything = () => items().flatMap(group);
 
   /** Keep the lifted item under the pointer wherever its slot is now. A
-   * copy in the top layer also stays inside the window. */
+   * copy in the top layer can be clamped to the list's visible box. */
   const follow = () => {
     if (!press || !drag) return;
     const slot = layoutBox(press.el);
     if (drag.layer) {
       const { offsetWidth: w, offsetHeight: h } = drag.layer;
-      // The copy is drawn a little larger (scale); keep all of it inside.
-      const drawn = drag.layer.firstElementChild?.getBoundingClientRect();
-      const mx = drawn ? Math.max(0, (drawn.width - w) / 2) : 0;
-      const my = drawn ? Math.max(0, (drawn.height - h) / 2) : 0;
+      const boundsElement = o.clampToClosest
+        ? /** @type {HTMLElement | null} */ (node.closest(o.clampToClosest))
+        : node;
+      const bounds =
+        o.clampToNode || o.clampToClosest
+          ? visibleBox(boundsElement ?? node)
+          : { left: 0, top: 0, right: innerWidth, bottom: innerHeight };
       const x = drag.start.left + drag.last.clientX - press.x;
       const y = o.vertical
         ? drag.start.top + drag.last.clientY - press.y
         : slot.top;
       const fit = (
         /** @type {number} */ v,
-        /** @type {number} */ m,
+        /** @type {number} */ min,
         /** @type {number} */ max,
-      ) => Math.max(m, Math.min(v, max - m));
-      drag.layer.style.left = `${fit(x, mx, innerWidth - w)}px`;
-      drag.layer.style.top = `${fit(y, my, innerHeight - h)}px`;
+      ) => Math.max(min, Math.min(v, Math.max(min, max)));
+      drag.layer.style.left = `${fit(x, bounds.left, bounds.right - w)}px`;
+      drag.layer.style.top = `${fit(y, bounds.top, bounds.bottom - h)}px`;
       return;
     }
     const dx = drag.last.clientX - press.x - (slot.left - drag.start.left);
@@ -182,6 +243,14 @@ export function dragReorder(node, options) {
   const wanted = () => {
     if (!press || !drag) return null;
     const { clientX: x, clientY: y } = drag.last;
+    if (o.rejectOutside) {
+      const boundsElement = o.clampToClosest
+        ? /** @type {HTMLElement | null} */ (node.closest(o.clampToClosest))
+        : node;
+      const box = (boundsElement ?? node).getBoundingClientRect();
+      if (x < box.left || x > box.right || y < box.top || y > box.bottom)
+        return null;
+    }
     const list = items();
     const from = list.findIndex((it) => it.id === press?.id);
     let best = null;
@@ -198,9 +267,11 @@ export function dragReorder(node, options) {
     }
     if (!best || best.i === from) return null;
     const { r } = best;
-    const past = best.rowMatch
-      ? x > (r.left + r.right) / 2
-      : y > (r.top + r.bottom) / 2;
+    const past = o.vertical
+      ? y > (r.top + r.bottom) / 2
+      : o.ignoreY || best.rowMatch
+        ? x > (r.left + r.right) / 2
+        : y > (r.top + r.bottom) / 2;
     if (best.i > from && past)
       return { id: press.id, target: best.it.id, after: true };
     if (best.i < from && !past)
@@ -225,6 +296,51 @@ export function dragReorder(node, options) {
     void reflow();
   };
 
+  /** The scrolling ancestor a drag at the edge should scroll. */
+  const scrollParent = () => {
+    for (
+      let el = node.parentElement;
+      el && el !== document.body;
+      el = el.parentElement
+    ) {
+      const style = getComputedStyle(el);
+      if (
+        /(auto|scroll)/.test(style.overflowY) &&
+        el.scrollHeight > el.clientHeight
+      )
+        return el;
+    }
+    return null;
+  };
+
+  /** Keep scrolling while the pointer sits near the top or bottom edge. */
+  let autoScrollFrame = 0;
+  const autoScroll = () => {
+    if (!drag) {
+      autoScrollFrame = 0;
+      return;
+    }
+    const box = scrollParent();
+    if (box) {
+      const rect = box.getBoundingClientRect();
+      const y = drag.last.clientY;
+      const edge = 32;
+      let delta = 0;
+      if (y < rect.top + edge) delta = -Math.ceil((rect.top + edge - y) / 5);
+      else if (y > rect.bottom - edge)
+        delta = Math.ceil((y - (rect.bottom - edge)) / 5);
+      if (delta) {
+        const before = box.scrollTop;
+        box.scrollTop += delta;
+        if (box.scrollTop !== before) {
+          follow();
+          void reflow();
+        }
+      }
+    }
+    autoScrollFrame = requestAnimationFrame(autoScroll);
+  };
+
   const swallowClick = () => {
     const stop = (/** @type {Event} */ e) => {
       e.preventDefault();
@@ -244,6 +360,10 @@ export function dragReorder(node, options) {
     const it = press;
     press = null;
     drag = null;
+    if (autoScrollFrame) {
+      cancelAnimationFrame(autoScrollFrame);
+      autoScrollFrame = 0;
+    }
     if (!was || !it) return;
     swallowClick();
     delete document.documentElement.dataset.reordering;
@@ -278,15 +398,15 @@ export function dragReorder(node, options) {
         return;
       const box = layoutBox(press.el);
       // Without the popover API (an older WebView2) a card lifts in place.
-      const layer =
-        o.cells || !("showPopover" in HTMLElement.prototype)
-          ? null
-          : liftCopy(node, press.el);
+      const layer = o.cells
+        ? null
+        : liftCopy(node, press.el, o.portal ? document.body : null);
       drag = { start: box, move: null, busy: false, last: e, layer };
       /** @type {HTMLElement} */ for (const el of group(press))
         if (layer) el.dataset.dragSlot = "";
         else el.dataset.dragging = "";
       document.documentElement.dataset.reordering = "";
+      if (!autoScrollFrame) autoScrollFrame = requestAnimationFrame(autoScroll);
     }
     drag.last = e;
     follow();

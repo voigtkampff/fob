@@ -253,14 +253,32 @@ assert.equal(sum.gpuTemp?.name, "GPU Core");
 assert.equal(sum.fan?.name, "Fan #2");
 // The board's real VCore rail beats the CPU's requested-VID readout.
 assert.equal(sum.cpuVoltage?.name, "Vcore");
+assert.equal(sum.cpuPower, null, "no power sensor in this fixture");
 assert.equal(sum.count, 10);
 assert.deepEqual(sensorSummary([]), {
   cpuTemp: null,
   gpuTemp: null,
   fan: null,
   cpuVoltage: null,
+  cpuPower: null,
   count: 0,
 });
+// CPU package power (W) is picked only from the CPU's package sensor.
+const powered = sensorSummary([
+  {
+    hardware: "Example Hybrid CPU",
+    name: "CPU Package",
+    kind: "power",
+    value: 85.3,
+  },
+  {
+    hardware: "NVIDIA Example GPU",
+    name: "GPU Package",
+    kind: "power",
+    value: 200,
+  },
+]);
+assert.equal(powered.cpuPower?.value, 85.3);
 // NVML only: GPU temp + fan duty, no CPU temp
 const nv = sensorSummary([
   {
@@ -295,13 +313,16 @@ assert.equal(voltageRank(" VCore "), 0);
 assert.equal(voltageRank("CPU Core"), 1);
 assert.equal(voltageRank("CPU Core Voltage (SVI2 TFN)"), 1);
 assert.equal(voltageRank("E-Core #3"), 2);
-assert.equal(voltageRank("CPU Termination"), 3);
+// 0.8.13: not a core-supply rail, so it is not a headline candidate.
+assert.equal(voltageRank("CPU Termination"), 2);
+// AMD's SVI2 core telemetry is a measured core rail, so it ranks with Vcore.
+assert.equal(voltageRank("Core (SVI2 TFN)"), 0);
 assert.deepEqual(
   voltageReadings([
     ...sensors,
     { hardware: "B", name: "CPU Termination", kind: "voltage", value: 0.54 },
   ]).map((s) => s.name),
-  ["Vcore", "CPU Core", "P-Core #1", "CPU Termination"],
+  ["Vcore", "CPU Core", "CPU Termination", "P-Core #1"],
 );
 assert.deepEqual(
   voltageReadings(sensors).map((s) => s.name),
@@ -441,7 +462,13 @@ assert.deepEqual(
   assert.equal(setupState(null), "none");
   assert.equal(setupState({ ...base, supported: false }), "none");
   assert.equal(setupState(base), "enable");
-  assert.equal(setupState({ ...base, bundled: false }), "missing-files");
+  // Uninstalled with a broken bundle still offers the install path: the
+  // click reports the exact file instead of leaving a dead card.
+  assert.equal(setupState({ ...base, bundled: false }), "enable");
+  assert.equal(
+    setupState({ ...base, installed: true, bundled: false }),
+    "missing-files",
+  );
   const done = { ...base, pawnio_installed: true, installed: true, task: "ok" };
   assert.equal(setupState({ ...done, running: true }), "ready");
   assert.equal(setupState(done), "starting");
@@ -562,8 +589,13 @@ console.log("PASS: per-app network rows group, stick for 30 s and sort");
       "setSize(",
       "setPosition(",
       "scrollHeight",
-    ])
+    ]) {
+      // Drag reordering reads scrollHeight to find the scrolling list it
+      // should auto-scroll; it never sizes a window.
+      if (banned === "scrollHeight" && path.endsWith("drag-reorder.js"))
+        continue;
       assert.ok(!text.includes(banned), `${path} uses ${banned}`);
+    }
   }
   const mini = readFileSync(
     "src/lib/components/MenuBarOverview.svelte",

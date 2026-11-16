@@ -271,7 +271,7 @@ export interface Sensor {
   /** e.g. "/lpc/example/0/fan/1"; "" when the source has none. */
   id: string;
   name: string;
-  kind: "temperature" | "fan" | "control" | "voltage";
+  kind: "temperature" | "fan" | "control" | "voltage" | "power";
   value: number;
   source: string;
 }
@@ -279,6 +279,8 @@ export interface Sensor {
 export interface SensorSetupStatus {
   supported: boolean;
   bundled: boolean;
+  /** The first missing file or hash mismatch when bundled is false. */
+  bundle_error: string | null;
   pawnio_installed: boolean;
   installed: boolean;
   task: "missing" | "ok" | "mismatch" | "unknown";
@@ -289,8 +291,25 @@ export interface SensorSetupStatus {
   bundled_version: string | null;
   busy: boolean;
 }
+export interface ThrottleReport {
+  supported: boolean;
+  thermal: boolean;
+  thermalLog: boolean;
+  prochot: boolean;
+  prochotLog: boolean;
+  /** MSR 0x613 advanced during the helper's last interval. */
+  package: boolean;
+  /** Hottest core/package distance to TjMax, °C. */
+  distanceToTjMax: number | null;
+  thermalPercent: number;
+  packagePercent: number;
+}
 export interface FrameExtra {
-  sensors: { sensors: Sensor[]; sources: string[] };
+  sensors: {
+    sensors: Sensor[];
+    sources: string[];
+    throttle: ThrottleReport | null;
+  };
   /** Windows commit charge [used, limit] in bytes. */
   commit: [number, number] | null;
   /** Last power-on: Unix seconds and kind; null = only kernel uptime known. */

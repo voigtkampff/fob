@@ -67,6 +67,19 @@ fn commit_charge() -> Option<(u64, u64)> {
 fn commit_charge() -> Option<(u64, u64)> {
     None
 }
+/// Where the status bar's CPU voltage came from (0.8.13): the board's own
+/// Vcore rail, or the voltage the CPU asks for (its VID). There is no third
+/// fallback: a per-core VID or a non-core rail never stands in for the CPU's
+/// supply.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "lowercase")]
+pub enum VoltageSource {
+    /// Measured on the board ("Vcore"), or the CPU's own SVI2 core telemetry.
+    Measured,
+    /// The CPU's requested voltage ("CPU Core", its VID).
+    Requested,
+}
+
 #[derive(Clone, Debug, Serialize)]
 pub struct Sample {
     pub timestamp: u64,
@@ -80,8 +93,15 @@ pub struct Sample {
     /// frontend's sensorSummary (CPU package first, then any CPU sensor).
     pub cpu_temp: Option<f64>,
     pub gpu_temp: Option<f64>,
-    /// Fob: CPU voltage (V), picked like the frontend's sensorSummary.
+    /// Fob: CPU voltage (V) and where it came from; the status bar writes
+    /// "Vcore" for a measured rail and "VID" for the CPU's own request.
     pub cpu_voltage: Option<f64>,
+    pub cpu_voltage_source: Option<VoltageSource>,
+    /// Fob: CPU package power from the helper's LHM reading, W.
+    pub cpu_power: Option<f64>,
+    /// Fob: effective CPU frequency, MHz (PDH `% Processor Performance`
+    /// over the nominal frequency Windows reports for this machine).
+    pub cpu_clock: Option<f64>,
     /// Fob: storage read / write, bytes/s.
     pub disk_read: Option<u64>,
     pub disk_write: Option<u64>,
@@ -112,19 +132,22 @@ fn gpu_rank(name: &str) -> u8 {
     u8::from(n.contains("hot") || n.contains("memory"))
 }
 
-/// Voltage order (lower first): the board's real VCore rail, then the CPU's
-/// own "CPU Core" reading (its requested VID), then the per-core values,
-/// then the rest (voltageRank() in src/lib/utils/dashboard.js).
-fn voltage_rank(name: &str) -> u8 {
+/// Voltage source for a sensor name (0.8.13), or `None` when the reading is
+/// not the CPU's core supply: a per-core VID ("P-Core #1"), a non-core rail
+/// that somehow got here, or an unrelated channel. The board's own rail wins
+/// over the CPU's request (voltageRank() in src/lib/utils/dashboard.js).
+fn voltage_source(name: &str) -> Option<VoltageSource> {
     let n = name.trim().to_lowercase();
+    // SVI2 is the CPU's own measurement of its core rail (AMD), so it is a
+    // measured value, not a request.
     if n.contains("vcore") {
-        0
+        Some(VoltageSource::Measured)
     } else if n.contains("cpu core") {
-        1
-    } else if n.contains("core") {
-        2
+        Some(VoltageSource::Requested)
+    } else if n.contains("svi2") {
+        Some(VoltageSource::Measured)
     } else {
-        3
+        None
     }
 }
 
@@ -150,22 +173,41 @@ fn headline_temps(sensors: &[Sensor]) -> (Option<f64>, Option<f64>) {
     )
 }
 
-/// The CPU voltage every view shows: the board's VCore rail first, then the
-/// CPU's own core reading. `None` when the machine reports none.
-fn headline_voltage(sensors: &[Sensor]) -> Option<f64> {
-    let mut pick: Option<&Sensor> = None;
+/// The CPU voltage every view shows: the board's Vcore rail first, then the
+/// CPU's own "CPU Core" request. `None` when the machine reports neither.
+fn headline_voltage(sensors: &[Sensor]) -> Option<(f64, VoltageSource)> {
+    let mut pick: Option<(&Sensor, VoltageSource)> = None;
     for s in sensors {
-        if s.kind == SensorKind::Voltage
-            && s.value.is_finite()
-            && pick.is_none_or(|p| voltage_rank(&s.name) < voltage_rank(&p.name))
-        {
-            pick = Some(s);
+        if s.kind != SensorKind::Voltage || !s.value.is_finite() {
+            continue;
+        }
+        let Some(source) = voltage_source(&s.name) else {
+            continue;
+        };
+        let better = matches!(
+            (&pick, source),
+            (None, _) | (Some((_, VoltageSource::Requested)), VoltageSource::Measured)
+        );
+        if better {
+            pick = Some((s, source));
         }
     }
-    pick.map(|s| s.value)
+    pick.map(|(s, source)| (s.value, source))
+}
+
+/// The CPU package power every view shows, in W. LHM exposes it as
+/// "CPU Package" (Intel) or "Package" (AMD); `is_cpu_power` keeps only that
+/// sensor. A reading far outside a desktop's range (an mW value, a glitch)
+/// is rejected rather than shown as watts.
+fn headline_power(sensors: &[Sensor]) -> Option<f64> {
+    sensors
+        .iter()
+        .filter(|s| s.kind == SensorKind::Power && crate::sensors::is_cpu_power(s))
+        .map(|s| s.value)
+        .find(|v| v.is_finite() && (0.0..=2000.0).contains(v))
 }
 impl Sample {
-    fn gap(timestamp: u64, interval: u64) -> Self {
+    pub(crate) fn gap(timestamp: u64, interval: u64) -> Self {
         Self {
             timestamp,
             interval,
@@ -177,6 +219,9 @@ impl Sample {
             cpu_temp: None,
             gpu_temp: None,
             cpu_voltage: None,
+            cpu_voltage_source: None,
+            cpu_power: None,
+            cpu_clock: None,
             disk_read: None,
             disk_write: None,
         }
@@ -184,6 +229,7 @@ impl Sample {
     fn from_frame(frame: &Frame, interval: u64) -> Self {
         let stats = &frame.stats;
         let temps = headline_temps(&frame.extra.sensors.sensors);
+        let voltage = headline_voltage(&frame.extra.sensors.sensors);
         let cpu = if stats.cpu_usage.is_empty() || stats.cpu_usage.iter().any(|v| !v.is_finite()) {
             None
         } else {
@@ -207,7 +253,10 @@ impl Sample {
                 .collect(),
             cpu_temp: temps.0,
             gpu_temp: temps.1,
-            cpu_voltage: headline_voltage(&frame.extra.sensors.sensors),
+            cpu_voltage: voltage.map(|v| v.0),
+            cpu_voltage_source: voltage.map(|v| v.1),
+            cpu_power: headline_power(&frame.extra.sensors.sensors),
+            cpu_clock: stats.cpu_clock,
             disk_read: stats.disk_read_bytes,
             disk_write: stats.disk_write_bytes,
             ..Self::gap(frame.captured_at, interval)
@@ -738,7 +787,7 @@ mod tests {
         assert_eq!(headline_temps(&[]), (None, None));
     }
     #[test]
-    fn headline_voltage_prefers_the_board_vcore_rail() {
+    fn headline_voltage_is_the_board_rail_or_the_cpu_request() {
         let s = |id: &str, name: &str, value| Sensor {
             hardware: "Example".into(),
             id: id.into(),
@@ -753,16 +802,55 @@ mod tests {
         // The board's rail is the real VCore; the CPU reports its request.
         assert_eq!(
             headline_voltage(&[p1.clone(), core.clone(), vcore]),
-            Some(1.24)
+            Some((1.24, VoltageSource::Measured))
         );
-        assert_eq!(headline_voltage(&[p1.clone(), core]), Some(1.448608));
-        assert_eq!(headline_voltage(&[p1.clone()]), Some(1.428589));
+        assert_eq!(
+            headline_voltage(&[p1.clone(), core]),
+            Some((1.448608, VoltageSource::Requested))
+        );
+        // Neither rail: a single core's VID is not the CPU's supply.
+        assert_eq!(headline_voltage(&[p1.clone()]), None);
         assert_eq!(headline_voltage(&[]), None);
         let dead = s("/lpc/example/0/voltage/0", "Vcore", f64::NAN);
         assert_eq!(headline_voltage(&[dead]), None);
-        // Per-core values rank above the other CPU rails (e.g. CPU Termination).
+        // A rail that does not measure the core supply never becomes the
+        // headline, with or without a per-core reading next to it.
         let term = s("/lpc/example/0/voltage/9", "CPU Termination", 0.54);
-        assert_eq!(headline_voltage(&[term, p1]), Some(1.428589));
+        assert_eq!(headline_voltage(&[term, p1]), None);
+        // AMD's SVI2 telemetry is the CPU's own measurement of its core rail.
+        let svi2 = s("/amdcpu/0/voltage/0", "Core (SVI2 TFN)", 1.31);
+        assert_eq!(
+            headline_voltage(&[svi2]),
+            Some((1.31, VoltageSource::Measured))
+        );
+    }
+    #[test]
+    fn headline_power_is_the_cpu_package_in_watts() {
+        let s = |name: &str, id: &str, value| Sensor {
+            hardware: "Example".into(),
+            id: id.into(),
+            name: name.into(),
+            kind: SensorKind::Power,
+            value,
+            source: "test".into(),
+        };
+        assert_eq!(
+            headline_power(&[s("CPU Package", "/intelcpu/0/power/0", 85.3)]),
+            Some(85.3)
+        );
+        assert_eq!(
+            headline_power(&[s("GPU Package", "/gpu-nvidia/0/power/0", 200.0)]),
+            None
+        );
+        // A milliwatt value or a glitch is rejected, not shown as watts.
+        assert_eq!(
+            headline_power(&[s("CPU Package", "/intelcpu/0/power/0", 85_300.0)]),
+            None
+        );
+        assert_eq!(
+            headline_power(&[s("CPU Package", "/intelcpu/0/power/0", f64::NAN)]),
+            None
+        );
     }
     #[test]
     fn headline_temps_match_each_machine() {

@@ -24,6 +24,10 @@
   import { t } from "$lib/i18n";
 
   let reading: Reading | null = $state(null);
+  // 0.8.13: the THR marker is MSR-derived. It stays up for a few seconds
+  // after the last sample whose hardware thermal/package bit was set.
+  let throttle: "package" | "thermal" | null = $state(null);
+  let throttleTimer: ReturnType<typeof setTimeout> | undefined;
   let interactive = $state(false);
   let row: HTMLDivElement | undefined = $state();
   let lastWidth = 0;
@@ -31,7 +35,16 @@
   // text of a resized transparent window; a fresh row is painted whole.
   let paint = $state(0);
   const config = $derived(overlaySettings($settingsStore.behavior));
-  const shown = $derived(cells(reading, config.metrics));
+  const shown = $derived(
+    cells(
+      reading,
+      config.metrics,
+      config.order,
+      config.fieldOrder,
+      config.blocks,
+      !!throttle,
+    ),
+  );
   // Its own appearance or the main window's theme (theme-change keeps
   // $themeStore current); only the bar's few colours come from it.
   const theme = $derived(
@@ -66,6 +79,15 @@
       reading = await invoke<Reading>("overlay_reading");
     } catch {
       reading = null;
+    }
+    const t = reading?.throttle;
+    if (!t?.supported) {
+      // An old helper or an unreadable MSR has no throttle state at all.
+      throttle = null;
+    } else if (t.thermal || t.package) {
+      throttle = t.thermal ? "thermal" : "package";
+      clearTimeout(throttleTimer);
+      throttleTimer = setTimeout(() => (throttle = null), 5000);
     }
   }
   // Size the window to the row once it changes by a few pixels.
@@ -126,6 +148,7 @@
   onDestroy(() => {
     destroyed = true;
     clearInterval(timer);
+    clearTimeout(throttleTimer);
     stops.forEach((stop) => stop());
   });
 </script>
@@ -143,40 +166,51 @@
   }}
 >
   {#key paint}<div class="row" bind:this={row}>
-      {#each shown as cell (cell.id)}
-        {@const chart = config.charts.includes(cell.id)
-          ? chartFor(cell.id, history)
-          : null}
-        <span class="cell"
-          ><span
-            class="label"
-            class:cjk={CJK.test($t(`overlay.short.${cell.id}`))}
-            >{$t(`overlay.short.${cell.id}`)}</span
-          ><span class="vc {cell.id}" class:charted={chart}
-            ><span class="value {cell.id}"
-              >{#each cell.parts as part, i (i)}<span class="part"
-                  >{#if ARROW[part[0]]}<svg
-                      class="arrow"
-                      viewBox="0 0 8 10"
-                      aria-label={part[0]}><path d={ARROW[part[0]]} /></svg
-                    >{part.slice(1)}{:else}{part}{/if}</span
-                >{/each}</span
-            >{#if chart}<svg
-                class="chart"
-                width={CW}
-                height={CH}
-                viewBox={`0 0 ${CW} ${CH}`}
-                preserveAspectRatio="none"
-                aria-hidden="true"
-                ><path
-                  d={sparklinePath(history, chart.pick, {
-                    width: CW,
-                    height: CH,
-                    max: chart.max,
-                  })}
-                /></svg
-              >{/if}</span
-          ></span
+      {#each shown as cell (cell.key ?? cell.id)}
+        {@const chart =
+          !cell.block && config.charts.includes(cell.id)
+            ? chartFor(cell.id, history)
+            : null}
+        {@const label = cell.label ?? $t(`overlay.short.${cell.id}`)}
+        <span class="cell" class:blockhead={cell.block}
+          >{#if label}<span class="label" class:cjk={CJK.test(label)}
+              >{label}</span
+            >{/if}{#if !cell.block}<span
+              class="vc {cell.id}"
+              class:charted={chart}
+              ><span class="value {cell.id}"
+                >{#each cell.parts as part, i (i)}<span class="part"
+                    >{#if ARROW[part[0]]}<svg
+                        class="arrow"
+                        viewBox="0 0 8 10"
+                        aria-label={part[0]}><path d={ARROW[part[0]]} /></svg
+                      >{part.slice(1)}{:else}{part}{/if}</span
+                  >{/each}</span
+              >{#if chart}<svg
+                  class="chart"
+                  width={CW}
+                  height={CH}
+                  viewBox={`0 0 ${CW} ${CH}`}
+                  preserveAspectRatio="none"
+                  aria-hidden="true"
+                  ><path
+                    d={sparklinePath(history, chart.pick, {
+                      width: CW,
+                      height: CH,
+                      max: chart.max,
+                    })}
+                  /></svg
+                >{/if}</span
+            >{/if}
+          {#if throttle && cell.throttleAfter}
+            <span
+              class="thr"
+              class:thermal={throttle === "thermal"}
+              title={$t(`overlay.throttle.${throttle}`)}
+              aria-label={$t(`overlay.throttle.${throttle}`)}
+              >{$t("overlay.throttle.badge")}</span
+            >
+          {/if}</span
         >
       {:else}
         <span class="label">{$t("overlay.empty")}</span>
@@ -276,6 +310,26 @@
   .label.cjk {
     font-family: var(--ob-font-cjk), sans-serif;
     font-size: var(--ob-label-size-cjk);
+  }
+  /* 0.8.13: a suspected limit, shown only while it lasts. Small, outline
+     only, in the label's accent colour so it reads as a marker. */
+  .thr {
+    display: inline-flex;
+    align-items: center;
+    box-sizing: border-box;
+    height: var(--ob-box);
+    line-height: 1;
+    padding: 0 3px;
+    border: 1px solid currentColor;
+    border-radius: 3px;
+    color: var(--ob-accent);
+    font-size: 9px;
+    font-weight: var(--ob-value-weight);
+    letter-spacing: 0.04em;
+    transform: translateY(var(--ob-shift-latin));
+  }
+  .thr.thermal {
+    color: var(--ob-fg);
   }
   .arrow {
     width: 7px;

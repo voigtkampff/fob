@@ -8,6 +8,7 @@
   </PropertyGroup>
   <ItemGroup>
     <Compile Include="../src/Wire.cs" />
+    <Compile Include="../src/Throttle.cs" />
     <Compile Include="../src/MftRequest.cs" />
   </ItemGroup>
 </Project>

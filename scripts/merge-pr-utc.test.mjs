@@ -96,6 +96,11 @@ for (const [name, change] of [
   ["missing Source checks", (s) => (s.check.name = "Other check")],
   ["non-UTC feature author", (s) => (s.feature = commit("+0100"))],
   ["non-UTC feature committer", (s) => (s.feature = commit("+0000", "-0100"))],
+  // GitHub writes -0800 on *its* merge commit only; what we push stays +0000.
+  [
+    "GitHub-offset feature committer",
+    (s) => (s.feature = commit("+0000", "-0800")),
+  ],
 ])
   test(`${name} is rejected before any merge`, () => {
     const f = fixture();
@@ -137,6 +142,18 @@ for (const [name, change] of [
     );
     assert.equal(writes(f).length, 1);
   });
+
+test("a merged commit keeps GitHub's -0800 committer and still proves the tree", () => {
+  const f = fixture();
+  f.state.result = commit("+0000", "-0800");
+  assert.equal(mergeUtc(33, head, f.adapters), merged);
+  assert.deepEqual(
+    readUtcCommit(f.state.result, { committerOffsets: ["+0000", "-0800"] }),
+    { tree: base, parents: [base] },
+  );
+  // The source commit is still held to +0000 by default.
+  assert.throws(() => readUtcCommit(f.state.result), /committer metadata/);
+});
 
 test("malformed input and missing raw metadata fail closed", () => {
   const f = fixture();

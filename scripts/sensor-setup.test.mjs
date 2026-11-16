@@ -68,6 +68,15 @@ function fixture(read = async () => absent, change = async () => current) {
 
 for (const [name, status, expected, enable, disable] of [
   ["absent", absent, "install", true, false],
+  // 0.8.13: after Disable, PawnIO stays and the helper/task are gone; the
+  // bundle must still offer Install instead of a dead "missing files" state.
+  [
+    "disabled but driver still installed",
+    { ...absent, pawnio_installed: true },
+    "install",
+    true,
+    false,
+  ],
   ["old", older, "update", true, true],
   [
     "mixed same version",
@@ -93,6 +102,13 @@ for (const [name, status, expected, enable, disable] of [
   ["current", current, "current", false, true],
   ["stopped", { ...current, running: false }, "stopped", true, true],
   ["missing task", { ...current, task: "missing" }, "repair", true, true],
+  [
+    "task points at an old folder",
+    { ...current, task: "mismatch" },
+    "retask",
+    true,
+    true,
+  ],
   ["unknown task", { ...current, task: "unknown" }, "repair", true, true],
   [
     "missing driver",
@@ -107,6 +123,17 @@ for (const [name, status, expected, enable, disable] of [
     "missing-files",
     false,
     true,
+  ],
+  [
+    "uninstalled with a bad bundle still offers install",
+    {
+      ...absent,
+      bundled: false,
+      bundle_error: "sensors/fob-sensors.exe differs",
+    },
+    "install",
+    true,
+    false,
   ],
   [
     "valid installed without source",
@@ -320,7 +347,7 @@ test("both locales retain meaningful helper scope, actions and outcome copy", ()
       assert.doesNotMatch(table[key], /。/);
     }
   assert.match(en["setup.missingFiles"], /Re-extract the whole Fob folder/);
-  assert.match(zh["setup.missingFiles"], /重新解压完整/);
+  assert.match(zh["setup.missingFiles"], /同一个压缩包完整解压/);
   assert.match(en["helper.privacy"], /Windows user session/);
   assert.match(en["helper.privacy"], /whole fixed NTFS Disks/);
   assert.match(en["helper.privacy"], /folders you cannot open/);

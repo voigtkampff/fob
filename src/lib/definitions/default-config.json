@@ -42,13 +42,22 @@
     "overlayEnabled": false,
     "overlayMetrics": [
       "cpu",
+      "cpuPower",
       "cpuTemp",
       "cpuVoltage",
+      "cpuClock",
       "gpu",
+      "power",
       "gpuTemp",
       "ram",
       "net"
     ],
+    "overlayBlocks": ["cpu", "gpu", "ram", "net"],
+    "overlayOrder": ["cpu", "gpu", "ram", "vram", "disk", "net"],
+    "overlayFieldOrder": {
+      "cpu": ["cpu", "cpuPower", "cpuTemp", "cpuVoltage", "cpuClock"],
+      "gpu": ["gpu", "power", "gpuTemp"]
+    },
     "overlayDock": "top",
     "overlayOpacity": 60,
     "overlayLocked": false,
