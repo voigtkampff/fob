@@ -347,6 +347,27 @@ assert.deepEqual(
   "repeated/unknown slots fall back to the default order",
 );
 
+// Every settings icon must carry a native title, including blocked rows;
+// aria-disabled keeps Chromium's title working where disabled would not.
+const settingsSource = readFileSync(
+  new URL("../src/lib/components/SettingsWindow.svelte", import.meta.url),
+  "utf8",
+);
+const settingsLines = settingsSource.split("\n");
+const iconLines = settingsLines
+  .map((line, i) => (line.includes('class="icon-toggle"') ? i : -1))
+  .filter((i) => i >= 0);
+assert.ok(iconLines.length >= 3, "settings has icon switches");
+for (const at of iconLines) {
+  const button = settingsLines.slice(at, at + 20).join("\n");
+  assert.match(button, /title=\{/, "every icon switch has a native title");
+  assert.doesNotMatch(
+    button,
+    /\n\s*disabled=\{/,
+    "icon titles must not sit on a disabled button",
+  );
+}
+
 assert.equal(shortRate(0), "0B");
 assert.equal(shortRate(35 * 1024), "35K");
 assert.equal(shortRate(1.25 * 1024 * 1024), "1.3M");

@@ -143,6 +143,43 @@
       patch.overlayMetrics = toggleMetric(overlay.metrics, block.field, true);
     saveOverlay(patch);
   }
+  /** Native-title text for a slot, including its current state. The button
+   * is aria-disabled rather than disabled so Chromium still shows this on a
+   * blocked row. */
+  function fieldTitle(
+    block: { on: boolean; label: string },
+    row: { id: MetricId; label: string; on: boolean },
+  ) {
+    const name = $t(row.label);
+    if (!block.on)
+      return $t("settings.overlayFieldBlocked", {
+        name,
+        block: $t(block.label),
+      });
+    return $t(row.on ? "settings.overlayFieldOn" : "settings.overlayFieldOff", {
+      name,
+    });
+  }
+  function chartTitle(block: { on: boolean; charted: boolean; label: string }) {
+    const name = $t(block.label);
+    if (!block.on) return $t("settings.overlayChartBlocked", { name });
+    return $t(
+      block.charted
+        ? "settings.overlayChartShown"
+        : "settings.overlayChartHidden",
+      { name },
+    );
+  }
+  function singleChartTitle(block: {
+    on: boolean;
+    charted: boolean;
+    chartable: boolean;
+    label: string;
+  }) {
+    const name = $t(block.label);
+    if (!block.chartable) return $t("settings.overlayNoChart", { name });
+    return chartTitle(block);
+  }
   onMount(() => {
     let disposed = false;
     const stops: (() => void)[] = [];
@@ -441,16 +478,14 @@
                           type="button"
                           class="icon-toggle"
                           class:on={block.charted}
-                          disabled={!block.chartable || !block.on}
+                          class:blocked={!block.chartable || !block.on}
+                          aria-disabled={!block.chartable || !block.on}
                           aria-pressed={block.charted}
-                          aria-label={block.chartable
-                            ? $t("settings.overlayChartFor", { name })
-                            : $t("settings.overlayNoChart", { name })}
-                          title={block.chartable
-                            ? $t("settings.overlayChartFor", { name })
-                            : $t("settings.overlayNoChart", { name })}
-                          onclick={() =>
-                            block.field &&
+                          aria-label={singleChartTitle(block)}
+                          title={singleChartTitle(block)}
+                          onclick={() => {
+                            if (!block.chartable || !block.on || !block.field)
+                              return;
                             saveOverlay(
                               chartsPatch(
                                 toggleChart(
@@ -459,7 +494,8 @@
                                   !block.charted,
                                 ),
                               ),
-                            )}><ChartSpline class="size-3.5" /></button
+                            );
+                          }}><ChartSpline class="size-3.5" /></button
                         >
                       {/if}
                       {#if !block.single}
@@ -467,7 +503,9 @@
                           <div
                             class="field-slots"
                             use:dragReorder={{
-                              ids: block.rows.map((row) => row.id),
+                              ids: block.on
+                                ? block.rows.map((row) => row.id)
+                                : [],
                               handle: ".icon-toggle",
                               clampToNode: true,
                               portal: true,
@@ -497,17 +535,21 @@
                                 type="button"
                                 class="icon-toggle"
                                 class:on={row.on}
+                                class:blocked={!block.on}
+                                aria-disabled={!block.on}
                                 aria-pressed={row.on}
-                                aria-label={$t(row.label)}
-                                title={$t(row.label)}
-                                onclick={() =>
+                                aria-label={fieldTitle(block, row)}
+                                title={fieldTitle(block, row)}
+                                onclick={() => {
+                                  if (!block.on) return;
                                   setMetrics(
                                     toggleMetric(
                                       overlay.metrics,
                                       row.id,
                                       !row.on,
                                     ),
-                                  )}><Icon class="size-3.5" /></button
+                                  );
+                                }}><Icon class="size-3.5" /></button
                               >
                             {/each}
                           </div>
@@ -515,12 +557,13 @@
                             type="button"
                             class="icon-toggle"
                             class:on={block.charted}
-                            disabled={!block.on}
+                            class:blocked={!block.on}
+                            aria-disabled={!block.on}
                             aria-pressed={block.charted}
-                            aria-label={$t("overlay.child.chart")}
-                            title={$t("overlay.child.chart")}
-                            onclick={() =>
-                              block.chartField &&
+                            aria-label={chartTitle(block)}
+                            title={chartTitle(block)}
+                            onclick={() => {
+                              if (!block.on || !block.chartField) return;
                               saveOverlay(
                                 chartsPatch(
                                   toggleChart(
@@ -529,7 +572,8 @@
                                     !block.charted,
                                   ),
                                 ),
-                              )}><ChartSpline class="size-3.5" /></button
+                              );
+                            }}><ChartSpline class="size-3.5" /></button
                           >
                         </div>
                       {/if}
@@ -805,7 +849,8 @@
     background: color-mix(in oklab, var(--primary), transparent 88%);
     opacity: 1;
   }
-  .icon-toggle:disabled {
+  .icon-toggle:disabled,
+  .icon-toggle.blocked {
     opacity: 0.25;
     cursor: not-allowed;
   }
