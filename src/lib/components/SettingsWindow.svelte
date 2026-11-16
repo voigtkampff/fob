@@ -132,15 +132,24 @@
     saveOverlay({ overlayMetrics: metrics });
   /** Parent checkbox: visibility only. A single-reading block also turns its
    * field on when shown; CPU/GPU keep every child choice untouched. */
-  /** Chromium often keeps an unchanged native title hidden when the pointer
-   * moves straight from one icon to the next. Re-adding it on enter (and
-   * removing it on leave) makes every icon show its own hint. */
+  /** Native titles do not re-open when the pointer moves from one icon to
+   * the next, so show a small Windows-style tooltip ourselves after 400 ms. */
+  let tip: { text: string; x: number; y: number } | null = null;
+  let tipTimer: ReturnType<typeof setTimeout> | undefined;
   function showTitle(event: PointerEvent) {
     const el = event.currentTarget as HTMLElement;
-    el.setAttribute("title", el.dataset.title ?? "");
+    const text = el.dataset.title ?? "";
+    clearTimeout(tipTimer);
+    tip = null;
+    if (!text) return;
+    const rect = el.getBoundingClientRect();
+    tipTimer = setTimeout(() => {
+      tip = { text, x: rect.left, y: rect.bottom + 4 };
+    }, 400);
   }
-  function clearTitle(event: PointerEvent) {
-    (event.currentTarget as HTMLElement).removeAttribute("title");
+  function clearTitle() {
+    clearTimeout(tipTimer);
+    tip = null;
   }
   function setBlockVisible(
     block: { id: string; single: boolean; field: MetricId | null },
@@ -220,6 +229,7 @@
     })();
     return () => {
       disposed = true;
+      clearTimeout(tipTimer);
       stops.forEach((stop) => stop());
     };
   });
@@ -492,10 +502,10 @@
                           aria-disabled={!block.chartable || !block.on}
                           aria-pressed={block.charted}
                           aria-label={singleChartTitle(block)}
-                          title={singleChartTitle(block)}
                           data-title={singleChartTitle(block)}
                           onpointerenter={showTitle}
                           onpointerleave={clearTitle}
+                          onpointerdown={clearTitle}
                           onclick={() => {
                             if (!block.chartable || !block.on || !block.field)
                               return;
@@ -523,6 +533,7 @@
                               clampToClosest: ".overlay-metrics",
                               portal: true,
                               rejectOutside: true,
+                              ignoreY: true,
                               onMove: (id, target, after) =>
                                 saveOverlay({
                                   overlayFieldOrder: {
@@ -807,6 +818,16 @@
             : $t("settings.saved")}
       </p>{/if}
   </footer>
+  {#if tip}
+    <div
+      class="native-tip"
+      role="tooltip"
+      style:left={`${tip.x}px`}
+      style:top={`${tip.y}px`}
+    >
+      {tip.text}
+    </div>
+  {/if}
 </div>
 
 <style>
@@ -869,6 +890,10 @@
     opacity: 1;
   }
   .icon-toggle:disabled,
+  .icon-toggle.blocked {
+    opacity: 0.25;
+    cursor: not-allowed;
+  }
   /* The dragged slot keeps its target slot as an empty dashed placeholder;
      the icon itself is hidden while the ghost follows the pointer. */
   .field-slots > [data-drag-slot] {
@@ -880,9 +905,21 @@
   .field-slots > [data-drag-slot] > * {
     opacity: 0;
   }
-  .icon-toggle.blocked {
-    opacity: 0.25;
-    cursor: not-allowed;
+  .native-tip {
+    position: fixed;
+    z-index: 1000;
+    pointer-events: none;
+    padding: 1px 3px;
+    border: 1px solid #767676;
+    background: #ffffe1;
+    color: #000;
+    font:
+      12px "Segoe UI",
+      sans-serif;
+    line-height: 1.3;
+    white-space: nowrap;
+    border-radius: 0;
+    box-shadow: none;
   }
   .grip {
     display: inline-flex;

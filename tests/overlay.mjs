@@ -360,8 +360,11 @@ const iconLines = settingsLines
 assert.ok(iconLines.length >= 3, "settings has icon switches");
 for (const at of iconLines) {
   const button = settingsLines.slice(at, at + 20).join("\n");
-  assert.match(button, /title=\{/, "every icon switch has a native title");
-  assert.match(button, /data-title=\{/, "the title has a value to restore");
+  assert.match(
+    button,
+    /data-title=\{/,
+    "every icon switch has a non-empty tooltip value",
+  );
   assert.match(
     button,
     /onpointerenter=\{showTitle\}/,

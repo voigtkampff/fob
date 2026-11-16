@@ -31,6 +31,7 @@ const SLIDE = { duration: 160, easing: "cubic-bezier(0.2, 0, 0, 1)" };
  * @property {string} [clampToClosest] use the nearest ancestor matching this selector as the visible bounds
  * @property {boolean} [portal] append the lifted copy to document.body, outside any transformed or clipped ancestor
  * @property {boolean} [rejectOutside] no reorder while the pointer is outside the node's box
+ * @property {boolean} [ignoreY] horizontal list: choose the slot from X even when the pointer is on another row
  */
 
 const reducedMotion = () =>
@@ -268,7 +269,7 @@ export function dragReorder(node, options) {
     const { r } = best;
     const past = o.vertical
       ? y > (r.top + r.bottom) / 2
-      : best.rowMatch
+      : o.ignoreY || best.rowMatch
         ? x > (r.left + r.right) / 2
         : y > (r.top + r.bottom) / 2;
     if (best.i > from && past)
