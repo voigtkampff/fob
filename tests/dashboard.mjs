@@ -681,18 +681,24 @@ console.log("PASS: per-app network rows group, stick for 30 s and sort");
     /\.head-block \.big \{[^}]*line-height:/,
     "the reading's line height belongs to the shared header",
   );
-  // One trigger per mount point, on the row label itself: a trigger on the
-  // card or list container would pop the wrong sentence on every row under it.
+  // The voltage hint is the app's own native `title` (the yellow system box),
+  // not a bubble: one title on the row label itself, and no tooltip markup in
+  // either place, so a trigger on the card or list container cannot come back.
+  assert.match(
+    cardDetail,
+    /<span class="name" title=\{\$t\(`voltage\.tip\.\$\{row\.key\}`\)\}/,
+    "the card's voltage label carries the native hint",
+  );
   assert.equal(
-    (cardDetail.match(/<Tooltip\.Root>/g) ?? []).length,
-    1,
-    "the card has one tooltip, on the voltage row label",
+    (cardDetail.match(/<Tooltip\./g) ?? []).length,
+    0,
+    "the card draws no tooltip of its own",
   );
   const sheet = src("lib/components/stats/ResourceDetailsContent.svelte");
   assert.equal(
-    (sheet.match(/<Tooltip\.Root>/g) ?? []).length,
-    1,
-    "the detail list has one tooltip, on the row label",
+    (sheet.match(/<Tooltip\./g) ?? []).length,
+    0,
+    "the detail list draws no tooltip of its own",
   );
   assert.match(
     sheet,
@@ -701,8 +707,8 @@ console.log("PASS: per-app network rows group, stick for 30 s and sort");
   );
   assert.match(
     sheet,
-    /tip \? \$t\(`voltage\.tip\.\$\{tip\}`\) : null/,
-    "a row without an explanation gets no tooltip at all",
+    /title=\{tip \?\? label\}/,
+    "a row without an explanation keeps the plain label as its hint",
   );
   const page = src("routes/+page.svelte");
   assert.ok(page.includes('= "processes";'), "Fob starts on the Processes tab");
