@@ -411,6 +411,9 @@
                     ids: shownBlocks,
                     handle: ".grip",
                     vertical: true,
+                    // One block per row, wider than it is tall: the side comes
+                    // from Y, not from which end of the row the pointer is at.
+                    stacked: true,
                     // The ghost stays inside this list and is portalled out of
                     // the scrolling pane so no ancestor can clip it.
                     clampToNode: true,
@@ -496,7 +499,6 @@
                                 clampToClosest: ".overlay-metrics",
                                 portal: true,
                                 rejectOutside: true,
-                                ignoreY: true,
                                 onMove: (id, target, after) =>
                                   saveOverlay({
                                     overlayFieldOrder: {

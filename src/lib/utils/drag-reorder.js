@@ -31,7 +31,11 @@ const SLIDE = { duration: 160, easing: "cubic-bezier(0.2, 0, 0, 1)" };
  * @property {string} [clampToClosest] use the nearest ancestor matching this selector as the visible bounds
  * @property {boolean} [portal] append the lifted copy to document.body, outside any transformed or clipped ancestor
  * @property {boolean} [rejectOutside] no reorder while the pointer is outside the node's box
- * @property {boolean} [ignoreY] horizontal list: choose the slot from X even when the pointer is on another row
+ * @property {boolean} [stacked] the items sit one per row, so before or after comes from Y even where a row spans the whole width
+ */
+
+/**
+ * @typedef {{ left: number, top: number, right: number, bottom: number }} Box
  */
 
 const reducedMotion = () =>
@@ -178,6 +182,41 @@ function liftCopy(list, el, parent = null) {
   return layer;
 }
 
+/** The slot a pointer asks for among laid-out items, as an index and a side.
+ * The nearest item wins, measured down the page too when the items wrap into
+ * rows, so a row change lands on the item under the pointer. The pointer's
+ * side of that item then says before or after: from X when the items share a
+ * row and from Y down a single column.
+ *
+ * `vertical` must not reach that side. The summary cards wrap into rows and
+ * also follow the pointer down, so reading Y from `vertical` made a card need
+ * the pointer past its vertical middle before it would take a drop on the
+ * right. Only `stacked` reads the side from Y on a shared row, for a list of
+ * full-width rows. Pure, so tests can pass plain boxes.
+ * @param {{ x: number, y: number, items: Box[], from: number, vertical?: boolean, stacked?: boolean }} query
+ * @returns {{ index: number, after: boolean } | null} */
+export function dropSlot({ x, y, items, from, vertical, stacked }) {
+  let best = null;
+  let bestDistance = Infinity;
+  for (const [index, box] of items.entries()) {
+    const dx = Math.max(box.left - x, 0, x - box.right);
+    const dy = vertical ? Math.max(box.top - y, 0, y - box.bottom) : 0;
+    const distance = Math.hypot(dx, dy);
+    if (distance < bestDistance) {
+      bestDistance = distance;
+      best = { index, box, rowMatch: dy === 0 };
+    }
+  }
+  if (!best || best.index === from) return null;
+  const past =
+    !stacked && best.rowMatch
+      ? x > (best.box.left + best.box.right) / 2
+      : y > (best.box.top + best.box.bottom) / 2;
+  if (best.index > from && past) return { index: best.index, after: true };
+  if (best.index < from && !past) return { index: best.index, after: false };
+  return null;
+}
+
 /** @param {HTMLElement} node @param {ReorderOptions} options */
 export function dragReorder(node, options) {
   let o = options;
@@ -253,30 +292,16 @@ export function dragReorder(node, options) {
     }
     const list = items();
     const from = list.findIndex((it) => it.id === press?.id);
-    let best = null;
-    let bestDistance = Infinity;
-    for (const [i, it] of list.entries()) {
-      const r = layoutBox(it.el);
-      const dx = Math.max(r.left - x, 0, x - r.right);
-      const dy = o.vertical ? Math.max(r.top - y, 0, y - r.bottom) : 0;
-      const distance = Math.hypot(dx, dy);
-      if (distance < bestDistance) {
-        bestDistance = distance;
-        best = { i, it, r, rowMatch: dy === 0 };
-      }
-    }
-    if (!best || best.i === from) return null;
-    const { r } = best;
-    const past = o.vertical
-      ? y > (r.top + r.bottom) / 2
-      : o.ignoreY || best.rowMatch
-        ? x > (r.left + r.right) / 2
-        : y > (r.top + r.bottom) / 2;
-    if (best.i > from && past)
-      return { id: press.id, target: best.it.id, after: true };
-    if (best.i < from && !past)
-      return { id: press.id, target: best.it.id, after: false };
-    return null;
+    const slot = dropSlot({
+      x,
+      y,
+      from,
+      items: list.map((it) => layoutBox(it.el)),
+      vertical: o.vertical,
+      stacked: o.stacked,
+    });
+    if (!slot) return null;
+    return { id: press.id, target: list[slot.index].id, after: slot.after };
   };
 
   const reflow = async () => {
