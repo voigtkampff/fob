@@ -36,7 +36,13 @@
   let paint = $state(0);
   const config = $derived(overlaySettings($settingsStore.behavior));
   const shown = $derived(
-    cells(reading, config.metrics, config.order, config.fieldOrder),
+    cells(
+      reading,
+      config.metrics,
+      config.order,
+      config.fieldOrder,
+      config.blocks,
+    ),
   );
   // Its own appearance or the main window's theme (theme-change keeps
   // $themeStore current); only the bar's few colours come from it.

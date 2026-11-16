@@ -30,7 +30,7 @@
   import {
     overlaySettings,
     settingsBlocks,
-    toggleBlock,
+    toggleBlockVisibility,
     toggleMetric,
     chartsPatch,
     toggleChart,
@@ -121,6 +121,7 @@
     overlay.charts,
     overlay.fieldOrder,
     fieldMoves,
+    overlay.blocks,
   );
   function saveOverlay(patch: Record<string, unknown>) {
     settingsStore.updateConfig({
@@ -129,6 +130,19 @@
   }
   const setMetrics = (metrics: MetricId[]) =>
     saveOverlay({ overlayMetrics: metrics });
+  /** Parent checkbox: visibility only. A single-reading block also turns its
+   * field on when shown; CPU/GPU keep every child choice untouched. */
+  function setBlockVisible(
+    block: { id: string; single: boolean; field: MetricId | null },
+    on: boolean,
+  ) {
+    const patch: Record<string, unknown> = {
+      overlayBlocks: toggleBlockVisibility(overlay.blocks, block.id, on),
+    };
+    if (block.single && on && block.field)
+      patch.overlayMetrics = toggleMetric(overlay.metrics, block.field, true);
+    saveOverlay(patch);
+  }
   onMount(() => {
     let disposed = false;
     const stops: (() => void)[] = [];
@@ -417,9 +431,7 @@
                         id={`overlay-b-${block.id}`}
                         checked={block.on}
                         onCheckedChange={(value) =>
-                          setMetrics(
-                            toggleBlock(overlay.metrics, block.id, value),
-                          )}
+                          setBlockVisible(block, value)}
                       />
                       <Label for={`overlay-b-${block.id}`} class="flex-1"
                         >{name}</Label
@@ -429,7 +441,7 @@
                           type="button"
                           class="icon-toggle"
                           class:on={block.charted}
-                          disabled={!block.chartable}
+                          disabled={!block.chartable || !block.on}
                           aria-pressed={block.charted}
                           aria-label={block.chartable
                             ? $t("settings.overlayChartFor", { name })
@@ -503,6 +515,7 @@
                             type="button"
                             class="icon-toggle"
                             class:on={block.charted}
+                            disabled={!block.on}
                             aria-pressed={block.charted}
                             aria-label={$t("overlay.child.chart")}
                             title={$t("overlay.child.chart")}

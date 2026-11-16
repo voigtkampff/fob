@@ -87,6 +87,9 @@ export const BLOCKS = [
   },
 ];
 export const BLOCK_IDS = BLOCKS.map((block) => block.id);
+/** Blocks visible in the status bar (parent checkbox). Field switches live
+ * separately in overlayMetrics and survive a parent off/on. */
+export const DEFAULT_BLOCKS = ["cpu", "gpu", "ram", "net"];
 /** @type {Record<string, typeof BLOCKS[number]>} */
 const BLOCK_OF = Object.fromEntries(BLOCKS.map((block) => [block.id, block]));
 /** @type {Record<string, string>} */
@@ -175,6 +178,7 @@ export function overlaySettings(behavior) {
     enabled: b.overlayEnabled === true,
     metrics,
     order: overlayBlockOrder(b.overlayOrder, savedFields),
+    blocks: overlayVisibleBlocks(b.overlayBlocks, savedFields),
     fieldOrder: overlayFieldOrder(b.overlayFieldOrder),
     dock: DOCKS.includes(/** @type {any} */ (b.overlayDock))
       ? /** @type {typeof DOCKS[number]} */ (b.overlayDock)
@@ -185,6 +189,18 @@ export function overlaySettings(behavior) {
     charts: chartMetrics(b),
     theme: typeof b.overlayTheme === "string" ? b.overlayTheme : "",
   };
+}
+
+/** Visible blocks made valid: known, distinct ids. Without a saved set, a
+ * block is visible when at least one of its fields was enabled (migration
+ * from the old flat list). */
+/** @param {unknown} saved @param {MetricId[]} metrics */
+export function overlayVisibleBlocks(saved, metrics) {
+  if (Array.isArray(saved)) return BLOCK_IDS.filter((id) => saved.includes(id));
+  const on = new Set(metrics);
+  return BLOCKS.filter((block) => block.fields.some((id) => on.has(id))).map(
+    (block) => block.id,
+  );
 }
 
 /** The block a saved field belongs to, or null for an unknown id.
@@ -233,15 +249,18 @@ export function overlayBlockOrder(saved, metrics) {
  * network) keep their switch and chart toggle on the row itself.
  * @param {MetricId[]} metrics @param {string[]} order @param {MetricId[]} charts
  * @param {Record<string, MetricId[]>} [fieldOrder]
- * @param {Record<string, { id: string, target: string, after: boolean } | null>} [fieldMoves] */
+ * @param {Record<string, { id: string, target: string, after: boolean } | null>} [fieldMoves]
+ * @param {string[]} [blocks] */
 export function settingsBlocks(
   metrics,
   order,
   charts,
   fieldOrder = DEFAULT_FIELD_ORDER,
   fieldMoves = {},
+  blocks = overlayVisibleBlocks(undefined, metrics),
 ) {
   const on = new Set(metrics);
+  const visible = new Set(blocks);
   const charted = new Set(charts);
   return order
     .map((id) => BLOCK_OF[id])
@@ -261,7 +280,7 @@ export function settingsBlocks(
         label: block.label,
         single,
         field: single ? field : null,
-        on: rows.some((row) => row.on),
+        on: visible.has(block.id),
         chartable: single ? chartable(field) : true,
         charted: charted.has(
           single ? field : /** @type {MetricId} */ (block.id),
@@ -278,22 +297,15 @@ function chartable(id) {
   return id != null && CHART_METRICS.includes(id);
 }
 
-/** Enabled fields with one block turned off, or back on at its first field
- * (usage for CPU/GPU; the only field for a single block). `on` keeps the
- * other fields of that block untouched when enabling.
- * @param {MetricId[]} metrics @param {string} id @param {boolean} on */
-export function toggleBlock(metrics, id, on) {
-  const block = BLOCK_OF[id];
-  if (!block) return metrics;
-  const rest = metrics.filter((field) => !block.fields.includes(field));
-  if (!on) return rest;
-  const first = block.fields.includes(/** @type {MetricId} */ (block.id))
-    ? /** @type {MetricId} */ (block.id)
-    : block.fields[0];
-  return METRICS.filter(
-    (field) =>
-      rest.includes(field) || metrics.includes(field) || field === first,
-  );
+/** Visible blocks with one parent turned on or off. Field switches are not
+ * touched: a parent off keeps every child choice for the next parent on. */
+/** @param {string[]} blocks @param {string} id @param {boolean} on */
+export function toggleBlockVisibility(blocks, id, on) {
+  if (!BLOCK_IDS.includes(id)) return blocks;
+  const set = new Set(blocks);
+  if (on) set.add(id);
+  else set.delete(id);
+  return BLOCK_IDS.filter((block) => set.has(block));
 }
 
 /** Status bar appearance (0.7.5): "" follows the main window's theme, any
@@ -463,6 +475,7 @@ const gb = (/** @type {number | null | undefined} */ v) =>
  * @param {Reading | null} r @param {MetricId[]} shown
  * @param {string[]} [order] block order (defaults to the old flat order)
  * @param {Record<string, MetricId[]>} [fieldOrder]
+ * @param {string[]} [blocks] visible blocks
  * @returns {{ id: MetricId, value: string, parts: string[],
  *   label: string | null }[]} */
 export function cells(
@@ -470,9 +483,11 @@ export function cells(
   shown,
   order = derivedBlockOrder(shown),
   fieldOrder = overlayFieldOrder(),
+  blocks = overlayVisibleBlocks(undefined, shown),
 ) {
   const x = r ?? {};
   const on = new Set(shown);
+  const visible = new Set(blocks);
   /** The voltage prefix only when the source is known and the value exists;
    * no prefix beats a wrong claim. */
   const voltLabel =
@@ -514,7 +529,7 @@ export function cells(
   const out = [];
   for (const blockId of order) {
     const block = BLOCK_OF[blockId];
-    if (!block) continue;
+    if (!block || !visible.has(blockId)) continue;
     const fields = fieldOrder?.[blockId] ?? block.fields;
     for (const id of fields) {
       if (!on.has(id)) continue;

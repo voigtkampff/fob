@@ -151,6 +151,9 @@ fn merge(config: &mut Value, patch: &Value) {
                 // 0.8.13: the order of whole blocks on the bar. A field never
                 // appears here, so moving a block cannot move its children.
                 "overlayOrder" => known_order(value, &OVERLAY_BLOCKS),
+                // 0.8.13: which family blocks the bar shows (parent
+                // checkboxes). Field switches stay in overlayMetrics.
+                "overlayBlocks" => known_order(value, &OVERLAY_BLOCKS),
                 // 0.8.13: per-family slot order (CPU/GPU only).
                 "overlayFieldOrder" => value.as_object().is_some_and(|obj| {
                     obj.len() == 2
@@ -294,6 +297,43 @@ fn field_order_valid(value: &Value, defaults: &[&'static str]) -> bool {
     ordered_slots(value, defaults).is_some()
 }
 
+/// 0.8.13: an old configuration has no block visibility set. Keep every
+/// block that had at least one enabled field; the field set itself is not
+/// touched, so child choices survive a later parent off/on.
+fn migrate_overlay_blocks(config: &mut Value, saved: &Value) {
+    if let Some(blocks) = saved["behavior"]["overlayBlocks"].as_array() {
+        let ids: Vec<&str> = blocks.iter().filter_map(Value::as_str).collect();
+        if ids.len() == blocks.len()
+            && ids.iter().all(|id| OVERLAY_BLOCKS.contains(id))
+            && ids.iter().enumerate().all(|(i, id)| !ids[..i].contains(id))
+        {
+            config["behavior"]["overlayBlocks"] = Value::Array(blocks.clone());
+            return;
+        }
+    }
+    let mut visible = [false; OVERLAY_BLOCKS.len()];
+    for field in saved["behavior"]["overlayMetrics"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter_map(Value::as_str)
+    {
+        if let Some(block) = block_of(field) {
+            if let Some(index) = OVERLAY_BLOCKS.iter().position(|id| *id == block) {
+                visible[index] = true;
+            }
+        }
+    }
+    config["behavior"]["overlayBlocks"] = Value::Array(
+        OVERLAY_BLOCKS
+            .iter()
+            .zip(visible)
+            .filter(|(_, on)| *on)
+            .map(|(id, _)| Value::from(*id))
+            .collect(),
+    );
+}
+
 /// 0.8.13: old configurations have no per-family slot order, so those get
 /// the default order; a partial or invalid saved order is completed or
 /// replaced. This never derives from the old flat field list.
@@ -358,6 +398,7 @@ fn load(path: &Path, legacy: Option<&Value>) -> Result<Option<Value>, String> {
     merge(&mut config, source);
     migrate_columns(&mut config, source);
     migrate_overlay_order(&mut config, source);
+    migrate_overlay_blocks(&mut config, source);
     migrate_overlay_field_order(&mut config, source);
     if existing.is_none() {
         persist(path, &config)?;
@@ -818,6 +859,27 @@ mod tests {
         let before = config["behavior"]["overlayOrder"].clone();
         merge(&mut config, &json!({"behavior":{"language":"zh"}}));
         assert_eq!(config["behavior"]["overlayOrder"], before);
+
+        // Old configurations have no block visibility set: every block that
+        // had an enabled field is visible, and the field set is unchanged.
+        let saved = json!({"behavior":{"overlayMetrics":["cpu","cpuTemp","gpu"]}});
+        let mut config = defaults();
+        merge(&mut config, &saved);
+        migrate_overlay_blocks(&mut config, &saved);
+        assert_eq!(config["behavior"]["overlayBlocks"], json!(["cpu", "gpu"]));
+        assert_eq!(
+            config["behavior"]["overlayMetrics"],
+            json!(["cpu", "cpuTemp", "gpu"])
+        );
+        // A parent off/on patch never rewrites the child field set.
+        let fields = config["behavior"]["overlayMetrics"].clone();
+        merge(&mut config, &json!({"behavior":{"overlayBlocks":["gpu"]}}));
+        assert_eq!(config["behavior"]["overlayMetrics"], fields);
+        merge(
+            &mut config,
+            &json!({"behavior":{"overlayBlocks":["cpu","gpu"]}}),
+        );
+        assert_eq!(config["behavior"]["overlayMetrics"], fields);
 
         // Old configurations have no per-family slot order: default order.
         let saved = json!({"behavior":{"overlayMetrics":["cpu","gpu"]}});

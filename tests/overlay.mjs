@@ -4,12 +4,14 @@ import {
   METRICS,
   DEFAULT_METRICS,
   BLOCK_IDS,
+  DEFAULT_BLOCKS,
   DEFAULT_FIELD_ORDER,
+  overlayVisibleBlocks,
   overlayBlockOrder,
   overlayFieldOrder,
   overlaySettings,
   settingsBlocks,
-  toggleBlock,
+  toggleBlockVisibility,
   toggleMetric,
   shortRate,
   cells,
@@ -39,6 +41,7 @@ assert.deepEqual(
     enabled: false,
     metrics: DEFAULT_METRICS,
     order: BLOCK_IDS,
+    blocks: DEFAULT_BLOCKS,
     fieldOrder: {
       cpu: ["cpu", "cpuPower", "cpuTemp", "cpuVoltage", "cpuClock"],
       gpu: ["gpu", "power", "gpuTemp"],
@@ -141,37 +144,146 @@ assert.deepEqual(
   ["cpu", "net", "gpu", "ram", "vram", "disk"],
   "saved order: unknown/repeated dropped, missing back in default place",
 );
+// Parent visibility is separate from the child switches.
+const childFields = ["cpu", "cpuTemp", "cpuVoltage"];
+const onBlocks = ["cpu"];
+const shownBlock = settingsBlocks(
+  childFields,
+  BLOCK_IDS,
+  [],
+  DEFAULT_FIELD_ORDER,
+  {},
+  onBlocks,
+)[0];
+const hiddenBlock = settingsBlocks(
+  childFields,
+  BLOCK_IDS,
+  [],
+  DEFAULT_FIELD_ORDER,
+  {},
+  toggleBlockVisibility(onBlocks, "cpu", false),
+)[0];
+assert.equal(hiddenBlock.on, false);
 assert.deepEqual(
-  toggleBlock(["cpu", "cpuTemp", "ram"], "cpu", false),
-  ["ram"],
-  "turning a block off drops every field in it",
+  hiddenBlock.rows.map((r) => [r.id, r.on]),
+  shownBlock.rows.map((r) => [r.id, r.on]),
+  "parent off keeps every child switch",
 );
 assert.deepEqual(
-  toggleBlock(["ram"], "cpu", true),
-  ["cpu", "ram"],
-  "turning a block on adds its first field (usage), in canonical order",
+  settingsBlocks(
+    childFields,
+    BLOCK_IDS,
+    [],
+    DEFAULT_FIELD_ORDER,
+    {},
+    toggleBlockVisibility([], "cpu", true),
+  )[0].rows.map((r) => [r.id, r.on]),
+  shownBlock.rows.map((r) => [r.id, r.on]),
+  "parent on restores the same child switches",
 );
 assert.deepEqual(
-  toggleBlock(["gpu", "cpuTemp"], "cpu", true),
-  ["cpu", "cpuTemp", "gpu"],
-  "the other blocks and the block's own fields are kept",
+  toggleBlockVisibility(["gpu"], "cpu", true),
+  ["cpu", "gpu"],
+  "parent visibility is a set, not a field list",
+);
+// A field off/on keeps its slot; dragging reorders without touching switches.
+const fieldOrder = {
+  ...DEFAULT_FIELD_ORDER,
+  cpu: ["cpuPower", "cpu", "cpuTemp", "cpuVoltage", "cpuClock"],
+};
+const beforeField = settingsBlocks(
+  childFields,
+  BLOCK_IDS,
+  ["cpu"],
+  fieldOrder,
+  {},
+  onBlocks,
+)[0];
+const withoutTemp = settingsBlocks(
+  childFields.filter((id) => id !== "cpuTemp"),
+  BLOCK_IDS,
+  ["cpu"],
+  fieldOrder,
+  {},
+  onBlocks,
+)[0];
+assert.deepEqual(
+  withoutTemp.rows.map((r) => r.id),
+  beforeField.rows.map((r) => r.id),
+  "a disabled field keeps its position",
+);
+const dragged = settingsBlocks(
+  childFields,
+  BLOCK_IDS,
+  ["cpu"],
+  fieldOrder,
+  { cpu: { id: "cpuPower", target: "cpu", after: true } },
+  onBlocks,
+)[0];
+assert.deepEqual(
+  dragged.rows.map((r) => [r.id, r.on]).sort(),
+  beforeField.rows.map((r) => [r.id, r.on]).sort(),
+  "dragging only changes order, never a switch",
+);
+assert.deepEqual(
+  overlayVisibleBlocks(undefined, ["cpu", "cpuTemp", "gpu"]),
+  ["cpu", "gpu"],
+  "old configs make a block visible when any field was on",
+);
+const blockDragged = settingsBlocks(
+  childFields,
+  ["gpu", ...BLOCK_IDS.filter((id) => id !== "gpu")],
+  [],
+  DEFAULT_FIELD_ORDER,
+  {},
+  onBlocks,
+);
+assert.deepEqual(
+  blockDragged.flatMap((b) => b.rows.map((r) => [b.id, r.id, r.on])).sort(),
+  settingsBlocks(childFields, BLOCK_IDS, [], DEFAULT_FIELD_ORDER, {}, onBlocks)
+    .flatMap((b) => b.rows.map((r) => [b.id, r.id, r.on]))
+    .sort(),
+  "dragging a block changes no switch",
 );
 // Order and enabled state are independent: unchecking a block leaves it in
 // place (and greyed), and checking it again returns to the same slot.
 const fullOrder = ["net", "gpu", "cpu", "ram", "vram", "disk"];
 let orderFields = ["net", "gpu", "cpu"];
 const off = toggleMetric(orderFields, "gpu", false);
-const offBlocks = settingsBlocks(off, fullOrder, []);
+const offBlocks = settingsBlocks(
+  off,
+  fullOrder,
+  [],
+  DEFAULT_FIELD_ORDER,
+  {},
+  DEFAULT_BLOCKS,
+);
 assert.equal(
   offBlocks.findIndex((b) => b.id === "gpu"),
   1,
   "an unchecked block keeps its position",
 );
-assert.equal(offBlocks.find((b) => b.id === "gpu").on, false);
+assert.equal(
+  offBlocks.find((b) => b.id === "gpu").on,
+  true,
+  "a field off does not hide its parent block",
+);
+assert.equal(
+  offBlocks.find((b) => b.id === "gpu").rows.find((r) => r.id === "gpu").on,
+  false,
+  "the field switch itself is off",
+);
 const back = toggleMetric(off, "gpu", true);
 assert.deepEqual(overlayBlockOrder(fullOrder, back), fullOrder);
 assert.equal(
-  settingsBlocks(back, fullOrder, []).findIndex((b) => b.id === "gpu"),
+  settingsBlocks(
+    back,
+    fullOrder,
+    [],
+    DEFAULT_FIELD_ORDER,
+    {},
+    DEFAULT_BLOCKS,
+  ).findIndex((b) => b.id === "gpu"),
   1,
   "checking it again uses the same position",
 );
@@ -180,16 +292,18 @@ const sections = settingsBlocks(
   ["cpu", "gpu", "ram", "vram", "disk", "net"],
   ["cpu"],
   DEFAULT_FIELD_ORDER,
+  {},
+  DEFAULT_BLOCKS,
 );
 assert.deepEqual(
   sections.map((b) => [b.id, b.single, b.on, b.chartable]),
   [
     ["cpu", false, true, true],
-    ["gpu", false, false, true],
-    ["ram", true, false, true],
+    ["gpu", false, true, true],
+    ["ram", true, true, true],
     ["vram", true, false, false],
     ["disk", true, false, true],
-    ["net", true, false, true],
+    ["net", true, true, true],
   ],
 );
 assert.deepEqual(
