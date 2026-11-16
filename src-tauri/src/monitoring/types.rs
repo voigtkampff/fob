@@ -109,6 +109,9 @@ pub struct SystemStats {
     pub details: ResourceDetails,
     /// CPU usage per core as percentage (0-100)
     pub cpu_usage: Vec<f32>,
+    /// Fob: effective CPU frequency, MHz (CPU base × PDH `% Processor
+    /// Performance`); None while unavailable or on other platforms.
+    pub cpu_clock: Option<f64>,
     /// Fob: performance / efficiency groups of `cpu_usage`, read once.
     pub cpu_topology: super::CpuTopology,
     /// Total physical memory in bytes

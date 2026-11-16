@@ -49,6 +49,9 @@ SHA256SUMS.txt lists the hash of every program file in this folder.
 
 Licenses and sources: licenses\NOTICE.txt
 TXT
+# The build-order guard: the exe's embedded helper manifest must be the
+# current one and must match every sensor file in this folder.
+python3 scripts/check-sensors-bundle.py "$OUT/fob.exe" "$OUT" sensors-helper/dist/manifest.sha256
 # Fail before zipping if an exe lacks its manifest (Common-Controls 6), VERSIONINFO or icon.
 COMPANY=$(sed -n 's/^CompanyName = "\(.*\)"$/\1/p' src-tauri/Cargo.toml)
 python3 scripts/check-windows-exe.py "$VER" "$HELPER_VER" "$COMPANY" "$OUT/fob.exe" "$OUT/sensors/fob-sensors.exe" src-tauri/icons/icon.ico

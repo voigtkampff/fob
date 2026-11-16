@@ -43,6 +43,7 @@
     ResourceSample,
     Sensor,
     SystemStats,
+    ThrottleReport,
   } from "$lib/types";
   let {
     kind,
@@ -55,6 +56,7 @@
     gpuId = "",
     onGpu = () => {},
     sensors = [],
+    throttle = null,
     sources = [],
     onSpace = () => {},
     onDiskHealth = () => {},
@@ -70,6 +72,7 @@
     gpuId?: string;
     onGpu?: (id: string) => void;
     sensors?: Sensor[];
+    throttle?: ThrottleReport | null;
     sources?: string[];
     onSpace?: () => void;
     /** Opens the full Disk detail (the storage panel's health link). */
@@ -86,6 +89,38 @@
     value == null ? na : formatBytes(value);
   const share = (part: number, total: number) =>
     total > 0 ? Math.min(100, Math.max(0, (part / total) * 100)) : 0;
+  /** "Yes (12%)" / "No" for one MSR-derived throttle signal. */
+  function throttleText(on: boolean, percent: number, notThermal = false) {
+    if (!on) return $t("throttle.no");
+    const label = notThermal
+      ? $t("throttle.packageNotThermal")
+      : $t("throttle.yes");
+    return `${label} (${Math.round(percent)}%)`;
+  }
+  const throttleFacts = $derived.by((): [string, string][] => {
+    if (!throttle?.supported)
+      return [[$t("throttle.title"), $t("throttle.unsupported")]];
+    return [
+      [
+        $t("throttle.thermal"),
+        throttleText(throttle.thermal, throttle.thermalPercent),
+      ],
+      [
+        $t("throttle.package"),
+        throttleText(
+          throttle.package,
+          throttle.packagePercent,
+          !throttle.thermal,
+        ),
+      ],
+      [
+        $t("throttle.tjmaxDistance"),
+        throttle.distanceToTjMax == null
+          ? na
+          : `${throttle.distanceToTjMax} °C`,
+      ],
+    ];
+  });
 
   // CPU
   const cpu = $derived(
@@ -240,6 +275,11 @@
         $t("details.cpuVoltage"),
         summary.cpuVoltage ? formatSensor(summary.cpuVoltage) : na,
       ],
+      [
+        $t("details.cpuPower"),
+        summary.cpuPower ? `${summary.cpuPower.value.toFixed(1)} W` : na,
+      ],
+      ...throttleFacts,
       ...(coreGroups ?? []).map((g): [string, string] => [
         $t(g.label),
         percent(g.usage),

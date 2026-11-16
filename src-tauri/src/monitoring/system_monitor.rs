@@ -4,8 +4,8 @@
 //! including CPU, memory, network, and disk usage.
 
 use super::{
-    CpuTopology, CpuVendor, InterfaceDetails, ResourceDetails, SystemIdentity, SystemStats,
-    VolumeDetails,
+    CpuClock, CpuTopology, CpuVendor, InterfaceDetails, ResourceDetails, SystemIdentity,
+    SystemStats, VolumeDetails,
 };
 use std::collections::BTreeMap;
 use std::fmt::Debug;
@@ -23,6 +23,8 @@ pub struct SystemMonitor {
     last_disks: BTreeMap<String, (u64, u64)>,
     identity: Option<SystemIdentity>,
     topology: Option<CpuTopology>,
+    /// Fob: effective CPU frequency (PDH); None until its second collection.
+    cpu_clock: CpuClock,
 }
 
 impl SystemMonitor {
@@ -47,6 +49,7 @@ impl SystemMonitor {
             last_disks: BTreeMap::new(),
             identity: None,
             topology: None,
+            cpu_clock: CpuClock::default(),
         }
     }
 
@@ -84,6 +87,7 @@ impl SystemMonitor {
             }
         };
         let load_average = System::load_average();
+        let cpu_clock = self.cpu_clock.read();
 
         SystemStats {
             details: ResourceDetails {
@@ -132,6 +136,7 @@ impl SystemMonitor {
                 interfaces,
             },
             cpu_usage: fake_threads(sys.cpus().iter().map(|cpu| cpu.cpu_usage()).collect()),
+            cpu_clock,
             cpu_topology: self.topology(sys),
             memory_total: sys.total_memory(),
             memory_used: sys.used_memory(),

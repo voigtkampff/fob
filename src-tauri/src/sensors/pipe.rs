@@ -2,13 +2,15 @@
 //! elevated by the `fob-sensors` scheduled task) serves one JSON line per
 //! second on `\\.\pipe\fob-sensors`:
 //! `{"ts":<unix ms>,"sensors":[{"hw","id","name","type","value"}]}` with
-//! `type` = Temperature | Fan | Control | Voltage and `value` a number or null.
-//! Voltage is CPU-only: the helper drops every whole-board rail.
+//! `type` = Temperature | Fan | Control | Voltage | Power and `value` a
+//! number or null. Voltage is CPU-only: the helper drops every whole-board
+//! rail and every rail that is not the core supply. Power is the CPU's
+//! package sensor in W; GPU power comes from NVML, not from here.
 //! The line format is produced by sensors-helper/src/Wire.cs; both sides are
 //! tested against tests/fixtures/sensors-pipe.jsonl.
 // Most of this is only reachable on Windows.
 #![cfg_attr(not(target_os = "windows"), allow(dead_code))]
-use super::{Sensor, SensorKind, SensorSource};
+use super::{Sensor, SensorKind, SensorSource, ThrottleReport};
 use serde_json::Value;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -37,6 +39,7 @@ fn kind(text: &str) -> Option<SensorKind> {
         "Fan" => Some(SensorKind::Fan),
         "Control" => Some(SensorKind::Control),
         "Voltage" => Some(SensorKind::Voltage),
+        "Power" => Some(SensorKind::Power),
         _ => None,
     }
 }
@@ -90,6 +93,8 @@ pub struct HelperLine {
     pub sensors: Vec<Sensor>,
     /// Present while the helper's ETW network session runs.
     pub net: Option<NetSample>,
+    /// MSR throttle state; None from helpers older than 0.8.5.
+    pub throttle: Option<ThrottleReport>,
 }
 
 fn parse_net(value: &Value) -> Option<NetSample> {
@@ -107,6 +112,25 @@ fn parse_net(value: &Value) -> Option<NetSample> {
         })
         .collect();
     Some(NetSample { ms, procs })
+}
+
+fn parse_throttle(value: &Value) -> Option<ThrottleReport> {
+    if !value.is_object() {
+        return None;
+    }
+    Some(ThrottleReport {
+        supported: value["supported"].as_bool().unwrap_or(false),
+        thermal: value["thermal"].as_bool().unwrap_or(false),
+        thermal_log: value["thermalLog"].as_bool().unwrap_or(false),
+        prochot: value["prochot"].as_bool().unwrap_or(false),
+        prochot_log: value["prochotLog"].as_bool().unwrap_or(false),
+        package: value["package"].as_bool().unwrap_or(false),
+        distance_to_tjmax: value["distanceToTjMax"]
+            .as_i64()
+            .and_then(|v| i32::try_from(v).ok()),
+        thermal_percent: value["thermalPercent"].as_f64().unwrap_or(0.0),
+        package_percent: value["packagePercent"].as_f64().unwrap_or(0.0),
+    })
 }
 
 /// One pipe line. Sensors without a finite value or of another type are
@@ -132,6 +156,7 @@ pub fn parse_line(line: &str) -> Option<HelperLine> {
         ts,
         sensors,
         net: parse_net(&root["net"]),
+        throttle: parse_throttle(&root["throttle"]),
     })
 }
 
@@ -217,6 +242,11 @@ mod client {
             let (at, line) = guard.as_ref()?;
             (now_ms().saturating_sub(*at) < 5_000).then(|| line.net.clone())?
         }
+        fn throttle(&mut self) -> Option<ThrottleReport> {
+            let guard = self.latest.lock().ok()?;
+            let (at, line) = guard.as_ref()?;
+            (now_ms().saturating_sub(*at) < 5_000).then(|| line.throttle.clone())?
+        }
     }
 }
 
@@ -272,7 +302,9 @@ mod tests {
     fn fixture_lines_parse() {
         let lines: Vec<_> = FIXTURE.lines().collect();
         assert_eq!(lines.len(), 3);
-        let HelperLine { ts, sensors, net } = parse_line(lines[0]).unwrap();
+        let HelperLine {
+            ts, sensors, net, ..
+        } = parse_line(lines[0]).unwrap();
         assert_eq!(ts, 1_793_612_400_000);
         // 21 written, Load is never written; null/NaN/Infinity values dropped.
         assert_eq!(sensors.len(), 18);
@@ -319,6 +351,27 @@ mod tests {
         let later = parse_line(lines[2]).unwrap().sensors;
         let package = later.iter().find(|s| s.name == "CPU Package").unwrap();
         assert_eq!(package.value, 54.0);
+    }
+
+    #[test]
+    fn throttle_state_parses_and_degrades_cleanly() {
+        let line = r#"{"ts":1,"sensors":[],"throttle":{"supported":true,"thermal":true,"thermalLog":false,"prochot":false,"prochotLog":false,"package":true,"distanceToTjMax":20,"thermalPercent":50,"packagePercent":25}}"#;
+        let t = parse_line(line).unwrap().throttle.unwrap();
+        assert!(t.supported && t.thermal && t.package && !t.prochot);
+        assert_eq!(t.distance_to_tjmax, Some(20));
+        assert_eq!((t.thermal_percent, t.package_percent), (50.0, 25.0));
+        // An old helper has no throttle field at all.
+        assert_eq!(
+            parse_line(r#"{"ts":1,"sensors":[]}"#).unwrap().throttle,
+            None
+        );
+        // A helper that cannot open PawnIO reports supported=false.
+        let unsupported = parse_line(r#"{"ts":1,"sensors":[],"throttle":{"supported":false}}"#)
+            .unwrap()
+            .throttle
+            .unwrap();
+        assert!(!unsupported.supported);
+        assert_eq!(unsupported.distance_to_tjmax, None);
     }
 
     #[test]
