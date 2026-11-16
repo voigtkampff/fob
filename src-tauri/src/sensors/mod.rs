@@ -52,7 +52,9 @@ pub struct ThrottleReport {
     pub prochot_log: bool,
     /// MSR 0x613 advanced during the helper's last interval.
     pub package: bool,
-    /// Hottest core/package distance to TjMax, °C.
+    /// Hottest core/package distance to TjMax, °C. Serde's camelCase would
+    /// write "distanceToTjmax"; the UI and wire both say "distanceToTjMax".
+    #[serde(rename = "distanceToTjMax")]
     pub distance_to_tjmax: Option<i32>,
     pub thermal_percent: f64,
     pub package_percent: f64,

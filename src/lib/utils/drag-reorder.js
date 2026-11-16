@@ -28,6 +28,7 @@ const SLIDE = { duration: 160, easing: "cubic-bezier(0.2, 0, 0, 1)" };
  * @property {boolean} [vertical] the items wrap into rows and follow the pointer up and down too
  * @property {(id: string) => HTMLElement[]} [cells] other elements that belong to an item (a column's body cells) and move with it; items without cells lift as a copy in the top layer
  * @property {boolean} [clampToNode] keep the lifted copy inside the visible box of `node` (a scrolling list)
+ * @property {string} [clampToClosest] use the nearest ancestor matching this selector as the visible bounds
  * @property {boolean} [portal] append the lifted copy to document.body, outside any transformed or clipped ancestor
  * @property {boolean} [rejectOutside] no reorder while the pointer is outside the node's box
  */
@@ -208,9 +209,13 @@ export function dragReorder(node, options) {
     const slot = layoutBox(press.el);
     if (drag.layer) {
       const { offsetWidth: w, offsetHeight: h } = drag.layer;
-      const bounds = o.clampToNode
-        ? visibleBox(node)
-        : { left: 0, top: 0, right: innerWidth, bottom: innerHeight };
+      const boundsElement = o.clampToClosest
+        ? /** @type {HTMLElement | null} */ (node.closest(o.clampToClosest))
+        : node;
+      const bounds =
+        o.clampToNode || o.clampToClosest
+          ? visibleBox(boundsElement ?? node)
+          : { left: 0, top: 0, right: innerWidth, bottom: innerHeight };
       const x = drag.start.left + drag.last.clientX - press.x;
       const y = o.vertical
         ? drag.start.top + drag.last.clientY - press.y
@@ -238,7 +243,10 @@ export function dragReorder(node, options) {
     if (!press || !drag) return null;
     const { clientX: x, clientY: y } = drag.last;
     if (o.rejectOutside) {
-      const box = node.getBoundingClientRect();
+      const boundsElement = o.clampToClosest
+        ? /** @type {HTMLElement | null} */ (node.closest(o.clampToClosest))
+        : node;
+      const box = (boundsElement ?? node).getBoundingClientRect();
       if (x < box.left || x > box.right || y < box.top || y > box.bottom)
         return null;
     }

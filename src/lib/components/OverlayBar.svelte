@@ -42,6 +42,7 @@
       config.order,
       config.fieldOrder,
       config.blocks,
+      !!throttle,
     ),
   );
   // Its own appearance or the main window's theme (theme-change keeps
@@ -165,52 +166,55 @@
   }}
 >
   {#key paint}<div class="row" bind:this={row}>
-      {#each shown as cell (cell.id)}
-        {@const chart = config.charts.includes(cell.id)
-          ? chartFor(cell.id, history)
-          : null}
+      {#each shown as cell (cell.key ?? cell.id)}
+        {@const chart =
+          !cell.block && config.charts.includes(cell.id)
+            ? chartFor(cell.id, history)
+            : null}
         {@const label = cell.label ?? $t(`overlay.short.${cell.id}`)}
-        <span class="cell"
+        <span class="cell" class:blockhead={cell.block}
           >{#if label}<span class="label" class:cjk={CJK.test(label)}
               >{label}</span
-            >{/if}<span class="vc {cell.id}" class:charted={chart}
-            ><span class="value {cell.id}"
-              >{#each cell.parts as part, i (i)}<span class="part"
-                  >{#if ARROW[part[0]]}<svg
-                      class="arrow"
-                      viewBox="0 0 8 10"
-                      aria-label={part[0]}><path d={ARROW[part[0]]} /></svg
-                    >{part.slice(1)}{:else}{part}{/if}</span
-                >{/each}</span
-            >{#if chart}<svg
-                class="chart"
-                width={CW}
-                height={CH}
-                viewBox={`0 0 ${CW} ${CH}`}
-                preserveAspectRatio="none"
-                aria-hidden="true"
-                ><path
-                  d={sparklinePath(history, chart.pick, {
-                    width: CW,
-                    height: CH,
-                    max: chart.max,
-                  })}
-                /></svg
-              >{/if}</span
-          ></span
+            >{/if}{#if !cell.block}<span
+              class="vc {cell.id}"
+              class:charted={chart}
+              ><span class="value {cell.id}"
+                >{#each cell.parts as part, i (i)}<span class="part"
+                    >{#if ARROW[part[0]]}<svg
+                        class="arrow"
+                        viewBox="0 0 8 10"
+                        aria-label={part[0]}><path d={ARROW[part[0]]} /></svg
+                      >{part.slice(1)}{:else}{part}{/if}</span
+                  >{/each}</span
+              >{#if chart}<svg
+                  class="chart"
+                  width={CW}
+                  height={CH}
+                  viewBox={`0 0 ${CW} ${CH}`}
+                  preserveAspectRatio="none"
+                  aria-hidden="true"
+                  ><path
+                    d={sparklinePath(history, chart.pick, {
+                      width: CW,
+                      height: CH,
+                      max: chart.max,
+                    })}
+                  /></svg
+                >{/if}</span
+            >{/if}
+          {#if throttle && cell.throttleAfter}
+            <span
+              class="thr"
+              class:thermal={throttle === "thermal"}
+              title={$t(`overlay.throttle.${throttle}`)}
+              aria-label={$t(`overlay.throttle.${throttle}`)}
+              >{$t("overlay.throttle.badge")}</span
+            >
+          {/if}</span
         >
       {:else}
         <span class="label">{$t("overlay.empty")}</span>
       {/each}
-      {#if throttle}
-        <span
-          class="thr"
-          class:thermal={throttle === "thermal"}
-          title={$t(`overlay.throttle.${throttle}`)}
-          aria-label={$t(`overlay.throttle.${throttle}`)}
-          >{$t("overlay.throttle.badge")}</span
-        >
-      {/if}
     </div>{/key}
 </div>
 

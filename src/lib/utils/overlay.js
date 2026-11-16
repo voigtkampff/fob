@@ -468,22 +468,26 @@ const gb = (/** @type {number | null | undefined} */ v) =>
  * }} Reading  (overlay_reading in overlay.rs)
  */
 
-/** The cells the bar draws, in block order, then in each family's saved
- * slot order. Power is an independent slot with only its wattage (`188W`);
- * usage carries `CPU`/`GPU`, temperature is bare, voltage says `Vcore`/`VID`
- * and frequency says `CLK`. The chart switch is not a slot.
+/** The cells the bar draws: a fixed block-name cell first (CPU/GPU), then
+ * that family's slots in saved order. Power is independent (`188W`), usage
+ * has no name of its own because the block header carries it, temperature is
+ * bare, voltage says Vcore/VID and frequency says CLK. The chart switch is
+ * not a slot.
  * @param {Reading | null} r @param {MetricId[]} shown
  * @param {string[]} [order] block order (defaults to the old flat order)
  * @param {Record<string, MetricId[]>} [fieldOrder]
  * @param {string[]} [blocks] visible blocks
- * @returns {{ id: MetricId, value: string, parts: string[],
- *   label: string | null }[]} */
+ * @param {boolean} [throttleAfter] mark where the THR badge goes (CPU temp,
+ *   or the CPU block's last field when temperature is off)
+ * @returns {{ id: MetricId, key?: string, block?: string, value: string,
+ *   parts: string[], label: string | null, throttleAfter?: true }[]} */
 export function cells(
   r,
   shown,
   order = derivedBlockOrder(shown),
   fieldOrder = overlayFieldOrder(),
   blocks = overlayVisibleBlocks(undefined, shown),
+  throttleAfter = false,
 ) {
   const x = r ?? {};
   const on = new Set(shown);
@@ -513,11 +517,12 @@ export function cells(
     net: () => `↓${shortRate(x.netRx)}	↑${shortRate(x.netTx)}`,
     power: () => watts(x.gpuPower),
   };
-  /** Names the bar writes itself, or null for the i18n table. */
+  /** Names the bar writes itself, or null for the i18n table. CPU/GPU usage
+   * has an empty name because its block header already says it. */
   /** @type {Partial<Record<MetricId, string>>} */
   const labels = {
-    cpu: "CPU",
-    gpu: "GPU",
+    cpu: "",
+    gpu: "",
     cpuPower: "",
     power: "",
     cpuTemp: "",
@@ -525,14 +530,28 @@ export function cells(
     cpuClock: "CLK",
     cpuVoltage: voltLabel,
   };
-  /** @type {{ id: MetricId, value: string, parts: string[], label: string | null }[]} */
+  /** @type {{ id: MetricId, key?: string, block?: string, value: string,
+   *   parts: string[], label: string | null, throttleAfter?: true }[]} */
   const out = [];
   for (const blockId of order) {
     const block = BLOCK_OF[blockId];
     if (!block || !visible.has(blockId)) continue;
     const fields = fieldOrder?.[blockId] ?? block.fields;
-    for (const id of fields) {
-      if (!on.has(id)) continue;
+    const enabled = fields.filter((id) => on.has(id));
+    if (!enabled.length) continue;
+    let first = out.length;
+    if (blockId === "cpu" || blockId === "gpu") {
+      out.push({
+        id: /** @type {MetricId} */ (blockId),
+        key: `${blockId}:block`,
+        block: blockId,
+        value: "",
+        parts: [],
+        label: blockId === "cpu" ? "CPU" : "GPU",
+      });
+      first = out.length;
+    }
+    for (const id of enabled) {
       const parts = text[id]().split("	");
       out.push({
         id,
@@ -540,6 +559,13 @@ export function cells(
         parts,
         label: labels[id] ?? null,
       });
+    }
+    if (throttleAfter && blockId === "cpu") {
+      const temp = out.findIndex(
+        (cell, i) => i >= first && cell.id === "cpuTemp",
+      );
+      const target = temp >= 0 ? temp : out.length - 1;
+      if (target >= first) out[target].throttleAfter = true;
     }
   }
   return out;

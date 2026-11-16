@@ -132,6 +132,16 @@
     saveOverlay({ overlayMetrics: metrics });
   /** Parent checkbox: visibility only. A single-reading block also turns its
    * field on when shown; CPU/GPU keep every child choice untouched. */
+  /** Chromium often keeps an unchanged native title hidden when the pointer
+   * moves straight from one icon to the next. Re-adding it on enter (and
+   * removing it on leave) makes every icon show its own hint. */
+  function showTitle(event: PointerEvent) {
+    const el = event.currentTarget as HTMLElement;
+    el.setAttribute("title", el.dataset.title ?? "");
+  }
+  function clearTitle(event: PointerEvent) {
+    (event.currentTarget as HTMLElement).removeAttribute("title");
+  }
   function setBlockVisible(
     block: { id: string; single: boolean; field: MetricId | null },
     on: boolean,
@@ -483,6 +493,9 @@
                           aria-pressed={block.charted}
                           aria-label={singleChartTitle(block)}
                           title={singleChartTitle(block)}
+                          data-title={singleChartTitle(block)}
+                          onpointerenter={showTitle}
+                          onpointerleave={clearTitle}
                           onclick={() => {
                             if (!block.chartable || !block.on || !block.field)
                               return;
@@ -507,7 +520,7 @@
                                 ? block.rows.map((row) => row.id)
                                 : [],
                               handle: ".icon-toggle",
-                              clampToNode: true,
+                              clampToClosest: ".overlay-metrics",
                               portal: true,
                               rejectOutside: true,
                               onMove: (id, target, after) =>
@@ -540,6 +553,9 @@
                                 aria-pressed={row.on}
                                 aria-label={fieldTitle(block, row)}
                                 title={fieldTitle(block, row)}
+                                data-title={fieldTitle(block, row)}
+                                onpointerenter={showTitle}
+                                onpointerleave={clearTitle}
                                 onclick={() => {
                                   if (!block.on) return;
                                   setMetrics(
@@ -562,6 +578,9 @@
                             aria-pressed={block.charted}
                             aria-label={chartTitle(block)}
                             title={chartTitle(block)}
+                            data-title={chartTitle(block)}
+                            onpointerenter={showTitle}
+                            onpointerleave={clearTitle}
                             onclick={() => {
                               if (!block.on || !block.chartField) return;
                               saveOverlay(
@@ -850,6 +869,17 @@
     opacity: 1;
   }
   .icon-toggle:disabled,
+  /* The dragged slot keeps its target slot as an empty dashed placeholder;
+     the icon itself is hidden while the ghost follows the pointer. */
+  .field-slots > [data-drag-slot] {
+    opacity: 1;
+    border: 1px dashed color-mix(in oklab, var(--primary), transparent 35%);
+    background: transparent;
+    color: transparent;
+  }
+  .field-slots > [data-drag-slot] > * {
+    opacity: 0;
+  }
   .icon-toggle.blocked {
     opacity: 0.25;
     cursor: not-allowed;

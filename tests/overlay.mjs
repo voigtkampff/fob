@@ -361,12 +361,27 @@ assert.ok(iconLines.length >= 3, "settings has icon switches");
 for (const at of iconLines) {
   const button = settingsLines.slice(at, at + 20).join("\n");
   assert.match(button, /title=\{/, "every icon switch has a native title");
+  assert.match(button, /data-title=\{/, "the title has a value to restore");
+  assert.match(
+    button,
+    /onpointerenter=\{showTitle\}/,
+    "moving between adjacent icons re-opens the native title",
+  );
   assert.doesNotMatch(
     button,
     /\n\s*disabled=\{/,
     "icon titles must not sit on a disabled button",
   );
 }
+
+const head = (id, label) => ({
+  id,
+  key: `${id}:block`,
+  block: id,
+  value: "",
+  parts: [],
+  label,
+});
 
 assert.equal(shortRate(0), "0B");
 assert.equal(shortRate(35 * 1024), "35K");
@@ -385,9 +400,11 @@ assert.deepEqual(
     BLOCK_IDS,
   ),
   [
-    { id: "cpu", value: "12%", parts: ["12%"], label: "CPU" },
+    head("cpu", "CPU"),
+    { id: "cpu", value: "12%", parts: ["12%"], label: "" },
     { id: "cpuTemp", value: "56°C", parts: ["56°C"], label: "" },
-    { id: "gpu", value: "—", parts: ["—"], label: "GPU" },
+    head("gpu", "GPU"),
+    { id: "gpu", value: "—", parts: ["—"], label: "" },
     { id: "ram", value: "13.4G", parts: ["13.4G"], label: null },
     { id: "net", value: "↓2.0K ↑0B", parts: ["↓2.0K", "↑0B"], label: null },
   ],
@@ -420,12 +437,14 @@ assert.deepEqual(
     DEFAULT_FIELD_ORDER,
   ),
   [
-    { id: "cpu", value: "15%", parts: ["15%"], label: "CPU" },
+    head("cpu", "CPU"),
+    { id: "cpu", value: "15%", parts: ["15%"], label: "" },
     { id: "cpuPower", value: "45W", parts: ["45W"], label: "" },
     { id: "cpuTemp", value: "47°C", parts: ["47°C"], label: "" },
     { id: "cpuVoltage", value: "1.28V", parts: ["1.28V"], label: "Vcore" },
     { id: "cpuClock", value: "5.32GHz", parts: ["5.32GHz"], label: "CLK" },
-    { id: "gpu", value: "80%", parts: ["80%"], label: "GPU" },
+    head("gpu", "GPU"),
+    { id: "gpu", value: "80%", parts: ["80%"], label: "" },
     { id: "power", value: "180W", parts: ["180W"], label: "" },
     { id: "gpuTemp", value: "62°C", parts: ["62°C"], label: "" },
   ],
@@ -437,7 +456,9 @@ assert.deepEqual(
     { cpu: 15, cpuTemp: 47, gpu: 80 },
     ["cpu", "cpuTemp", "gpu"],
     ["gpu", "cpu"],
-  ).map((c) => c.id),
+  )
+    .filter((c) => !c.block)
+    .map((c) => c.id),
   ["gpu", "cpu", "cpuTemp"],
 );
 assert.deepEqual(
@@ -449,23 +470,83 @@ assert.deepEqual(
       cpu: ["cpuPower", "cpu", "cpuTemp"],
       gpu: ["power", "gpu"],
     },
-  ).map((c) => c.id),
+  )
+    .filter((c) => !c.block)
+    .map((c) => c.id),
   ["cpuPower", "cpu", "cpuTemp", "power", "gpu"],
+);
+// The block name is fixed first even when usage is moved to the end.
+assert.deepEqual(
+  cells(
+    { cpu: 40, cpuPower: 63, cpuVoltage: 1.27 },
+    ["cpu", "cpuPower", "cpuVoltage"],
+    ["cpu"],
+    {
+      cpu: ["cpuVoltage", "cpuPower", "cpu"],
+      gpu: DEFAULT_FIELD_ORDER.gpu,
+    },
+  )
+    .filter((c) => !c.block)
+    .map((c) => c.id),
+  ["cpuVoltage", "cpuPower", "cpu"],
+);
+assert.equal(
+  cells(
+    { cpu: 40, cpuPower: 63, cpuVoltage: 1.27 },
+    ["cpu", "cpuPower", "cpuVoltage"],
+    ["cpu"],
+    {
+      cpu: ["cpuVoltage", "cpuPower", "cpu"],
+      gpu: DEFAULT_FIELD_ORDER.gpu,
+    },
+  )[0].label,
+  "CPU",
+);
+// THR follows CPU temperature, or the last CPU field when temp is off.
+const badge = cells(
+  { cpu: 100, cpuTemp: 98, cpuPower: 188 },
+  ["cpu", "cpuTemp", "cpuPower"],
+  ["cpu"],
+  DEFAULT_FIELD_ORDER,
+  ["cpu"],
+  true,
+);
+assert.equal(
+  badge.find((c) => c.id === "cpuTemp").throttleAfter,
+  true,
+  "THR follows the temperature cell",
+);
+const badgeNoTemp = cells(
+  { cpu: 100, cpuPower: 188, cpuClock: 4610 },
+  ["cpu", "cpuPower", "cpuClock"],
+  ["cpu"],
+  DEFAULT_FIELD_ORDER,
+  ["cpu"],
+  true,
+);
+assert.equal(
+  badgeNoTemp.filter((c) => !c.block).at(-1).throttleAfter,
+  true,
+  "without temperature THR goes at the CPU block end",
 );
 // Power is an independent slot, with no name of its own.
 assert.deepEqual(cells({ cpu: 15, cpuPower: 45 }, ["cpu", "cpuPower"]), [
-  { id: "cpu", value: "15%", parts: ["15%"], label: "CPU" },
+  head("cpu", "CPU"),
+  { id: "cpu", value: "15%", parts: ["15%"], label: "" },
   { id: "cpuPower", value: "45W", parts: ["45W"], label: "" },
 ]);
 assert.deepEqual(cells({ cpuPower: 45 }, ["cpuPower"]), [
+  head("cpu", "CPU"),
   { id: "cpuPower", value: "45W", parts: ["45W"], label: "" },
 ]);
 assert.deepEqual(cells({ cpu: 15 }, ["cpu", "cpuPower"]), [
-  { id: "cpu", value: "15%", parts: ["15%"], label: "CPU" },
+  head("cpu", "CPU"),
+  { id: "cpu", value: "15%", parts: ["15%"], label: "" },
   { id: "cpuPower", value: "—", parts: ["—"], label: "" },
 ]);
 assert.deepEqual(cells({}, ["cpu", "cpuPower"]), [
-  { id: "cpu", value: "—", parts: ["—"], label: "CPU" },
+  head("cpu", "CPU"),
+  { id: "cpu", value: "—", parts: ["—"], label: "" },
   { id: "cpuPower", value: "—", parts: ["—"], label: "" },
 ]);
 // Drag and drop helpers still used elsewhere.

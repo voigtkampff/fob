@@ -360,6 +360,11 @@ mod tests {
         assert!(t.supported && t.thermal && t.package && !t.prochot);
         assert_eq!(t.distance_to_tjmax, Some(20));
         assert_eq!((t.thermal_percent, t.package_percent), (50.0, 25.0));
+        let json = serde_json::to_value(&t).unwrap();
+        assert_eq!(
+            json["distanceToTjMax"], 20,
+            "the UI reads distanceToTjMax, not distanceToTjmax"
+        );
         // An old helper has no throttle field at all.
         assert_eq!(
             parse_line(r#"{"ts":1,"sensors":[]}"#).unwrap().throttle,
