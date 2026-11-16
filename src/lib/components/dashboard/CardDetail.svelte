@@ -30,7 +30,6 @@
     voltageCardRows,
   } from "$lib/utils/dashboard.js";
   import { ChevronLeft, ChevronRight, LayoutGrid } from "@lucide/svelte";
-  import * as Tooltip from "$lib/components/ui/tooltip/index.js";
   import ChartCursor from "$lib/components/charts/ChartCursor.svelte";
   import { percentText as pct1 } from "$lib/utils/chart-cursor.js";
   import SensorSetup from "./SensorSetup.svelte";
@@ -207,29 +206,16 @@
       <CoreGrid usage={cores} where="detail" groups={coreGroups} />
     </div>
     {#if voltageRows.length}
-      <Tooltip.Provider delayDuration={300}
-        ><div class="panel">
-          <div class="list-head"><span>{$t("details.voltages")}</span></div>
-          {#each voltageRows as row (row.key)}
-            <div class="item">
-              <Tooltip.Root>
-                <Tooltip.Trigger
-                  >{#snippet child({ props })}<span class="name tip" {...props}
-                      >{row.label}</span
-                    >{/snippet}</Tooltip.Trigger
-                >
-                <Tooltip.Content
-                  side="top"
-                  align="start"
-                  sideOffset={6}
-                  collisionPadding={8}
-                  >{$t(`voltage.tip.${row.key}`)}</Tooltip.Content
-                >
-              </Tooltip.Root><span class="num">{voltText(row.value)}</span>
-            </div>
-          {/each}
-        </div></Tooltip.Provider
-      >
+      <div class="panel">
+        <div class="list-head"><span>{$t("details.voltages")}</span></div>
+        {#each voltageRows as row (row.key)}
+          <div class="item">
+            <span class="name" title={$t(`voltage.tip.${row.key}`)}
+              >{row.label}</span
+            ><span class="num">{voltText(row.value)}</span>
+          </div>
+        {/each}
+      </div>
     {/if}
     <div class="panel">
       <div class="list-head">
@@ -794,16 +780,6 @@
   .num {
     font-variant-numeric: tabular-nums;
     white-space: nowrap;
-  }
-  /* A voltage label is the tooltip trigger: a span (not a button) so the row
-     keeps its layout, styled like the plain label, and reachable with Tab. */
-  .name.tip {
-    cursor: default;
-  }
-  .name.tip:focus-visible {
-    outline: 2px solid var(--ring);
-    outline-offset: 2px;
-    border-radius: 3px;
   }
   .kv {
     display: flex;

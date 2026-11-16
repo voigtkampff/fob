@@ -32,7 +32,6 @@
   import ResourceTrend from "./ResourceTrend.svelte";
   import DiskHealthSummary from "./DiskHealthSummary.svelte";
   import { locale, t } from "$lib/i18n";
-  import * as Tooltip from "$lib/components/ui/tooltip/index.js";
   import {
     engineLabel,
     engineTitle,
@@ -219,23 +218,10 @@
   value: string,
   muted = false,
   tip: string | null = null,
-  nativeTitle = true,
 )}<div class="flex justify-between gap-4 text-sm">
-    {#if tip}<Tooltip.Root>
-        <Tooltip.Trigger
-          class="min-w-0 truncate text-left text-muted-foreground"
-          >{label}</Tooltip.Trigger
-        >
-        <Tooltip.Content
-          side="top"
-          align="start"
-          sideOffset={6}
-          collisionPadding={8}>{tip}</Tooltip.Content
-        >
-      </Tooltip.Root>{:else}<span
-        class="min-w-0 truncate text-muted-foreground"
-        title={nativeTitle ? label : undefined}>{label}</span
-      >{/if}<span
+    <span class="min-w-0 truncate text-muted-foreground" title={tip ?? label}
+      >{label}</span
+    ><span
       class={`shrink-0 text-right font-medium tabular-nums ${muted ? "text-muted-foreground" : ""}`}
       >{value}</span
     >
@@ -281,18 +267,15 @@
           title={$t("details.voltages")}
           description={group.hardware}
         >
-          <Tooltip.Provider delayDuration={300}
-            >{#each group.sensors as s (s.id || `${s.kind}:${s.name}`)}
-              {@const tip = voltageTip(s.name)}
-              {@render row(
-                s.name,
-                formatSensor(s),
-                false,
-                tip ? $t(`voltage.tip.${tip}`) : null,
-                false,
-              )}
-            {/each}</Tooltip.Provider
-          >
+          {#each group.sensors as s (s.id || `${s.kind}:${s.name}`)}
+            {@const tip = voltageTip(s.name)}
+            {@render row(
+              s.name,
+              formatSensor(s),
+              false,
+              tip ? $t(`voltage.tip.${tip}`) : null,
+            )}
+          {/each}
         </DetailSection>{/each}
     {/snippet}
   </DetailLayout>
