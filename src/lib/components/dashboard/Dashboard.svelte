@@ -232,6 +232,8 @@
         ids: shown.map((id) => (onReorder ? id : null)),
         handle: ".card-head",
         vertical: true,
+        // Cards in one row differ by X, not by how far down the pointer sits.
+        ignoreY: true,
         onMove: (id, target, after) =>
           onReorder?.(moveNextTo(order, id, target, after)),
         onPreview: (next) => (move = next),
