@@ -131,7 +131,7 @@ namespace WinperfSensors
                 ms = Math.Max(1, ts - netSince);
                 netSince = ts;
             }
-            var line = Wire.Line(ts, list, procs, ms) + "\n";
+            var line = Wire.UpdateLine(ts, list, procs, ms, () => msr?.Read()) + "\n";
             Volatile.Write(ref latest, new Snapshot { Ts = ts, Bytes = Encoding.UTF8.GetBytes(line) });
         }
 
@@ -174,7 +174,7 @@ namespace WinperfSensors
 
             public ThrottleState Read()
             {
-                if (!available || msr == null) return new ThrottleState();
+                if (!available || msr == null) return null;
                 try
                 {
                     var thermal = false;
@@ -213,7 +213,7 @@ namespace WinperfSensors
                     {
                         available = false;
                         Log("throttle: no thermal status MSR readable");
-                        return new ThrottleState();
+                        return null;
                     }
 
                     var package = false;
@@ -243,7 +243,7 @@ namespace WinperfSensors
                 {
                     available = false;
                     Log("throttle: " + e.GetType().Name + ": " + e.Message);
-                    return new ThrottleState();
+                    return null;
                 }
             }
 

@@ -94,7 +94,7 @@ static class WireTests
         var fixture = Path.Combine(AppContext.BaseDirectory, "../../../../../src-tauri/tests/fixtures/sensors-pipe.jsonl");
         var lines = new List<string>();
         for (var tick = 0; tick < 3; tick++)
-            lines.Add(Wire.Line(1793612400000 + tick * 1000L, Sample(tick), Net(tick), 1000));
+            lines.Add(Wire.Line(1793612400000 + tick * 1000L, Sample(tick), Net(tick), 1000, null));
         var oldStyle = Wire.Line(1793612400000, Sample(0)); // helper without ETW
         var text = string.Join("\n", lines) + "\n";
 
@@ -167,9 +167,12 @@ static class WireTests
         Check(Wire.Line(1793612400000, Sample(0), null, 0, throttled)
                 .Contains("\"throttle\":{\"supported\":true,\"thermal\":true,\"thermalLog\":false,\"prochot\":false,\"prochotLog\":false,\"package\":true,\"distanceToTjMax\":20,\"thermalPercent\":50,\"packagePercent\":25}"),
             "throttle state goes on the wire");
-        Check(Wire.Line(1793612400000, Sample(0), null, 0, new ThrottleState())
-                .Contains("\"throttle\":{\"supported\":false"),
-            "an unavailable MSR reader degrades to supported=false");
+        Check(Wire.UpdateLine(1793612400000, Sample(0), null, 0, () => throttled)
+                .Contains("\"throttle\":"),
+            "the line assembly path carries a non-null throttle");
+        Check(!Wire.UpdateLine(1793612400000, Sample(0), null, 0, () => null)
+                .Contains("\"throttle\""),
+            "an unavailable MSR reader omits the throttle field");
         Check(onDisk == text, "fixture " + Path.GetFullPath(fixture) + " is up to date (run with --write)");
         Console.WriteLine(failures == 0 ?  $"PASS: {checks} checks, sensor fixture and MFT request validation" : $"FAIL: {failures}");
         return failures == 0 ? 0 : 1;

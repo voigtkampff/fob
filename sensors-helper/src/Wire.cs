@@ -3,6 +3,7 @@
 //  "net":{"ms":<interval>,"procs":[{"pid":..,"name":..,"rx":<bytes>,"tx":<bytes>}]}}
 //  ("net" only while ETW runs; "name" is the helper's best guess, winperf prefers its own by pid)
 // Hand-written (no System.Text.Json) so it is tiny, culture-proof and testable on any .NET.
+using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Text;
@@ -67,11 +68,30 @@ namespace WinperfSensors
                 || name.IndexOf("cpu", System.StringComparison.OrdinalIgnoreCase) >= 0;
         }
 
-        public static string Line(long ts, IEnumerable<Reading> readings) => Line(ts, readings, null, 0);
+        public static string Line(long ts, IEnumerable<Reading> readings) =>
+            Line(ts, readings, null, 0, null);
+
+        /// <summary>
+        /// One helper line. The throttle provider is a parameter, not an
+        /// optional argument, so a caller cannot silently drop the MSR state
+        /// again (the 0.8.5 bug).
+        /// </summary>
+        public static string UpdateLine(
+            long ts,
+            IEnumerable<Reading> readings,
+            IEnumerable<NetUsage> net,
+            long netMs,
+            Func<ThrottleState> throttle) =>
+            Line(ts, readings, net, netMs, throttle());
 
         /// <param name="net">Per-process bytes in the last <paramref name="netMs"/> ms, or null when not tracing.</param>
         /// <param name="throttle">MSR-derived throttle state, or null when the helper has none.</param>
-        public static string Line(long ts, IEnumerable<Reading> readings, IEnumerable<NetUsage> net, long netMs, ThrottleState throttle = null)
+        public static string Line(
+            long ts,
+            IEnumerable<Reading> readings,
+            IEnumerable<NetUsage> net,
+            long netMs,
+            ThrottleState throttle)
         {
             var sb = new StringBuilder(4096);
             sb.Append("{\"ts\":").Append(ts.ToString(CultureInfo.InvariantCulture)).Append(",\"sensors\":[");
