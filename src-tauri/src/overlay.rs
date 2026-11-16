@@ -593,59 +593,96 @@ pub async fn overlay_fit(app: AppHandle, width: f64) -> Result<(), String> {
 
 /// Whether the CPU was limited in the last samples, and the likeliest
 /// reason. Windows and the sensor helper expose no PROCHOT / thermal /
-/// power / current flag, so this is inferred from two things Fob really
-/// reads: the effective frequency (below the machine's nominal frequency)
-/// while the CPU is busy, and the package temperature. The UI calls it
-/// "suspected" and never claims a measured reason.
+/// power / current flag, so this is inferred from two references that do
+/// not need a model or turbo table:
+///
+/// - the package temperature (a real thermal wall), and
+/// - the CPU's own recent high-load peak, which follows its cooling and
+///   power budget instead of the vendor's nominal clock.
+///
+/// Deliberately not the registry/base clock: a 13700K at 4.6 GHz is already
+/// held back by its power/thermal limits, yet that is 135 % of its 3.4 GHz
+/// base. Comparing with the base would only fire after a catastrophic drop.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "lowercase")]
 pub enum Throttle {
-    /// Busy and below nominal while the temperature is not at the limit:
-    /// a power or current limit is the likely cause.
+    /// Busy and below the recent high-load peak while the temperature is
+    /// not at the limit: a power or current limit is the likely cause.
     Power,
-    /// Busy, below nominal and at/above [`HOT_C`].
+    /// Busy and at/above [`HOT_C`]: the thermal limit is the likely cause.
     Thermal,
 }
 
-/// At or above this package temperature a limit is called thermal. Intel's
-/// TjMax is 100 °C on desktop parts; 90 leaves room for a real thermal wall
-/// rather than a momentary spike.
+/// At or above this package temperature a busy CPU is called thermally
+/// limited. Intel's TjMax is 100 °C on desktop parts; 90 leaves room for a
+/// real wall rather than a momentary spike.
 const HOT_C: f64 = 90.0;
 /// Busier than this for the whole window: an idle CPU clocking down is not
 /// throttling.
 const BUSY: f64 = 70.0;
-/// Below this fraction of the nominal frequency while busy counts as held
-/// back (turbo sits above 1.0, so only a real limit gets here).
-const HELD_BACK: f64 = 0.95;
+/// A high-load peak loses this fraction per second, so a burst from a minute
+/// ago stops defining "normal" for today's load.
+const PEAK_DECAY_PER_SEC: f64 = 0.002;
+/// A busy CPU this far below its decayed high-load peak is held back (4 %,
+/// inside the 3–5 % band that is visible without chasing normal jitter).
+const PEAK_DROP: f64 = 0.04;
 /// Two consecutive samples must agree, so one odd reading does not flash it.
 const WINDOW: usize = 2;
 
-fn held_back(s: &crate::sampling::Sample, base_mhz: f64) -> bool {
-    s.cpu.is_some_and(|load| load >= BUSY)
-        && s.cpu_clock
-            .is_some_and(|mhz| mhz.is_finite() && mhz < base_mhz * HELD_BACK)
+/// The decayed maximum effective frequency among high-load samples in the
+/// retained history. Idle samples still age the peak but cannot raise it.
+fn high_load_peak(history: &[crate::sampling::Sample]) -> Option<f64> {
+    let mut peak = 0.0f64;
+    let mut previous: Option<u64> = None;
+    for sample in history {
+        if let Some(previous) = previous {
+            let seconds = sample.timestamp.saturating_sub(previous) as f64 / 1000.0;
+            peak *= (1.0 - PEAK_DECAY_PER_SEC * seconds).max(0.0);
+        }
+        previous = Some(sample.timestamp);
+        if sample.cpu.is_some_and(|load| load >= BUSY) {
+            if let Some(mhz) = sample.cpu_clock.filter(|mhz| mhz.is_finite() && *mhz > 0.0) {
+                peak = peak.max(mhz);
+            }
+        }
+    }
+    (peak > 0.0).then_some(peak)
 }
 
-fn throttled_from(history: &[crate::sampling::Sample], base_mhz: Option<f64>) -> Option<Throttle> {
-    let base = base_mhz.filter(|mhz| mhz.is_finite() && *mhz > 0.0)?;
+fn held_back(sample: &crate::sampling::Sample, peak: f64) -> bool {
+    sample.cpu.is_some_and(|load| load >= BUSY)
+        && sample
+            .cpu_clock
+            .is_some_and(|mhz| mhz.is_finite() && mhz < peak * (1.0 - PEAK_DROP))
+}
+
+fn throttled_from(history: &[crate::sampling::Sample]) -> Option<Throttle> {
     let recent: Vec<_> = history.iter().rev().take(WINDOW).collect();
-    if recent.len() < WINDOW || !recent.iter().all(|s| held_back(s, base)) {
+    if recent.len() < WINDOW
+        || !recent
+            .iter()
+            .all(|sample| sample.cpu.is_some_and(|load| load >= BUSY))
+    {
         return None;
     }
-    let hot = recent
-        .first()
-        .and_then(|s| s.cpu_temp)
-        .is_some_and(|t| t >= HOT_C);
-    Some(if hot {
-        Throttle::Thermal
-    } else {
-        Throttle::Power
-    })
+    // A real thermal wall is independent of frequency: 4.6 GHz at 98 C is
+    // still thermally limited on a 13700K, even though it is above base.
+    if recent
+        .iter()
+        .all(|sample| sample.cpu_temp.is_some_and(|temp| temp >= HOT_C))
+    {
+        return Some(Throttle::Thermal);
+    }
+    let peak = high_load_peak(history)?;
+    if recent.iter().all(|sample| held_back(sample, peak)) {
+        return Some(Throttle::Power);
+    }
+    None
 }
 
 /// The marker for the status bar, from the sampler's retained history.
 pub fn throttled(history: &[crate::sampling::Sample]) -> Option<Throttle> {
-    throttled_from(history, crate::monitoring::cpu_base_mhz())
+    throttled_from(history)
 }
 
 /// The readings the bar can show, from the shared sampler's last frame.
@@ -844,35 +881,72 @@ mod tests {
     }
 
     #[test]
-    fn the_throttle_marker_is_inferred_from_two_busy_samples() {
-        let sample = |load, clock, temp| {
-            let mut s = crate::sampling::Sample::gap(0, 3000);
+    fn the_throttle_marker_uses_temperature_and_its_own_peak() {
+        let sample = |ts, load, clock, temp| {
+            let mut s = crate::sampling::Sample::gap(ts, 1000);
             s.cpu = Some(load);
             s.cpu_clock = Some(clock);
             s.cpu_temp = Some(temp);
             s
         };
-        let base = Some(3418.0);
-        // Busy and below nominal twice in a row: likely a power/current wall.
-        let held = [sample(90.0, 3000.0, 70.0), sample(85.0, 3100.0, 72.0)];
-        assert_eq!(throttled_from(&held, base), Some(Throttle::Power));
-        // Same, but at the thermal limit.
-        let hot = [sample(90.0, 3000.0, 96.0), sample(85.0, 3100.0, 95.0)];
-        assert_eq!(throttled_from(&hot, base), Some(Throttle::Thermal));
-        // One sample is not a window; an idle CPU clocking down is not a limit.
-        assert_eq!(throttled_from(&held[..1], base), None);
-        let idle = [sample(5.0, 800.0, 45.0), sample(4.0, 900.0, 45.0)];
-        assert_eq!(throttled_from(&idle, base), None);
-        // Turbo above nominal is never a limit, even at full load.
-        let turbo = [sample(100.0, 5000.0, 80.0), sample(100.0, 5000.0, 80.0)];
-        assert_eq!(throttled_from(&turbo, base), None);
-        // No nominal frequency, no claim.
-        assert_eq!(throttled_from(&held, None), None);
-        // A missing temperature cannot be called thermal.
-        let mut unknown = [sample(90.0, 3000.0, 0.0), sample(90.0, 3000.0, 0.0)];
-        unknown[0].cpu_temp = None;
-        unknown[1].cpu_temp = None;
-        assert_eq!(throttled_from(&unknown, base), Some(Throttle::Power));
+        let hot = |ts| sample(ts, 100.0, 5000.0, 98.0);
+        // 100 % at 98 C and 5 GHz is thermally limited even though 5 GHz is
+        // far above this machine's 3418 MHz base clock.
+        assert_eq!(
+            throttled_from(&[hot(0), hot(1000)]),
+            Some(Throttle::Thermal)
+        );
+        // Exactly at the line is thermal; one degree under is not.
+        let exact = [
+            sample(0, 100.0, 5000.0, 90.0),
+            sample(1000, 100.0, 5000.0, 90.0),
+        ];
+        assert_eq!(throttled_from(&exact), Some(Throttle::Thermal));
+        let warm = [
+            sample(0, 100.0, 5000.0, 89.0),
+            sample(1000, 100.0, 5000.0, 89.0),
+        ];
+        assert_eq!(throttled_from(&warm), None, "89 C is not a thermal wall");
+
+        // 5 % below the recent high-load peak, twice: a likely power/current
+        // limit, with no base clock involved.
+        let drop = [
+            sample(0, 100.0, 5000.0, 80.0),
+            sample(1000, 100.0, 5000.0, 80.0),
+            sample(2000, 100.0, 4750.0, 80.0),
+            sample(3000, 100.0, 4750.0, 80.0),
+        ];
+        assert_eq!(throttled_from(&drop), Some(Throttle::Power));
+        // One sample of jitter is not enough.
+        let jitter = [
+            sample(0, 100.0, 5000.0, 80.0),
+            sample(1000, 100.0, 5000.0, 80.0),
+            sample(2000, 100.0, 4700.0, 80.0),
+            sample(3000, 100.0, 5000.0, 80.0),
+        ];
+        assert_eq!(throttled_from(&jitter), None);
+        // Idle downclocking is not throttling.
+        let idle = [
+            sample(0, 100.0, 5000.0, 80.0),
+            sample(1000, 100.0, 5000.0, 80.0),
+            sample(2000, 5.0, 800.0, 45.0),
+            sample(3000, 5.0, 800.0, 45.0),
+        ];
+        assert_eq!(throttled_from(&idle), None);
+        // A thermal wall wins over a simultaneous frequency drop.
+        assert_eq!(
+            throttled_from(&[hot(0), sample(1000, 100.0, 4700.0, 98.0)]),
+            Some(Throttle::Thermal)
+        );
+        // The peak decays: a burst from 100 s ago no longer defines normal.
+        let decayed = [
+            sample(0, 100.0, 5000.0, 80.0),
+            sample(1000, 100.0, 5000.0, 80.0),
+            sample(2000, 5.0, 800.0, 45.0),
+            sample(103000, 100.0, 4200.0, 80.0),
+            sample(104000, 100.0, 4200.0, 80.0),
+        ];
+        assert_eq!(throttled_from(&decayed), None);
     }
 
     #[test]
