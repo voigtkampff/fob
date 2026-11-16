@@ -30,6 +30,7 @@
   } from "@lucide/svelte";
   import {
     overlaySettings,
+    FIELD_TIPS,
     settingsBlocks,
     toggleBlockVisibility,
     toggleMetric,
@@ -144,42 +145,12 @@
       patch.overlayMetrics = toggleMetric(overlay.metrics, block.field, true);
     saveOverlay(patch);
   }
-  /** Native-title text for a slot, including its current state. The button
-   * is aria-disabled rather than disabled so Chromium still shows this on a
-   * blocked row. */
-  function fieldTitle(
-    block: { on: boolean; label: string },
-    row: { id: MetricId; label: string; on: boolean },
-  ) {
-    const name = $t(row.label);
-    if (!block.on)
-      return $t("settings.overlayFieldBlocked", {
-        name,
-        block: $t(block.label),
-      });
-    return $t(row.on ? "settings.overlayFieldOn" : "settings.overlayFieldOff", {
-      name,
-    });
+  /** The tooltip is just the short field name; state lives in the icon. */
+  function fieldTitle(row: { id: MetricId; label: string }) {
+    return $t(FIELD_TIPS[row.id] ?? row.label);
   }
-  function chartTitle(block: { on: boolean; charted: boolean; label: string }) {
-    const name = $t(block.label);
-    if (!block.on) return $t("settings.overlayChartBlocked", { name });
-    return $t(
-      block.charted
-        ? "settings.overlayChartShown"
-        : "settings.overlayChartHidden",
-      { name },
-    );
-  }
-  function singleChartTitle(block: {
-    on: boolean;
-    charted: boolean;
-    chartable: boolean;
-    label: string;
-  }) {
-    const name = $t(block.label);
-    if (!block.chartable) return $t("settings.overlayNoChart", { name });
-    return chartTitle(block);
+  function chartTitle() {
+    return $t("overlay.child.chart");
   }
   onMount(() => {
     let disposed = false;
@@ -487,7 +458,7 @@
                                   class:blocked={!block.chartable || !block.on}
                                   aria-disabled={!block.chartable || !block.on}
                                   aria-pressed={block.charted}
-                                  aria-label={singleChartTitle(block)}
+                                  aria-label={chartTitle()}
                                   onclick={() => {
                                     if (
                                       !block.chartable ||
@@ -508,8 +479,8 @@
                                 >
                               {/snippet}
                             </Tooltip.Trigger>
-                            <Tooltip.Content side="bottom" sideOffset={4}
-                              >{singleChartTitle(block)}</Tooltip.Content
+                            <Tooltip.Content side="top" sideOffset={4}
+                              >{chartTitle()}</Tooltip.Content
                             >
                           </Tooltip.Root>
                         {/if}
@@ -558,7 +529,7 @@
                                         class:blocked={!block.on}
                                         aria-disabled={!block.on}
                                         aria-pressed={row.on}
-                                        aria-label={fieldTitle(block, row)}
+                                        aria-label={fieldTitle(row)}
                                         onclick={() => {
                                           if (!block.on) return;
                                           setMetrics(
@@ -572,8 +543,8 @@
                                       >
                                     {/snippet}
                                   </Tooltip.Trigger>
-                                  <Tooltip.Content side="bottom" sideOffset={4}
-                                    >{fieldTitle(block, row)}</Tooltip.Content
+                                  <Tooltip.Content side="top" sideOffset={4}
+                                    >{fieldTitle(row)}</Tooltip.Content
                                   >
                                 </Tooltip.Root>
                               {/each}
@@ -589,7 +560,7 @@
                                     class:blocked={!block.on}
                                     aria-disabled={!block.on}
                                     aria-pressed={block.charted}
-                                    aria-label={chartTitle(block)}
+                                    aria-label={chartTitle()}
                                     onclick={() => {
                                       if (!block.on || !block.chartField)
                                         return;
@@ -606,8 +577,8 @@
                                   >
                                 {/snippet}
                               </Tooltip.Trigger>
-                              <Tooltip.Content side="bottom" sideOffset={4}
-                                >{chartTitle(block)}</Tooltip.Content
+                              <Tooltip.Content side="top" sideOffset={4}
+                                >{chartTitle()}</Tooltip.Content
                               >
                             </Tooltip.Root>
                           </div>

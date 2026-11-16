@@ -32,6 +32,22 @@ export const DEFAULT_FIELD_ORDER = {
   cpu: [...FIELD_SLOTS.cpu],
   gpu: [...FIELD_SLOTS.gpu],
 };
+/** The short name a settings icon's tooltip shows. State is not part of it;
+ * the icon's own on/off/blocked look carries that. */
+export const FIELD_TIPS = {
+  cpu: "overlay.child.usage",
+  cpuPower: "overlay.child.power",
+  cpuTemp: "overlay.child.temp",
+  cpuVoltage: "overlay.child.voltage",
+  cpuClock: "overlay.child.clock",
+  gpu: "overlay.child.usage",
+  power: "overlay.child.power",
+  gpuTemp: "overlay.child.temp",
+  ram: "overlay.metric.ram",
+  vram: "overlay.metric.vram",
+  disk: "overlay.metric.disk",
+  net: "overlay.metric.net",
+};
 
 /** The bar's blocks, in their default order. `fields` is the full slot set;
  * `rows` only names the settings switches. A single-row block (memory,

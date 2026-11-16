@@ -6,6 +6,7 @@ import {
   BLOCK_IDS,
   DEFAULT_BLOCKS,
   DEFAULT_FIELD_ORDER,
+  FIELD_TIPS,
   overlayVisibleBlocks,
   overlayBlockOrder,
   overlayFieldOrder,
@@ -362,6 +363,21 @@ assert.ok(
   skipDelay >= 400 && skipDelay <= 600,
   "adjacent icons skip the delay for 400–600 ms",
 );
+assert.ok(settingsSource.includes('side="top"'), "tooltip sits above the icon");
+assert.ok(
+  !settingsSource.includes("overlayFieldOn"),
+  "tooltip copy is only the field name, not its state",
+);
+for (const id of METRICS) {
+  assert.match(
+    FIELD_TIPS[id],
+    /^overlay\.(child|metric)\./,
+    `${id} has a short tooltip key`,
+  );
+}
+assert.equal(FIELD_TIPS.cpuPower, "overlay.child.power");
+assert.equal(FIELD_TIPS.power, "overlay.child.power");
+assert.equal(FIELD_TIPS.cpuClock, "overlay.child.clock");
 assert.ok(!settingsSource.includes("native-tip"), "no custom tooltip CSS");
 assert.ok(!settingsSource.includes("showTitle"), "no custom tooltip timer");
 assert.ok(!settingsSource.includes("clearTitle"), "no custom tooltip timer");
