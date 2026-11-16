@@ -1,8 +1,9 @@
 // fob-sensors wire format: one JSON object per line.
-// {"ts":<unix ms>,"sensors":[{"hw":..,"id":..,"name":..,"type":"Temperature"|"Fan"|"Control"|"Voltage","value":<number|null>}],
+// {"ts":<unix ms>,"sensors":[{"hw":..,"id":..,"name":..,"type":"Temperature"|"Fan"|"Control"|"Voltage"|"Power","value":<number|null>}],
 //  "net":{"ms":<interval>,"procs":[{"pid":..,"name":..,"rx":<bytes>,"tx":<bytes>}]}}
 //  ("net" only while ETW runs; "name" is the helper's best guess, winperf prefers its own by pid)
 // Hand-written (no System.Text.Json) so it is tiny, culture-proof and testable on any .NET.
+using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Text;
@@ -25,30 +26,72 @@ namespace WinperfSensors
 
     public static class Wire
     {
-        public static readonly string[] Types = { "Temperature", "Fan", "Control", "Voltage" };
+        public static readonly string[] Types = { "Temperature", "Fan", "Control", "Voltage", "Power" };
 
-        // Voltage goes on the wire for the CPU's own rails only: an identifier
-        // under /intelcpu/, /amdcpu/ or /cpu/, or a Super I/O channel the board
-        // labels for the CPU ("Vcore", "CPU Termination"). Every other channel
-        // of a Super I/O chip is a whole-board rail (AVCC, +3.3V, 5V, 12V,
-        // "Voltage #N") and stays here.
+        static bool CpuId(string id)
+        {
+            return id.StartsWith("/intelcpu/", System.StringComparison.OrdinalIgnoreCase)
+                || id.StartsWith("/amdcpu/", System.StringComparison.OrdinalIgnoreCase)
+                || id.StartsWith("/cpu/", System.StringComparison.OrdinalIgnoreCase);
+        }
+
+        // Rails reported next to the core supply that do not measure it:
+        // the termination rail, the memory / IO / PLL supplies and an APU's
+        // SoC rail. They never reach the UI (helper 0.8.4).
+        static bool NonCoreRail(string name)
+        {
+            var words = new[] { "termination", "vccio", "vccsa", "vccin", "vddq", "vtt", "pll", "soc" };
+            foreach (var word in words)
+                if (name.IndexOf(word, System.StringComparison.OrdinalIgnoreCase) >= 0) return true;
+            return false;
+        }
+
+        // Voltage goes on the wire for the CPU's core supply only: an
+        // identifier under /intelcpu/, /amdcpu/ or /cpu/, or a Super I/O
+        // channel the board labels for the CPU ("Vcore"). Every other
+        // channel of a Super I/O chip is a whole-board rail (AVCC, +3.3V,
+        // 5V, 12V, "Voltage #N") and stays here. A rail listed in
+        // NonCoreRail is not the core supply either. Power goes on the wire
+        // for the CPU package only (LHM reports it in W); a GPU's power comes
+        // from NVML in winperf, not from here.
         public static bool Wanted(Reading r)
         {
             if (System.Array.IndexOf(Types, r.Type) < 0) return false;
-            if (r.Type != "Voltage") return true;
             var id = r.Id ?? "";
-            if (id.StartsWith("/intelcpu/", System.StringComparison.OrdinalIgnoreCase)
-                || id.StartsWith("/amdcpu/", System.StringComparison.OrdinalIgnoreCase)
-                || id.StartsWith("/cpu/", System.StringComparison.OrdinalIgnoreCase)) return true;
             var name = r.Name ?? "";
+            if (r.Type == "Power")
+                return CpuId(id) && name.IndexOf("package", System.StringComparison.OrdinalIgnoreCase) >= 0;
+            if (r.Type != "Voltage") return true;
+            if (NonCoreRail(name)) return false;
+            if (CpuId(id)) return true;
             return name.IndexOf("vcore", System.StringComparison.OrdinalIgnoreCase) >= 0
                 || name.IndexOf("cpu", System.StringComparison.OrdinalIgnoreCase) >= 0;
         }
 
-        public static string Line(long ts, IEnumerable<Reading> readings) => Line(ts, readings, null, 0);
+        public static string Line(long ts, IEnumerable<Reading> readings) =>
+            Line(ts, readings, null, 0, null);
+
+        /// <summary>
+        /// One helper line. The throttle provider is a parameter, not an
+        /// optional argument, so a caller cannot silently drop the MSR state
+        /// again (the 0.8.5 bug).
+        /// </summary>
+        public static string UpdateLine(
+            long ts,
+            IEnumerable<Reading> readings,
+            IEnumerable<NetUsage> net,
+            long netMs,
+            Func<ThrottleState> throttle) =>
+            Line(ts, readings, net, netMs, throttle());
 
         /// <param name="net">Per-process bytes in the last <paramref name="netMs"/> ms, or null when not tracing.</param>
-        public static string Line(long ts, IEnumerable<Reading> readings, IEnumerable<NetUsage> net, long netMs)
+        /// <param name="throttle">MSR-derived throttle state, or null when the helper has none.</param>
+        public static string Line(
+            long ts,
+            IEnumerable<Reading> readings,
+            IEnumerable<NetUsage> net,
+            long netMs,
+            ThrottleState throttle)
         {
             var sb = new StringBuilder(4096);
             sb.Append("{\"ts\":").Append(ts.ToString(CultureInfo.InvariantCulture)).Append(",\"sensors\":[");
@@ -66,6 +109,11 @@ namespace WinperfSensors
                 sb.Append('}');
             }
             sb.Append(']');
+            if (throttle != null)
+            {
+                sb.Append(",\"throttle\":");
+                ThrottleJson(sb, throttle);
+            }
             if (net != null)
             {
                 sb.Append(",\"net\":{\"ms\":").Append(netMs.ToString(CultureInfo.InvariantCulture)).Append(",\"procs\":[");
@@ -82,6 +130,24 @@ namespace WinperfSensors
                 sb.Append("]}");
             }
             return sb.Append('}').ToString();
+        }
+
+        static void ThrottleJson(StringBuilder sb, ThrottleState t)
+        {
+            sb.Append("{\"supported\":").Append(t.Supported ? "true" : "false");
+            sb.Append(",\"thermal\":").Append(t.Thermal ? "true" : "false");
+            sb.Append(",\"thermalLog\":").Append(t.ThermalLog ? "true" : "false");
+            sb.Append(",\"prochot\":").Append(t.Prochot ? "true" : "false");
+            sb.Append(",\"prochotLog\":").Append(t.ProchotLog ? "true" : "false");
+            sb.Append(",\"package\":").Append(t.Package ? "true" : "false");
+            sb.Append(",\"distanceToTjMax\":");
+            if (t.DistanceToTjMax.HasValue)
+                sb.Append(t.DistanceToTjMax.Value.ToString(CultureInfo.InvariantCulture));
+            else
+                sb.Append("null");
+            sb.Append(",\"thermalPercent\":").Append(t.ThermalPercent.ToString("0.#", CultureInfo.InvariantCulture));
+            sb.Append(",\"packagePercent\":").Append(t.PackagePercent.ToString("0.#", CultureInfo.InvariantCulture));
+            sb.Append('}');
         }
 
         static void Num(StringBuilder sb, float? v)

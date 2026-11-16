@@ -1,5 +1,5 @@
 /** @typedef {import('../types').SensorSetupStatus} Status */
-/** @typedef {'unsupported'|'checking'|'unavailable'|'missing-files'|'install'|'update'|'repair'|'current'|'stopped'} HelperKind */
+/** @typedef {'unsupported'|'checking'|'unavailable'|'missing-files'|'install'|'update'|'retask'|'repair'|'current'|'stopped'} HelperKind */
 /** @typedef {{kind: HelperKind, enable: boolean, disable: boolean}} HelperView */
 /** @typedef {{kind:'idle'}|{kind:'checking'}|{kind:'confirm',enable:boolean}|{kind:'working',enable:boolean}} Activity */
 /** @typedef {{kind:'none'}|{kind:'success',enable:boolean}|{kind:'cancelled'}|{kind:'error',message:string}} Feedback */
@@ -18,8 +18,13 @@ export function helperView(status, feedback) {
     status.pawnio_installed
   )
     kind = status.running ? "current" : "stopped";
-  else if (!status.bundled) kind = "missing-files";
+  // A missing install is always actionable, even when the bundle is also
+  // broken: the click reports the exact file instead of leaving a dead card.
   else if (!status.installed && status.task === "missing") kind = "install";
+  else if (!status.bundled) kind = "missing-files";
+  // The task runs a helper from an older folder: rebuild it, don't confuse it
+  // with a corrupt bundled helper.
+  else if (status.installed && status.task === "mismatch") kind = "retask";
   else if (
     status.installed &&
     status.update_available &&
@@ -30,8 +35,7 @@ export function helperView(status, feedback) {
   return {
     kind,
     enable:
-      ["install", "update", "repair", "stopped"].includes(kind) &&
-      !!status?.bundled &&
+      ["install", "update", "retask", "repair", "stopped"].includes(kind) &&
       !status?.busy,
     disable:
       !!status?.supported &&

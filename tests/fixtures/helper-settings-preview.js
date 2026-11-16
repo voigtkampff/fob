@@ -13,6 +13,7 @@ const outcome = params.get("outcome") ?? "success";
 const absent = {
   supported: true,
   bundled: true,
+  bundle_error: null,
   pawnio_installed: false,
   installed: false,
   task: "missing",

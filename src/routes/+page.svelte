@@ -437,6 +437,7 @@
             {isFrozen}
             unavailable={!!error}
             sensors={$processStore.extra?.sensors?.sensors ?? []}
+            throttle={$processStore.extra?.sensors?.throttle ?? null}
             started={$processStore.extra?.started ?? null}
             sources={$processStore.extra?.sensors?.sources ?? []}
             onOpenSpace={() => (tab = "space")}

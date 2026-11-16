@@ -10,6 +10,7 @@
     ResourceSample,
     Sensor,
     SystemStats,
+    ThrottleReport,
   } from "$lib/types";
   import type { DetailKind } from "./detail";
   import {
@@ -50,6 +51,7 @@
   export let gpus: GpuDevice[] = [];
   export let history: ResourceSample[] = [];
   export let sensors: Sensor[] = [];
+  export let throttle: ThrottleReport | null = null;
   export let sources: string[] = [];
   export let commit: [number, number] | null = null;
   /** Per-process network rates from the sensor helper; null without it. */
@@ -217,6 +219,21 @@
         {/each}
       </div>
     {/if}
+    <div class="panel">
+      <div class="list-head"><span>{$t("throttle.title")}</span></div>
+      {#if throttle?.supported}
+        <div class="item">
+          <span class="name">{$t("throttle.tjmaxDistance")}</span><span
+            class="num"
+            >{throttle.distanceToTjMax == null
+              ? "—"
+              : `${throttle.distanceToTjMax} °C`}</span
+          >
+        </div>
+      {:else}
+        <p class="note">{$t("throttle.unsupported")}</p>
+      {/if}
+    </div>
     <div class="panel">
       <div class="list-head">
         <span>{$t("detail.topProcs")}</span><span>% CPU</span>

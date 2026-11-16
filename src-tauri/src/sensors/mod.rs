@@ -24,6 +24,8 @@ pub enum SensorKind {
     Control,
     /// V, CPU only: see `is_cpu_voltage`
     Voltage,
+    /// W, CPU package only: see `is_cpu_power`
+    Power,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize)]
@@ -37,11 +39,34 @@ pub struct Sensor {
     pub source: String,
 }
 
+/// MSR-derived throttle state from the helper (0.8.5+). `supported: false`
+/// means the machine/driver/helper could not read the MSRs, so the UI shows
+/// "not supported" instead of guessing.
+#[derive(Clone, Debug, Default, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ThrottleReport {
+    pub supported: bool,
+    pub thermal: bool,
+    pub thermal_log: bool,
+    pub prochot: bool,
+    pub prochot_log: bool,
+    /// MSR 0x613 advanced during the helper's last interval.
+    pub package: bool,
+    /// Hottest core/package distance to TjMax, °C. Serde's camelCase would
+    /// write "distanceToTjmax"; the UI and wire both say "distanceToTjMax".
+    #[serde(rename = "distanceToTjMax")]
+    pub distance_to_tjmax: Option<i32>,
+    pub thermal_percent: f64,
+    pub package_percent: f64,
+}
+
 #[derive(Clone, Debug, Default, Serialize)]
 pub struct SensorReport {
     pub sensors: Vec<Sensor>,
     /// Names of the sources that answered this round.
     pub sources: Vec<String>,
+    /// MSR throttle state (helper); None when the source has no such data.
+    pub throttle: Option<ThrottleReport>,
     /// Per-process network bytes from the helper's ETW session (not sent to
     /// the UI as is; `sampling` turns it into named per-app rates).
     #[serde(skip)]
@@ -54,6 +79,10 @@ pub trait SensorSource: Send + Debug {
     fn read(&mut self) -> Option<Vec<Sensor>>;
     /// Per-process network bytes that came with the last `read`, if any.
     fn net(&mut self) -> Option<pipe::NetSample> {
+        None
+    }
+    /// MSR throttle state that came with the last `read`, if any.
+    fn throttle(&mut self) -> Option<ThrottleReport> {
         None
     }
 }
@@ -106,12 +135,35 @@ pub fn device(s: &Sensor) -> Device {
     }
 }
 
-/// Whether a voltage reading is the CPU's: its own hardware (`/intelcpu/`,
-/// `/amdcpu/`, `/cpu/`), or the Super I/O channel a board names after the CPU
-/// ("Vcore", "CPU Termination"). Every other channel of a board is a
-/// whole-board rail (AVCC, +3.3V, 5V, 12V, "Voltage #7") and never reaches
-/// the UI. Same rule as Wire.Wanted in sensors-helper/src/Wire.cs.
+/// Rails a board or a CPU reports next to the core supply but that do not
+/// measure it: the termination rail, the memory/IO/PLL supplies and an
+/// APU's SoC rail. They never reach the UI (0.8.13).
+fn is_non_core_rail(name: &str) -> bool {
+    [
+        "termination",
+        "vccio",
+        "vccsa",
+        "vccin",
+        "vddq",
+        "vtt",
+        "pll",
+        "soc",
+    ]
+    .iter()
+    .any(|word| name.contains(word))
+}
+
+/// Whether a voltage reading is the CPU's core supply: its own hardware
+/// (`/intelcpu/`, `/amdcpu/`, `/cpu/`) or the Super I/O channel a board names
+/// after the CPU ("Vcore"). Every other channel of a board is a whole-board
+/// rail (AVCC, +3.3V, 5V, 12V, "Voltage #7"), and a rail in
+/// `is_non_core_rail` ("CPU Termination") is not the core supply either.
+/// Same rule as Wire.Wanted in sensors-helper/src/Wire.cs.
 pub fn is_cpu_voltage(s: &Sensor) -> bool {
+    let name = s.name.to_lowercase();
+    if is_non_core_rail(&name) {
+        return false;
+    }
     let id = s.id.to_lowercase();
     if ["/intelcpu/", "/amdcpu/", "/cpu/"]
         .iter()
@@ -119,8 +171,14 @@ pub fn is_cpu_voltage(s: &Sensor) -> bool {
     {
         return true;
     }
-    let name = s.name.to_lowercase();
     name.contains("vcore") || name.contains("cpu")
+}
+
+/// Whether a power reading is the CPU package's. LHM reports power in W; the
+/// helper sends only this sensor, and the hub drops anything else (a GPU's
+/// power comes from NVML, not from here). Same rule as Wire.Wanted.
+pub fn is_cpu_power(s: &Sensor) -> bool {
+    device(s) == Device::Cpu && s.name.to_lowercase().contains("package")
 }
 
 /// NVIDIA GPU temperature / fan duty, read through NeoHtop's NVML GPU code.
@@ -184,12 +242,15 @@ impl SensorHub {
         for source in &mut self.sources {
             if let Some(sensors) = source.read() {
                 report.sources.push(source.name().into());
-                report.sensors.extend(
-                    sensors
-                        .into_iter()
-                        .filter(|s| s.kind != SensorKind::Voltage || is_cpu_voltage(s)),
-                );
+                report
+                    .sensors
+                    .extend(sensors.into_iter().filter(|s| match s.kind {
+                        SensorKind::Voltage => is_cpu_voltage(s),
+                        SensorKind::Power => is_cpu_power(s),
+                        _ => true,
+                    }));
                 report.net = source.net();
+                report.throttle = source.throttle();
                 break;
             }
         }
@@ -259,10 +320,16 @@ mod tests {
             source: "test".into(),
         };
         assert!(is_cpu_voltage(&s("/lpc/nct6798d/0/voltage/0", "Vcore")));
-        assert!(is_cpu_voltage(&s(
+        // Not a core-supply rail: it must not reach the UI or the headline.
+        assert!(!is_cpu_voltage(&s(
             "/lpc/nct6798d/0/voltage/9",
             "CPU Termination"
         )));
+        assert!(!is_cpu_voltage(&s(
+            "/lpc/nct6798d/0/voltage/10",
+            "CPU VCCIO"
+        )));
+        assert!(!is_cpu_voltage(&s("/amdcpu/0/voltage/1", "SoC (SVI2 TFN)")));
         assert!(is_cpu_voltage(&s("/intelcpu/0/voltage/0", "CPU Core")));
         assert!(is_cpu_voltage(&s("/intelcpu/0/voltage/8", "P-Core #8")));
         assert!(is_cpu_voltage(&s("/amdcpu/0/voltage/0", "Core (SVI2 TFN)")));
@@ -275,7 +342,42 @@ mod tests {
         )));
     }
     #[test]
-    fn hub_drops_whole_board_rails() {
+    fn only_the_cpu_package_power_is_kept() {
+        let s = |id: &str, name: &str| Sensor {
+            hardware: "Example".into(),
+            id: id.into(),
+            name: name.into(),
+            kind: SensorKind::Power,
+            value: 85.0,
+            source: "test".into(),
+        };
+        assert!(is_cpu_power(&s("/intelcpu/0/power/0", "CPU Package")));
+        assert!(is_cpu_power(&s("/amdcpu/0/power/2", "Package")));
+        assert!(!is_cpu_power(&s("/intelcpu/0/power/1", "CPU Cores")));
+        assert!(!is_cpu_power(&s("/gpu-nvidia/0/power/0", "GPU Package")));
+    }
+    #[test]
+    fn hub_drops_whole_board_rails_and_other_power() {
+        let gpu_power = Sensor {
+            hardware: "NVIDIA Example GPU".into(),
+            id: "/gpu-nvidia/0/power/0".into(),
+            name: "GPU Package".into(),
+            kind: SensorKind::Power,
+            value: 200.0,
+            source: "Fixed".into(),
+        };
+        let cpu_power = Sensor {
+            hardware: "Example Hybrid CPU".into(),
+            id: "/intelcpu/0/power/0".into(),
+            name: "CPU Package".into(),
+            kind: SensorKind::Power,
+            value: 85.3,
+            source: "Fixed".into(),
+        };
+        let mut power_hub = SensorHub {
+            sources: vec![Box::new(Fixed(Some(vec![gpu_power, cpu_power.clone()])))],
+        };
+        assert_eq!(power_hub.read(&[]).sensors, vec![cpu_power]);
         let rail = Sensor {
             hardware: "Example Board".into(),
             id: "/lpc/example/0/voltage/3".into(),

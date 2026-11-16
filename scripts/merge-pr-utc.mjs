@@ -11,13 +11,29 @@ const execute = (command, args) =>
     stdio: ["ignore", "pipe", "pipe"],
   });
 
-export function readUtcCommit(raw) {
+/** Raw proof of a commit: its tree, parents and UTC metadata.
+ *
+ * GitHub's rebase merge keeps the source author line exactly as pushed
+ * (+0000), but writes the merged commit's **committer** in GitHub's own time
+ * zone, which is -0800 today. That offset is GitHub's known behaviour, not a
+ * sign of a rewritten commit, so the merged commit may carry either +0000 or
+ * -0800 there. The source commit (the one this PR pushes) must still be
+ * +0000 for both. Everything that proves the merge — tree, parents and the
+ * author line — stays asserted: this is not a pass-everything switch.
+ * @param {string} raw `git cat-file commit <sha>` output
+ * @param {{ committerOffsets?: string[] }} [options] */
+export function readUtcCommit(raw, { committerOffsets = ["+0000"] } = {}) {
   const headers = raw.split("\n\n", 1)[0];
   for (const role of ["author", "committer"]) {
-    const match = headers.match(
+    const offset = headers.match(
       new RegExp(`^${role} .+ <[^>]+> \\d+ ([+-]\\d{4})$`, "m"),
+    )?.[1];
+    assert.ok(offset, `${role} metadata is required`);
+    const allowed = role === "author" ? ["+0000"] : committerOffsets;
+    assert.ok(
+      allowed.includes(offset),
+      `${role} metadata must use ${allowed.join(" or ")}, not ${offset}`,
     );
-    assert.equal(match?.[1], "+0000", `${role} metadata must use +0000`);
   }
   const tree = headers.match(/^tree ([0-9a-f]{40})$/m)?.[1];
   assert.match(tree ?? "", shaPattern, "Commit tree metadata is required");
@@ -132,7 +148,14 @@ export function mergeUtc(
   );
   try {
     git(["fetch", "origin", result.sha]);
-    const mergedCommit = readUtcCommit(git(["cat-file", "commit", result.sha]));
+    const mergedCommit = readUtcCommit(
+      git(["cat-file", "commit", result.sha]),
+      {
+        // GitHub writes the merge commit's committer as -0800; the author stays
+        // +0000. Both are accepted so a real merge is not reported as failed.
+        committerOffsets: ["+0000", "-0800"],
+      },
+    );
     assert.equal(
       mergedCommit.tree,
       sourceCommit.tree,
@@ -145,7 +168,7 @@ export function mergeUtc(
     );
   } catch {
     throw new Error(
-      `PR already merged as ${result.sha}; raw UTC/tree/ancestry verification failed. Stop without retrying or rewriting history.`,
+      `PR already merged as ${result.sha}; the tree, parent or author check failed. The committer time zone is not the cause (GitHub writes -0800 there). Stop without retrying or rewriting history.`,
     );
   }
   return result.sha;
@@ -162,7 +185,7 @@ if (
       "Usage: node scripts/merge-pr-utc.mjs PR_NUMBER CHECKED_HEAD_SHA",
     );
     console.log(
-      `Merged with raw author and committer +0000: ${mergeUtc(process.argv[2], process.argv[3])}`,
+      `Merged; tree, parents and author +0000 verified (GitHub writes -0800 on the merged commit's committer): ${mergeUtc(process.argv[2], process.argv[3])}`,
     );
   } catch (error) {
     console.error(error.message);

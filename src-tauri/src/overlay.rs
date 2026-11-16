@@ -598,6 +598,15 @@ pub struct Reading {
     pub cpu: Option<f64>,
     pub cpu_temp: Option<f64>,
     pub cpu_voltage: Option<f64>,
+    /// "measured" (board Vcore / CPU SVI2) or "requested" (CPU VID); the
+    /// bar writes Vcore or VID from it, and no prefix when both are missing.
+    pub cpu_voltage_source: Option<crate::sampling::VoltageSource>,
+    /// Effective CPU frequency, MHz (see monitoring::cpu_clock).
+    pub cpu_clock: Option<f64>,
+    /// CPU package power, W; separate from `gpu_power`.
+    pub cpu_power: Option<f64>,
+    /// Real MSR-derived throttle state; None with a helper older than 0.8.5.
+    pub throttle: Option<crate::sensors::ThrottleReport>,
     pub gpu: Option<f64>,
     pub gpu_temp: Option<f64>,
     pub ram_used: Option<u64>,
@@ -624,6 +633,10 @@ pub async fn overlay_reading(app: AppHandle) -> Result<Reading, String> {
         cpu: last.and_then(|s| s.cpu),
         cpu_temp: last.and_then(|s| s.cpu_temp),
         cpu_voltage: last.and_then(|s| s.cpu_voltage),
+        cpu_voltage_source: last.and_then(|s| s.cpu_voltage_source),
+        cpu_clock: last.and_then(|s| s.cpu_clock),
+        cpu_power: last.and_then(|s| s.cpu_power),
+        throttle: f.extra.sensors.throttle.clone(),
         gpu: gpu.and_then(|g| g.utilization),
         gpu_temp: last
             .and_then(|s| s.gpu_temp)

@@ -94,7 +94,7 @@ static class WireTests
         var fixture = Path.Combine(AppContext.BaseDirectory, "../../../../../src-tauri/tests/fixtures/sensors-pipe.jsonl");
         var lines = new List<string>();
         for (var tick = 0; tick < 3; tick++)
-            lines.Add(Wire.Line(1793612400000 + tick * 1000L, Sample(tick), Net(tick), 1000));
+            lines.Add(Wire.Line(1793612400000 + tick * 1000L, Sample(tick), Net(tick), 1000, null));
         var oldStyle = Wire.Line(1793612400000, Sample(0)); // helper without ETW
         var text = string.Join("\n", lines) + "\n";
 
@@ -126,8 +126,53 @@ static class WireTests
         Check(!Wire.Wanted(new Reading(Board, null, "Voltage #4", "Voltage", 1.2f))
             && !Wire.Wanted(new Reading(Board, "", null, "Voltage", 1.2f)),
             "voltage without an id or a CPU word in its name is dropped (null-safe)");
+        Check(!Wire.Wanted(new Reading(Board, "/lpc/example/0/voltage/9", "CPU Termination", "Voltage", 0.54f)),
+            "CPU Termination is not the core supply");
+        Check(!Wire.Wanted(new Reading(Board, "/lpc/example/0/voltage/10", "CPU VCCIO", "Voltage", 1.05f)),
+            "CPU VCCIO is not the core supply");
+        Check(!Wire.Wanted(new Reading("Example APU", "/amdcpu/0/voltage/1", "SoC (SVI2 TFN)", "Voltage", 1.05f)),
+            "an APU SoC rail is not the core supply");
+        Check(Wire.Wanted(new Reading(Cpu, "/intelcpu/0/power/0", "CPU Package", "Power", 85.3f)),
+            "CPU package power is sent (LHM reports W)");
+        Check(!Wire.Wanted(new Reading(Gpu, "/gpu-nvidia/0/power/0", "GPU Package", "Power", 200f)),
+            "GPU power stays out: it comes from NVML");
+        Check(!Wire.Wanted(new Reading(Cpu, "/intelcpu/0/power/1", "CPU Cores", "Power", 60f)),
+            "only the package power sensor is sent");
+        Check(Wire.Line(1793612400000, new[] { new Reading(Cpu, "/intelcpu/0/power/0", "CPU Package", "Power", 85.3f) })
+                .Contains("\"id\":\"/intelcpu/0/power/0\",\"name\":\"CPU Package\",\"type\":\"Power\",\"value\":85.3"),
+            "power goes on the wire with its W value");
         Check(NetAgg.Direction(10) == 1 && NetAgg.Direction(59) == -1 && NetAgg.Direction(18) == 0, "directions");
         var onDisk = File.Exists(fixture) ? File.ReadAllText(fixture) : "";
+        // MSR-derived throttle: pure decoding, degradation and the wire field.
+        Check(MsrDecode.Thermal(0x1) && MsrDecode.ThermalLog(0x2)
+            && MsrDecode.Prochot(0x4) && MsrDecode.ProchotLog(0x8),
+            "thermal status/log and PROCHOT bits");
+        Check(MsrDecode.DistanceToTjMax(0x0000000088143280UL) == 20,
+            "distance to TjMax is bits 16-22");
+        Check(MsrDecode.PackageTimerAdvanced(11, 10) && !MsrDecode.PackageTimerAdvanced(10, 10)
+            && !MsrDecode.PackageTimerAdvanced(10, null),
+            "0x613 timer only counts a change after a baseline");
+        var window = new ThrottleWindow();
+        window.Add(true, false);
+        window.Add(false, true);
+        window.Add(true, false);
+        window.Add(false, false);
+        Check(window.ThermalPercent == 50 && window.PackagePercent == 25,
+            "throttle duty cycle over the sample window");
+        var throttled = new ThrottleState
+        {
+            Supported = true, Thermal = true, Package = true,
+            ThermalPercent = 50, PackagePercent = 25, DistanceToTjMax = 20,
+        };
+        Check(Wire.Line(1793612400000, Sample(0), null, 0, throttled)
+                .Contains("\"throttle\":{\"supported\":true,\"thermal\":true,\"thermalLog\":false,\"prochot\":false,\"prochotLog\":false,\"package\":true,\"distanceToTjMax\":20,\"thermalPercent\":50,\"packagePercent\":25}"),
+            "throttle state goes on the wire");
+        Check(Wire.UpdateLine(1793612400000, Sample(0), null, 0, () => throttled)
+                .Contains("\"throttle\":"),
+            "the line assembly path carries a non-null throttle");
+        Check(!Wire.UpdateLine(1793612400000, Sample(0), null, 0, () => null)
+                .Contains("\"throttle\""),
+            "an unavailable MSR reader omits the throttle field");
         Check(onDisk == text, "fixture " + Path.GetFullPath(fixture) + " is up to date (run with --write)");
         Console.WriteLine(failures == 0 ?  $"PASS: {checks} checks, sensor fixture and MFT request validation" : $"FAIL: {failures}");
         return failures == 0 ? 0 : 1;

@@ -232,7 +232,7 @@ export function topBy(items, key, count = 10) {
 }
 
 /** Pick headline readings for the Temp & fan card.
- * @param {{ hardware: string, id?: string, name: string, kind: "temperature" | "fan" | "control" | "voltage", value: number }[]} sensors
+ * @param {{ hardware: string, id?: string, name: string, kind: "temperature" | "fan" | "control" | "voltage" | "power", value: number }[]} sensors
  */
 export function sensorSummary(sensors) {
   const list = sensors ?? [];
@@ -253,11 +253,23 @@ export function sensorSummary(sensors) {
   const fan = fans.length
     ? fans.reduce((a, b) => (b.value > a.value ? b : a))
     : (list.find((s) => s.kind === "control") ?? null);
+  // LHM's CPU package power (W): the only power sensor the helper sends, and
+  // the one the details page labels "CPU package power" to separate it from
+  // the GPU's power.
+  const cpuPower =
+    list.find(
+      (s) =>
+        s.kind === "power" &&
+        Number.isFinite(s.value) &&
+        sensorDevice(s) === "cpu" &&
+        s.name.toLowerCase().includes("package"),
+    ) ?? null;
   return {
     cpuTemp,
     gpuTemp,
     fan,
     cpuVoltage: voltageReadings(list)[0] ?? null,
+    cpuPower,
     count: list.length,
   };
 }
@@ -329,15 +341,19 @@ export function formatSensor(s) {
 /** Natural order for sensor names ("Fan #2" before "Fan #10"). */
 const natural = new Intl.Collator("en", { numeric: true, sensitivity: "base" });
 
-/** Which CPU voltage to show first (lower is better): the board's real VCore
- * rail, then the CPU's own "CPU Core" reading (its requested VID), then the
- * per-core values, then the rest (CPU Termination and the like).
+/** Which voltage reading is the CPU's core supply: the board's VCore rail
+ * (0), the CPU's own request "CPU Core" (1), or neither (2). The measured
+ * rail wins; a per-core voltage or a non-core rail (CPU Termination) is not
+ * a headline candidate. SVI2 is the CPU's own core telemetry (AMD), so it
+ * counts as measured. Same rule as voltage_source in
+ * src-tauri/src/sampling.rs.
  * @param {string} name */
 export function voltageRank(name) {
   const n = name.trim().toLowerCase();
   if (n.includes("vcore")) return 0;
   if (n.includes("cpu core")) return 1;
-  return n.includes("core") ? 2 : 3;
+  if (n.includes("svi2")) return 0;
+  return 2;
 }
 
 /** Every voltage reading, headline pick first, names in natural order within
@@ -498,6 +514,7 @@ export function setupState(status) {
     "missing-files": "missing-files",
     install: "enable",
     repair: "repair",
+    retask: "repair",
     update: "update",
     current: "ready",
     stopped: "starting",

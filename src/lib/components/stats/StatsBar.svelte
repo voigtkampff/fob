@@ -15,6 +15,7 @@
     ResourceSample,
     GpuDevice,
     Sensor,
+    ThrottleReport,
   } from "$lib/types";
   import {
     CpuPanel,
@@ -30,6 +31,7 @@
   export let isFrozen = false;
   export let unavailable = false;
   export let sensors: Sensor[] = [];
+  export let throttle: ThrottleReport | null = null;
   export let started: [number, string] | null = null;
   export let sources: string[] = [];
   export let onOpenSpace: () => void = () => {};
@@ -63,6 +65,7 @@
             {capturedAt}
             cpuUsage={systemStats.cpu_usage}
             {sensors}
+            {throttle}
             {history}
             {isFrozen}
             {unavailable}

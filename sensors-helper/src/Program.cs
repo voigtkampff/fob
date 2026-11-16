@@ -21,6 +21,7 @@ using System.Security.Principal;
 using System.Text;
 using System.Threading;
 using LibreHardwareMonitor.Hardware;
+using LibreHardwareMonitor.PawnIo;
 
 namespace WinperfSensors
 {
@@ -36,6 +37,7 @@ namespace WinperfSensors
         }
 
         static Snapshot latest;
+        static MsrReader msr;
         static int clients;
         static readonly NetAgg netAgg = new NetAgg();
         static NetTrace net;
@@ -75,6 +77,7 @@ namespace WinperfSensors
                 IsBatteryEnabled = false,
             };
             computer.Open();
+            msr = new MsrReader();
             Log("started");
             NetTrace.StopStale();
             net = new NetTrace(netAgg);
@@ -102,6 +105,7 @@ namespace WinperfSensors
             }
             finally
             {
+                msr?.Close();
                 net?.Stop();
                 computer.Close();
             }
@@ -127,7 +131,7 @@ namespace WinperfSensors
                 ms = Math.Max(1, ts - netSince);
                 netSince = ts;
             }
-            var line = Wire.Line(ts, list, procs, ms) + "\n";
+            var line = Wire.UpdateLine(ts, list, procs, ms, () => msr?.Read()) + "\n";
             Volatile.Write(ref latest, new Snapshot { Ts = ts, Bytes = Encoding.UTF8.GetBytes(line) });
         }
 
@@ -140,6 +144,118 @@ namespace WinperfSensors
                 using (var p = System.Diagnostics.Process.GetProcessById((int)pid)) return p.ProcessName;
             }
             catch { return null; } // exited
+        }
+
+        /// <summary>
+        /// Reads the Intel thermal status MSRs through LHM's public PawnIO
+        /// path. The helper already runs elevated; without that, PawnIO
+        /// returns E_ACCESSDENIED. Any failure degrades to "not supported"
+        /// and is logged once, never once per second.
+        /// </summary>
+        sealed class MsrReader
+        {
+            IntelMsr msr;
+            readonly ThrottleWindow window = new ThrottleWindow();
+            bool available;
+            uint? lastPackageTime;
+
+            public MsrReader()
+            {
+                try
+                {
+                    msr = new IntelMsr();
+                    available = true;
+                }
+                catch (Exception e)
+                {
+                    Log("throttle: " + e.GetType().Name + ": " + e.Message);
+                }
+            }
+
+            public ThrottleState Read()
+            {
+                if (!available || msr == null) return null;
+                try
+                {
+                    var thermal = false;
+                    var thermalLog = false;
+                    var prochot = false;
+                    var prochotLog = false;
+                    int? distance = null;
+                    var any = false;
+
+                    ulong packageStatus;
+                    if (msr.ReadMsr(0x1B1, out packageStatus))
+                    {
+                        any = true;
+                        thermal |= MsrDecode.Thermal(packageStatus);
+                        thermalLog |= MsrDecode.ThermalLog(packageStatus);
+                        prochot |= MsrDecode.Prochot(packageStatus);
+                        prochotLog |= MsrDecode.ProchotLog(packageStatus);
+                        distance = MinDistance(distance, MsrDecode.DistanceToTjMax(packageStatus));
+                    }
+
+                    var cores = Math.Min(64, Environment.ProcessorCount);
+                    for (var i = 0; i < cores; i++)
+                    {
+                        uint eax, edx;
+                        if (!msr.ReadMsr(0x19C, out eax, out edx, GroupAffinity.Single(0, i))) continue;
+                        var value = ((ulong)edx << 32) | eax;
+                        any = true;
+                        thermal |= MsrDecode.Thermal(value);
+                        thermalLog |= MsrDecode.ThermalLog(value);
+                        prochot |= MsrDecode.Prochot(value);
+                        prochotLog |= MsrDecode.ProchotLog(value);
+                        distance = MinDistance(distance, MsrDecode.DistanceToTjMax(value));
+                    }
+
+                    if (!any)
+                    {
+                        available = false;
+                        Log("throttle: no thermal status MSR readable");
+                        return null;
+                    }
+
+                    var package = false;
+                    ulong performance;
+                    if (msr.ReadMsr(0x613, out performance))
+                    {
+                        var now = (uint)performance;
+                        package = MsrDecode.PackageTimerAdvanced(now, lastPackageTime);
+                        lastPackageTime = now;
+                    }
+
+                    window.Add(thermal, package);
+                    return new ThrottleState
+                    {
+                        Supported = true,
+                        Thermal = thermal,
+                        ThermalLog = thermalLog,
+                        Prochot = prochot,
+                        ProchotLog = prochotLog,
+                        Package = package,
+                        DistanceToTjMax = distance,
+                        ThermalPercent = window.ThermalPercent,
+                        PackagePercent = window.PackagePercent,
+                    };
+                }
+                catch (Exception e)
+                {
+                    available = false;
+                    Log("throttle: " + e.GetType().Name + ": " + e.Message);
+                    return null;
+                }
+            }
+
+            static int? MinDistance(int? current, int next) =>
+                current.HasValue ? Math.Min(current.Value, next) : next;
+
+            public void Close()
+            {
+                try { msr?.Close(); } catch { }
+                msr = null;
+                available = false;
+            }
         }
 
         static void Walk(IHardware hw, List<Reading> list)

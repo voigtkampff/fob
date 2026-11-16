@@ -1,6 +1,6 @@
 [package]
 name = "fob-mft"
-version = "0.8.3"
+version = "0.8.6"
 edition = "2021"
 
 [build-dependencies]
