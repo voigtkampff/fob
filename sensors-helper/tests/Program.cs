@@ -143,6 +143,33 @@ static class WireTests
             "power goes on the wire with its W value");
         Check(NetAgg.Direction(10) == 1 && NetAgg.Direction(59) == -1 && NetAgg.Direction(18) == 0, "directions");
         var onDisk = File.Exists(fixture) ? File.ReadAllText(fixture) : "";
+        // MSR-derived throttle: pure decoding, degradation and the wire field.
+        Check(MsrDecode.Thermal(0x1) && MsrDecode.ThermalLog(0x2)
+            && MsrDecode.Prochot(0x4) && MsrDecode.ProchotLog(0x8),
+            "thermal status/log and PROCHOT bits");
+        Check(MsrDecode.DistanceToTjMax(0x0000000088143280UL) == 20,
+            "distance to TjMax is bits 16-22");
+        Check(MsrDecode.PackageTimerAdvanced(11, 10) && !MsrDecode.PackageTimerAdvanced(10, 10)
+            && !MsrDecode.PackageTimerAdvanced(10, null),
+            "0x613 timer only counts a change after a baseline");
+        var window = new ThrottleWindow();
+        window.Add(true, false);
+        window.Add(false, true);
+        window.Add(true, false);
+        window.Add(false, false);
+        Check(window.ThermalPercent == 50 && window.PackagePercent == 25,
+            "throttle duty cycle over the sample window");
+        var throttled = new ThrottleState
+        {
+            Supported = true, Thermal = true, Package = true,
+            ThermalPercent = 50, PackagePercent = 25, DistanceToTjMax = 20,
+        };
+        Check(Wire.Line(1793612400000, Sample(0), null, 0, throttled)
+                .Contains("\"throttle\":{\"supported\":true,\"thermal\":true,\"thermalLog\":false,\"prochot\":false,\"prochotLog\":false,\"package\":true,\"distanceToTjMax\":20,\"thermalPercent\":50,\"packagePercent\":25}"),
+            "throttle state goes on the wire");
+        Check(Wire.Line(1793612400000, Sample(0), null, 0, new ThrottleState())
+                .Contains("\"throttle\":{\"supported\":false"),
+            "an unavailable MSR reader degrades to supported=false");
         Check(onDisk == text, "fixture " + Path.GetFullPath(fixture) + " is up to date (run with --write)");
         Console.WriteLine(failures == 0 ?  $"PASS: {checks} checks, sensor fixture and MFT request validation" : $"FAIL: {failures}");
         return failures == 0 ? 0 : 1;

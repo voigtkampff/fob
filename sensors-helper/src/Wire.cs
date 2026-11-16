@@ -70,7 +70,8 @@ namespace WinperfSensors
         public static string Line(long ts, IEnumerable<Reading> readings) => Line(ts, readings, null, 0);
 
         /// <param name="net">Per-process bytes in the last <paramref name="netMs"/> ms, or null when not tracing.</param>
-        public static string Line(long ts, IEnumerable<Reading> readings, IEnumerable<NetUsage> net, long netMs)
+        /// <param name="throttle">MSR-derived throttle state, or null when the helper has none.</param>
+        public static string Line(long ts, IEnumerable<Reading> readings, IEnumerable<NetUsage> net, long netMs, ThrottleState throttle = null)
         {
             var sb = new StringBuilder(4096);
             sb.Append("{\"ts\":").Append(ts.ToString(CultureInfo.InvariantCulture)).Append(",\"sensors\":[");
@@ -88,6 +89,11 @@ namespace WinperfSensors
                 sb.Append('}');
             }
             sb.Append(']');
+            if (throttle != null)
+            {
+                sb.Append(",\"throttle\":");
+                ThrottleJson(sb, throttle);
+            }
             if (net != null)
             {
                 sb.Append(",\"net\":{\"ms\":").Append(netMs.ToString(CultureInfo.InvariantCulture)).Append(",\"procs\":[");
@@ -104,6 +110,24 @@ namespace WinperfSensors
                 sb.Append("]}");
             }
             return sb.Append('}').ToString();
+        }
+
+        static void ThrottleJson(StringBuilder sb, ThrottleState t)
+        {
+            sb.Append("{\"supported\":").Append(t.Supported ? "true" : "false");
+            sb.Append(",\"thermal\":").Append(t.Thermal ? "true" : "false");
+            sb.Append(",\"thermalLog\":").Append(t.ThermalLog ? "true" : "false");
+            sb.Append(",\"prochot\":").Append(t.Prochot ? "true" : "false");
+            sb.Append(",\"prochotLog\":").Append(t.ProchotLog ? "true" : "false");
+            sb.Append(",\"package\":").Append(t.Package ? "true" : "false");
+            sb.Append(",\"distanceToTjMax\":");
+            if (t.DistanceToTjMax.HasValue)
+                sb.Append(t.DistanceToTjMax.Value.ToString(CultureInfo.InvariantCulture));
+            else
+                sb.Append("null");
+            sb.Append(",\"thermalPercent\":").Append(t.ThermalPercent.ToString("0.#", CultureInfo.InvariantCulture));
+            sb.Append(",\"packagePercent\":").Append(t.PackagePercent.ToString("0.#", CultureInfo.InvariantCulture));
+            sb.Append('}');
         }
 
         static void Num(StringBuilder sb, float? v)

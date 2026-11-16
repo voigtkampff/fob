@@ -418,7 +418,13 @@ const gb = (/** @type {number | null | undefined} */ v) =>
  *   gpuTemp?: number|null, ramUsed?: number|null, ramTotal?: number|null,
  *   vramUsed?: number|null, vramTotal?: number|null, diskRead?: number|null,
  *   diskWrite?: number|null, netRx?: number|null, netTx?: number|null,
- *   gpuPower?: number|null, throttle?: "power"|"thermal"|null,
+ *   gpuPower?: number|null,
+ *   throttle?: {
+ *     supported: boolean, thermal: boolean, thermalLog: boolean,
+ *     prochot: boolean, prochotLog: boolean, package: boolean,
+ *     distanceToTjMax: number|null,
+ *     thermalPercent: number, packagePercent: number
+ *   } | null,
  *   history?: any[]
  * }} Reading  (overlay_reading in overlay.rs)
  */

@@ -11,6 +11,7 @@
     ResourceSample,
     GpuDevice,
     Sensor,
+    ThrottleReport,
   } from "$lib/types";
   import ResourceDetailsContent from "./ResourceDetailsContent.svelte";
   import type { PanelKind } from "./panel";
@@ -28,6 +29,7 @@
     gpuId = "",
     onGpu = () => {},
     sensors = [],
+    throttle = null,
     sources = [],
     onSpace = () => {},
     onDiskHealth = () => {},
@@ -44,6 +46,7 @@
     gpuId?: string;
     onGpu?: (id: string) => void;
     sensors?: Sensor[];
+    throttle?: ThrottleReport | null;
     sources?: string[];
     onSpace?: () => void;
     onDiskHealth?: () => void;
@@ -155,6 +158,7 @@
         {gpuId}
         {onGpu}
         {sensors}
+        {throttle}
         {sources}
         onSpace={() => {
           open = false;

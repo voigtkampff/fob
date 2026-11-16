@@ -39,11 +39,32 @@ pub struct Sensor {
     pub source: String,
 }
 
+/// MSR-derived throttle state from the helper (0.8.5+). `supported: false`
+/// means the machine/driver/helper could not read the MSRs, so the UI shows
+/// "not supported" instead of guessing.
+#[derive(Clone, Debug, Default, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ThrottleReport {
+    pub supported: bool,
+    pub thermal: bool,
+    pub thermal_log: bool,
+    pub prochot: bool,
+    pub prochot_log: bool,
+    /// MSR 0x613 advanced during the helper's last interval.
+    pub package: bool,
+    /// Hottest core/package distance to TjMax, °C.
+    pub distance_to_tjmax: Option<i32>,
+    pub thermal_percent: f64,
+    pub package_percent: f64,
+}
+
 #[derive(Clone, Debug, Default, Serialize)]
 pub struct SensorReport {
     pub sensors: Vec<Sensor>,
     /// Names of the sources that answered this round.
     pub sources: Vec<String>,
+    /// MSR throttle state (helper); None when the source has no such data.
+    pub throttle: Option<ThrottleReport>,
     /// Per-process network bytes from the helper's ETW session (not sent to
     /// the UI as is; `sampling` turns it into named per-app rates).
     #[serde(skip)]
@@ -56,6 +77,10 @@ pub trait SensorSource: Send + Debug {
     fn read(&mut self) -> Option<Vec<Sensor>>;
     /// Per-process network bytes that came with the last `read`, if any.
     fn net(&mut self) -> Option<pipe::NetSample> {
+        None
+    }
+    /// MSR throttle state that came with the last `read`, if any.
+    fn throttle(&mut self) -> Option<ThrottleReport> {
         None
     }
 }
@@ -223,6 +248,7 @@ impl SensorHub {
                         _ => true,
                     }));
                 report.net = source.net();
+                report.throttle = source.throttle();
                 break;
             }
         }

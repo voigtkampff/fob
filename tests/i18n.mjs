@@ -133,7 +133,7 @@ const dynamic = {
     "net",
     "power",
   ],
-  "overlay.throttle": ["badge", "power", "thermal"],
+  "overlay.throttle": ["badge", "package", "thermal"],
   "settings.overlayDock": ["top", "bottom", "free"],
   "voltage.tip": ["vcore", "cpuCore", "p", "e"],
   "gpu.engine": [

@@ -291,8 +291,25 @@ export interface SensorSetupStatus {
   bundled_version: string | null;
   busy: boolean;
 }
+export interface ThrottleReport {
+  supported: boolean;
+  thermal: boolean;
+  thermalLog: boolean;
+  prochot: boolean;
+  prochotLog: boolean;
+  /** MSR 0x613 advanced during the helper's last interval. */
+  package: boolean;
+  /** Hottest core/package distance to TjMax, °C. */
+  distanceToTjMax: number | null;
+  thermalPercent: number;
+  packagePercent: number;
+}
 export interface FrameExtra {
-  sensors: { sensors: Sensor[]; sources: string[] };
+  sensors: {
+    sensors: Sensor[];
+    sources: string[];
+    throttle: ThrottleReport | null;
+  };
   /** Windows commit charge [used, limit] in bytes. */
   commit: [number, number] | null;
   /** Last power-on: Unix seconds and kind; null = only kernel uptime known. */

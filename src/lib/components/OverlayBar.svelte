@@ -24,9 +24,9 @@
   import { t } from "$lib/i18n";
 
   let reading: Reading | null = $state(null);
-  // 0.8.13: the THR marker is inferred (overlay.rs), not a measured flag. It
-  // stays up for a few seconds after the last sample that looked limited.
-  let throttle: "power" | "thermal" | null = $state(null);
+  // 0.8.13: the THR marker is MSR-derived. It stays up for a few seconds
+  // after the last sample whose hardware thermal/package bit was set.
+  let throttle: "package" | "thermal" | null = $state(null);
   let throttleTimer: ReturnType<typeof setTimeout> | undefined;
   let interactive = $state(false);
   let row: HTMLDivElement | undefined = $state();
@@ -71,8 +71,12 @@
     } catch {
       reading = null;
     }
-    if (reading?.throttle) {
-      throttle = reading.throttle;
+    const t = reading?.throttle;
+    if (!t?.supported) {
+      // An old helper or an unreadable MSR has no throttle state at all.
+      throttle = null;
+    } else if (t.thermal || t.package) {
+      throttle = t.thermal ? "thermal" : "package";
       clearTimeout(throttleTimer);
       throttleTimer = setTimeout(() => (throttle = null), 5000);
     }

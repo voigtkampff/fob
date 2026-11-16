@@ -192,6 +192,7 @@
       {gpus}
       {history}
       {sensors}
+      throttle={extra?.sensors.throttle ?? null}
       sources={extra?.sensors.sources ?? []}
       commit={extra?.commit ?? null}
       netApps={extra?.net_apps ?? null}
