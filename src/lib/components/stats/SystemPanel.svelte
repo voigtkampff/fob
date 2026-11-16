@@ -5,6 +5,7 @@
   import ResourceDetails from "./ResourceDetails.svelte";
   import StatCard from "./StatCard.svelte";
   import StatItem from "./StatItem.svelte";
+  import Tip from "$lib/components/Tip.svelte";
   import type { SystemStats } from "$lib/types";
   import { Server } from "@lucide/svelte";
   import { formatDuration, uptimeInfo } from "$lib/utils/dashboard.js";
@@ -42,17 +43,28 @@
       {started}
     />{/snippet}
   {#snippet value()}
-    <div
-      class="truncate text-xl leading-8 font-semibold tracking-tight tabular-nums"
-      title={Number.isFinite(since.seconds)
+    <Tip
+      text={Number.isFinite(since.seconds)
         ? formatDuration(since.seconds, $t)
-        : undefined}
+        : ""}
     >
-      {Number.isFinite(since.seconds) ? formatDuration(since.seconds, $t) : "—"}
-    </div>
-    <p class="truncate text-xs leading-4 text-muted-foreground" title={sub}>
-      {sub}
-    </p>
+      {#snippet children(props)}<div
+          class="truncate text-xl leading-8 font-semibold tracking-tight tabular-nums"
+          {...props}
+        >
+          {Number.isFinite(since.seconds)
+            ? formatDuration(since.seconds, $t)
+            : "—"}
+        </div>{/snippet}
+    </Tip>
+    <Tip text={sub}>
+      {#snippet children(props)}<p
+          class="truncate text-xs leading-4 text-muted-foreground"
+          {...props}
+        >
+          {sub}
+        </p>{/snippet}
+    </Tip>
   {/snippet}
   {#snippet middle()}
     {#if stats.details.identity.os_version}<StatItem
@@ -66,19 +78,23 @@
       />{/if}
   {/snippet}
   {#snippet band()}
-    <div
-      class="min-h-3 truncate text-[10px] leading-3 text-muted-foreground"
-      title={`${bootedAt.toLocaleDateString()} ${clockTime(bootedAt.getTime())}`}
+    <Tip
+      text={`${bootedAt.toLocaleDateString()} ${clockTime(bootedAt.getTime())}`}
     >
-      {$t("stats.bootedAt", {
-        d: bootedAt.toLocaleString(undefined, {
-          month: "numeric",
-          day: "numeric",
-          hour: "2-digit",
-          minute: "2-digit",
-          hourCycle: "h23",
-        }),
-      })}
-    </div>
+      {#snippet children(props)}<div
+          class="min-h-3 truncate text-[10px] leading-3 text-muted-foreground"
+          {...props}
+        >
+          {$t("stats.bootedAt", {
+            d: bootedAt.toLocaleString(undefined, {
+              month: "numeric",
+              day: "numeric",
+              hour: "2-digit",
+              minute: "2-digit",
+              hourCycle: "h23",
+            }),
+          })}
+        </div>{/snippet}
+    </Tip>
   {/snippet}
 </StatCard>

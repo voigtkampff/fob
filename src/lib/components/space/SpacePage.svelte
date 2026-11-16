@@ -5,6 +5,7 @@
   import { onDestroy, onMount } from "svelte";
   import { invoke } from "@tauri-apps/api/core";
   import { Button } from "$lib/components/ui/button/index.js";
+  import Tip from "$lib/components/Tip.svelte";
   import {
     ArrowLeft,
     ArrowRight,
@@ -266,7 +267,7 @@
   </header>
 
   <div class="status" aria-live="polite">
-    {#if scanning && status}
+    {#if scanning && status}{@const current = status.current ?? ""}
       <span class="pulse"></span>{$t("space.scanning", {
         n: status.files.toLocaleString(),
         v: formatBytes(status.bytes),
@@ -274,7 +275,11 @@
       })}{#if status.skipped}<span class="muted">
           · {$t("space.skipped", { n: status.skipped })}</span
         >{/if}
-      <span class="current" title={status.current}>{status.current}</span>
+      <Tip text={current}>
+        {#snippet children(props)}<span class="current" {...props}
+            >{current}</span
+          >{/snippet}
+      </Tip>
     {:else if scan}
       {$t("space.scanned", {
         d: when(scan.scannedAt),

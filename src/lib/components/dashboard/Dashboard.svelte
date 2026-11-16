@@ -35,6 +35,7 @@
   import { cpuGroups, groupPercent } from "$lib/utils/cpu-groups.js";
   import { t } from "$lib/i18n";
   import ChartCursor from "$lib/components/charts/ChartCursor.svelte";
+  import Tip from "$lib/components/Tip.svelte";
   import { percentText as pct1 } from "$lib/utils/chart-cursor.js";
   import { sensorSetup, refreshSensorSetup } from "$lib/stores/sensorSetup";
   import { dragReorder } from "$lib/utils/drag-reorder.js";
@@ -207,18 +208,24 @@
       </div>
       <div class="chips">
         <div class="chip-row">
-          {#if identity.cpu_model}<span
-              class="chip shrink"
-              title={identity.cpu_model}>{identity.cpu_model}</span
-            >{/if}
+          {#if identity.cpu_model}<Tip text={identity.cpu_model}>
+              {#snippet children(props)}<span class="chip shrink" {...props}
+                  >{identity.cpu_model}</span
+                >{/snippet}
+            </Tip>{/if}
           {#if ram}<span class="chip">{ram}</span>{/if}
         </div>
         <div class="chip-row">
-          {#if identity.os_version}<span
-              class="chip shrink"
-              title={identity.os_version}>{identity.os_version}</span
-            >{/if}
-          <span class="chip" title={upTitle}>{upText}</span>
+          {#if identity.os_version}<Tip text={identity.os_version}>
+              {#snippet children(props)}<span class="chip shrink" {...props}
+                  >{identity.os_version}</span
+                >{/snippet}
+            </Tip>{/if}
+          <Tip text={upTitle}>
+            {#snippet children(props)}<span class="chip" {...props}
+                >{upText}</span
+              >{/snippet}
+          </Tip>
         </div>
       </div>
     </header>
@@ -260,11 +267,19 @@
                 {#each coreGroups as g (g.kind)}
                   <div class="bar-group" style={`flex:${g.threads.length}`}>
                     {#each g.threads as i (i)}
-                      <span
-                        class="bar"
-                        style={`height:${Math.max(6, Math.min(100, cores[i]))}%`}
-                        title={`${$t(g.label)} · ${$t("cpu.threadTip", { i, v: cores[i].toFixed(0) })}`}
-                      ></span>
+                      <Tip
+                        text={`${$t(g.label)} · ${$t("cpu.threadTip", {
+                          i,
+                          v: cores[i].toFixed(0),
+                        })}`}
+                        tabindex={-1}
+                      >
+                        {#snippet children(props)}<span
+                            class="bar"
+                            style={`height:${Math.max(6, Math.min(100, cores[i]))}%`}
+                            {...props}
+                          ></span>{/snippet}
+                      </Tip>
                     {/each}
                   </div>
                 {/each}
@@ -278,11 +293,13 @@
             {:else}
               <div class="bars" aria-label={$t("dash.perCore")}>
                 {#each cores as core}
-                  <span
-                    class="bar"
-                    style={`height:${Math.max(6, Math.min(100, core))}%`}
-                    title={`${core.toFixed(0)}%`}
-                  ></span>
+                  <Tip text={`${core.toFixed(0)}%`} tabindex={-1}>
+                    {#snippet children(props)}<span
+                        class="bar"
+                        style={`height:${Math.max(6, Math.min(100, core))}%`}
+                        {...props}
+                      ></span>{/snippet}
+                  </Tip>
                 {/each}
               </div>
               <div class="foot">
@@ -306,9 +323,12 @@
                 >{#if onReorder}<span class="drag-grip" aria-hidden="true"
                   ></span>{/if}<Gauge class="size-3.5" />GPU</span
               >
-              {#if gpu.name}<span class="chip ellipsis" title={gpu.name}
-                  >{gpu.name}</span
-                >{/if}
+              {#if gpu.name}<Tip text={gpu.name}>
+                  {#snippet children(props)}<span
+                      class="chip ellipsis"
+                      {...props}>{gpu.name}</span
+                    >{/snippet}
+                </Tip>{/if}
             </div>
             <div class="big">
               {formatPercent(gpu.percent, $t)}{#if gpu.percent != null}<small
@@ -565,7 +585,11 @@
       {#each topRows as p, i (p?.pid ?? `empty-${i}`)}
         {#if p}
           <div class="proc-row">
-            <span class="ellipsis" title={p.command || p.name}>{p.name}</span>
+            <Tip text={p.command || p.name} tabindex={-1}>
+              {#snippet children(props)}<span class="ellipsis" {...props}
+                  >{p.name}</span
+                >{/snippet}
+            </Tip>
             <span class="num">{formatGB(p.memory_usage, 2)}</span>
             <span class="num"
               >{p.cpu_usage == null ? "—" : p.cpu_usage.toFixed(1)}</span

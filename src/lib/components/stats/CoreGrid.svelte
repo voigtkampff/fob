@@ -9,6 +9,7 @@
     CARD_GAP,
   } from "$lib/utils/cpu-layout.js";
   import { groupPercent, type CpuGroup } from "$lib/utils/cpu-groups.js";
+  import Tip from "$lib/components/Tip.svelte";
   import { t } from "$lib/i18n";
   let {
     usage,
@@ -49,18 +50,23 @@
     >
       {#each threads as i (i)}
         {#if l.mode === "cells"}
-          <div class="cell" title={tip(i, usage[i])}>
-            <div class="bar">
-              <span style={`height:${Math.max(4, clamp(usage[i]))}%`}></span>
-            </div>
-            <small>{i}</small>
-          </div>
+          <Tip text={tip(i, usage[i])} tabindex={-1}>
+            {#snippet children(props)}<div class="cell" {...props}>
+                <div class="bar">
+                  <span style={`height:${Math.max(4, clamp(usage[i]))}%`}
+                  ></span>
+                </div>
+                <small>{i}</small>
+              </div>{/snippet}
+          </Tip>
         {:else}
-          <div
-            class="heat"
-            title={tip(i, usage[i])}
-            style={heat(usage[i])}
-          ></div>
+          <Tip text={tip(i, usage[i])} tabindex={-1}>
+            {#snippet children(props)}<div
+                class="heat"
+                style={heat(usage[i])}
+                {...props}
+              ></div>{/snippet}
+          </Tip>
         {/if}
       {/each}
     </div>
@@ -72,24 +78,33 @@
 {:else if groups && where === "card"}
   <div class="group-strips" role="group" aria-label={$t("dash.perCore")}>
     {#each groups as g (g.kind)}
-      <div class="strip-group" title={groupTip(g)}>
+      <div class="strip-group">
         <div class="line">
-          <span class="truncate" title={$t(g.label)}>{$t(g.label)}</span><span
-            class="num"
-            class:none={g.usage == null}
-            >{groupPercent(g.usage)}{g.usage == null ? "" : "%"}</span
-          >
+          <Tip text={$t(g.label)}>
+            {#snippet children(props)}<span class="truncate" {...props}
+                >{$t(g.label)}</span
+              >{/snippet}
+          </Tip><Tip text={groupTip(g)}>
+            {#snippet children(props)}<span
+                class="num"
+                class:none={g.usage == null}
+                {...props}
+                >{groupPercent(g.usage)}{g.usage == null ? "" : "%"}</span
+              >{/snippet}
+          </Tip>
         </div>
         <div
           class="strip"
           style={`grid-template-columns:repeat(${g.threads.length},minmax(0,1fr))`}
         >
           {#each g.threads as i (i)}
-            <div
-              class="heat"
-              title={tip(i, usage[i])}
-              style={heat(usage[i])}
-            ></div>
+            <Tip text={tip(i, usage[i])} tabindex={-1}>
+              {#snippet children(props)}<div
+                  class="heat"
+                  style={heat(usage[i])}
+                  {...props}
+                ></div>{/snippet}
+            </Tip>
           {/each}
         </div>
       </div>
@@ -99,18 +114,21 @@
   <div class="group-blocks" role="group" aria-label={$t("dash.perCore")}>
     {#each groups as g (g.kind)}
       <section class="group-block">
-        <header class="group-head" title={groupTip(g)}>
-          <span class="group-name">{$t(g.label)}</span>
-          <span class="num" class:none={g.usage == null}
-            >{groupPercent(g.usage)}{g.usage == null ? "" : "%"}</span
-          >
-          <span class="group-size"
-            >{$t("detail.coresThreads", {
-              c: g.cores,
-              n: g.threads.length,
-            })}</span
-          >
-        </header>
+        <Tip text={groupTip(g)}>
+          {#snippet children(props)}<header class="group-head" {...props}>
+              <span class="group-name">{$t(g.label)}</span><span
+                class="num"
+                class:none={g.usage == null}
+                >{groupPercent(g.usage)}{g.usage == null ? "" : "%"}</span
+              >
+              <span class="group-size"
+                >{$t("detail.coresThreads", {
+                  c: g.cores,
+                  n: g.threads.length,
+                })}</span
+              >
+            </header>{/snippet}
+        </Tip>
         {@render grid(g.threads, coreLayout(g.threads.length, "detail"))}
       </section>
     {/each}

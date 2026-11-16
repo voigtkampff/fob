@@ -4,6 +4,7 @@
   import ColumnToggle from "./ColumnToggle.svelte";
   import { Button } from "$lib/components/ui/button/index.js";
   import { Badge } from "$lib/components/ui/badge/index.js";
+  import Tip from "$lib/components/Tip.svelte";
   import * as ToggleGroup from "$lib/components/ui/toggle-group/index.js";
   import { List, GitBranch, X } from "@lucide/svelte";
   import { t } from "$lib/i18n";
@@ -101,7 +102,11 @@
         >{#each activeFilters as label}<Badge
             variant="secondary"
             class="max-w-64 font-normal"
-            ><span class="truncate" title={label}>{label}</span></Badge
+            ><Tip text={label}>
+              {#snippet children(props)}<span class="truncate" {...props}
+                  >{label}</span
+                >{/snippet}
+            </Tip></Badge
           >{/each}<Button
           variant="ghost"
           size="sm"
@@ -109,11 +114,13 @@
           onclick={onClearFilters}
           ><X class="size-3" />{$t("toolbar.clearAll")}</Button
         >{/if}
-      {#if viewMode === "tree"}<span title={$t("toolbar.familyTitle")}
-          >{searchActive
-            ? $t("toolbar.familySearch")
-            : $t("toolbar.families")}</span
-        ><Button
+      {#if viewMode === "tree"}<Tip text={$t("toolbar.familyTitle")}>
+          {#snippet children(props)}<span {...props}
+              >{searchActive
+                ? $t("toolbar.familySearch")
+                : $t("toolbar.families")}</span
+            >{/snippet}
+        </Tip><Button
           variant="ghost"
           size="sm"
           class="ml-auto h-6 text-xs"

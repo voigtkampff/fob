@@ -2,6 +2,7 @@
   import Spark from "$lib/components/charts/Spark.svelte";
   import { SERIES_COLOR } from "$lib/utils/chart-style.js";
   import CoreGrid from "$lib/components/stats/CoreGrid.svelte";
+  import Tip from "$lib/components/Tip.svelte";
   import { cpuGroups } from "$lib/utils/cpu-groups.js";
   // winperf: one detail view for any card (back button / Esc returns).
   import type {
@@ -169,8 +170,14 @@
 
 {#snippet detailHead(model: string, sub: string, percent: number | null)}
   <div class="head-block">
-    <span class="model" title={model}>{model}</span>
-    <span class="muted" title={sub}>{sub}</span>
+    <Tip text={model}>
+      {#snippet children(props)}<span class="model" {...props}>{model}</span
+        >{/snippet}
+    </Tip>
+    <Tip text={sub}>
+      {#snippet children(props)}<span class="muted" {...props}>{sub}</span
+        >{/snippet}
+    </Tip>
     <span class="big"
       >{formatPercent(percent, $t)}{#if percent != null}<small>%</small
         >{/if}</span
@@ -264,12 +271,13 @@
         </ChartCursor>
         {#each g.engines ?? [] as [engine, load]}
           <div class="meter">
-            <span
-              class="label"
-              data-engine={engine}
-              title={engineTitle(engine, $t)}
-              >{engineLabel(engine, $locale)}</span
-            >
+            <Tip text={engineTitle(engine, $t)}>
+              {#snippet children(props)}<span
+                  class="label"
+                  data-engine={engine}
+                  {...props}>{engineLabel(engine, $locale)}</span
+                >{/snippet}
+            </Tip>
             <div class="track"><span style={`width:${load}%`}></span></div>
             <span class="num">{load.toFixed(0)}%</span>
           </div>
@@ -440,7 +448,11 @@
         </div>
         {#each appRows as app (app.name)}
           <div class="item app" class:idle={app.rx + app.tx === 0}>
-            <span class="name" title={app.name}>{app.name}</span>
+            <Tip text={app.name}>
+              {#snippet children(props)}<span class="name" {...props}
+                  >{app.name}</span
+                >{/snippet}
+            </Tip>
             <span class="num">{rate(app.rx)}</span>
             <span class="num">{rate(app.tx)}</span>
             <div class="bars">

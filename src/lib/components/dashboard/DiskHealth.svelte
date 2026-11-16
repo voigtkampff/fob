@@ -15,6 +15,7 @@
     type DiskHealthView,
   } from "$lib/utils/disk-health.js";
   import { t } from "$lib/i18n";
+  import Tip from "$lib/components/Tip.svelte";
 
   let view = $state<DiskHealthView>({ kind: "loading" });
   let pending = $state(false);
@@ -59,9 +60,11 @@
             >{bus(d)}{d.removable ? ` · ${$t("dh.removable")}` : ""}</span
           >
         </div>
-        {#if d.model}<div class="muted small model" title={d.model}>
-            {d.model}
-          </div>{/if}
+        {#if d.model}<Tip text={d.model}>
+            {#snippet children(props)}<div class="muted small model" {...props}>
+                {d.model}
+              </div>{/snippet}
+          </Tip>{/if}
         <div class="muted small">
           {d.volumes.length ? d.volumes.join(" · ") : $t("dh.noLetter")}
         </div>
@@ -99,8 +102,16 @@
               </dd>
             </div>
             <div class="metric">
-              <dt title={$t("dh.usedNote")}>{$t("dh.used")}</dt>
-              <dd title={$t("dh.usedNote")}>{log.percent_used}%</dd>
+              <Tip text={$t("dh.usedNote")}>
+                {#snippet children(props)}<dt {...props}>
+                    {$t("dh.used")}
+                  </dt>{/snippet}
+              </Tip>
+              <Tip text={$t("dh.usedNote")}>
+                {#snippet children(props)}<dd {...props}>
+                    {log.percent_used}%
+                  </dd>{/snippet}
+              </Tip>
             </div>
             <div class="metric">
               <dt>{$t("dh.spare")}</dt>
@@ -166,8 +177,16 @@
             {/if}
             {#if s.percent_used != null}
               <div class="metric">
-                <dt title={$t("dh.usedNote")}>{$t("dh.used")}</dt>
-                <dd title={$t("dh.usedNote")}>{s.percent_used}%</dd>
+                <Tip text={$t("dh.usedNote")}>
+                  {#snippet children(props)}<dt {...props}>
+                      {$t("dh.used")}
+                    </dt>{/snippet}
+                </Tip>
+                <Tip text={$t("dh.usedNote")}>
+                  {#snippet children(props)}<dd {...props}>
+                      {s.percent_used}%
+                    </dd>{/snippet}
+                </Tip>
               </div>
             {/if}
             {#if s.data_written_bytes != null}

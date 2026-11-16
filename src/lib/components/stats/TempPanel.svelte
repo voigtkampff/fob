@@ -3,6 +3,7 @@
   // dashboard card); its arrow opens the Temp & fan side panel.
   import StatCard from "./StatCard.svelte";
   import StatItem from "./StatItem.svelte";
+  import Tip from "$lib/components/Tip.svelte";
   import ResourceTrend from "./ResourceTrend.svelte";
   import type { ResourceSample, Sensor, SystemStats } from "$lib/types";
   import ResourceDetails from "./ResourceDetails.svelte";
@@ -59,9 +60,14 @@
         >{head ? "°C" : ""}</span
       >
     </div>
-    <p class="truncate text-xs leading-4 text-muted-foreground" title={sub}>
-      {sub}
-    </p>
+    <Tip text={sub}>
+      {#snippet children(props)}<p
+          class="truncate text-xs leading-4 text-muted-foreground"
+          {...props}
+        >
+          {sub}
+        </p>{/snippet}
+    </Tip>
   {/snippet}
   {#snippet middle()}
     {#if offerSetup}

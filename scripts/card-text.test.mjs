@@ -25,9 +25,20 @@ test("card text never wraps: truncated lines carry their full text as a tooltip"
   assert.ok(cards.length >= 9, cards.join());
   for (const file of cards) {
     const src = readFileSync(dir + file, "utf8");
-    // Every opening tag whose class has `truncate` also has a title.
-    for (const tag of src.match(/<[a-z]+\b[^>]*\btruncate\b[^>]*>/g) ?? []) {
-      assert.match(tag, /\btitle=|\{title\}/, `${file}: ${tag}`);
+    // Every opening tag whose class has `truncate` is a tooltip trigger: it
+    // sits in the Tip that carries its full text, or keeps a title of its own.
+    const ranges = [...src.matchAll(/<Tip\b/g)].map(({ index }) => {
+      const close = src.indexOf("</Tip>", index);
+      return [index, close === -1 ? src.length : close];
+    });
+    for (const tag of src.matchAll(/<[a-z]+\b[^>]*\btruncate\b[^>]*>/g)) {
+      const inTip = ranges.some(
+        ([open, close]) => tag.index > open && tag.index < close,
+      );
+      assert.ok(
+        /\btitle=|\{title\}/.test(tag[0]) || inTip,
+        `${file}: ${tag[0].replace(/\s+/g, " ")}`,
+      );
     }
     assert.doesNotMatch(src, /break-words/, file);
   }

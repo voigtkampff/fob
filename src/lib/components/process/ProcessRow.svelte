@@ -3,6 +3,7 @@
   import { ProcessIcon, ActionButtons } from "$lib/components";
   import { Button } from "$lib/components/ui/button/index.js";
   import { Badge } from "$lib/components/ui/badge/index.js";
+  import Tip from "$lib/components/Tip.svelte";
   import * as Table from "$lib/components/ui/table/index.js";
   import { ChevronRight, ChevronDown, Pin } from "@lucide/svelte";
   import { t } from "$lib/i18n";
@@ -20,98 +21,119 @@
 </script>
 
 <Table.Row data-pinned={isPinned} data-high-usage={isHighUsage}
-  >{#each columns.filter((c) => c.visible) as column (column.id)}<Table.Cell
+  >{#each columns.filter((c) => c.visible) as column (column.id)}{@const cellTip =
+      column.id === "name"
+        ? ""
+        : column.nullable && process[column.id] == null
+          ? $t("proc.noReading")
+          : column.format
+            ? column.format(process[column.id], $t)
+            : String(process[column.id] ?? "")}<Table.Cell
       data-col={column.id}
       class={`${column.numeric ? "text-right font-mono text-xs" : ""} ${column.id === "name" ? "overflow-hidden pl-4" : ""} ${tree && column.id === "name" ? "tree-name" : ""}`}
-      ><div
-        class={column.id === "name"
-          ? ""
-          : `max-w-72 truncate ${column.numeric ? "ml-auto" : ""}`}
-        title={column.id === "name"
-          ? undefined
-          : column.nullable && process[column.id] == null
-            ? $t("proc.noReading")
-            : column.format
-              ? column.format(process[column.id], $t)
-              : String(process[column.id] ?? "")}
-      >
-        {#if column.id === "name"}<div
-            class="flex min-w-0 items-center gap-2"
-            style:padding-left={tree
-              ? `${Math.min(tree.depth, 10) * 16}px`
-              : undefined}
+      ><Tip text={cellTip} tabindex={-1}>
+        {#snippet children(props)}<div
+            class={column.id === "name"
+              ? ""
+              : `max-w-72 truncate ${column.numeric ? "ml-auto" : ""}`}
+            {...props}
           >
-            {#if tree}{#if tree.childCount > 0}<Button
-                  variant="ghost"
-                  size="icon-xs"
-                  disabled={expansionLocked}
-                  aria-expanded={tree.expanded}
-                  aria-label={$t(
-                    tree.expanded ? "proc.collapseAria" : "proc.expandAria",
-                    { v: process.name },
-                  )}
-                  title={expansionLocked ? $t("proc.lockedBranch") : undefined}
-                  onclick={() => tree && onToggleExpand(tree.key)}
-                  >{#if tree.expanded}<ChevronDown />{:else}<ChevronRight
-                    />{/if}</Button
-                >{:else}<span class="size-6 shrink-0" aria-hidden="true"
-                ></span>{/if}{/if}<ProcessIcon
-              pid={process.pid}
-              startTime={process.start_time}
-            /><Button
-              variant="link"
-              class="h-auto min-w-0 shrink justify-start truncate p-0 text-left text-[13px] font-normal text-foreground"
-              title={process.name}
-              onclick={() => onShowDetails(process)}
-              ><span class="max-w-64 truncate">{process.name}</span></Button
-            >{#if tree && tree.familyProcessCount > 1}<Badge
-                variant="secondary"
-                class="px-1.5 text-[10px] font-normal"
-                title={$t("proc.familyCount", { n: tree.familyProcessCount })}
-                >{tree.familyProcessCount}</Badge
-              >{/if}{#if isPinned}<Pin
-                class="size-3 shrink-0 fill-primary/20 text-primary"
-              />{/if}
-          </div>
-        {:else if column.id === "cpu_usage"}{@const cpu = tree
-            ? tree.familyCpuUsage
-            : process.cpu_usage}<span
-            class={cpu != null && cpu > 50
-              ? "rounded bg-destructive/10 px-1.5 py-1 text-destructive"
-              : ""}
-            title={cpu == null
-              ? $t(tree ? "proc.familyCpuMissing" : "proc.noReading")
-              : tree
-                ? $t("proc.familyCpu", { n: tree.familyProcessCount })
-                : undefined}>{cpu == null ? "—" : `${cpu.toFixed(1)}%`}</span
-          >
-        {:else if tree && column.id === "memory_usage"}<span
-            title={$t("proc.familyRam")}
-            >{(tree.familyMemoryUsage / (1024 * 1024)).toFixed(1)} MB</span
-          >
-        {:else if column.id === "status"}<span
-            class="flex items-center gap-1.5 text-xs text-muted-foreground"
-            ><span
-              class="size-1.5 shrink-0 rounded-full"
-              style:background={process.status === "Running"
-                ? "var(--status-running)"
-                : process.status === "Zombie" || process.status === "Stopped"
-                  ? "var(--status-stopped)"
-                  : "var(--status-idle)"}
-            ></span>{statusLabel(process.status, $t)}</span
-          >
-        {:else if column.nullable && process[column.id] == null}<span
-            class="text-muted-foreground">—</span
-          >
-        {:else if column.format}{column.format(process[column.id], $t)}
-        {:else}<span
-            class={["pid", "ppid", "session_id"].includes(column.id)
-              ? "font-mono text-xs text-muted-foreground"
-              : column.id === "user"
-                ? "text-muted-foreground"
-                : ""}>{process[column.id] ?? "—"}</span
-          >{/if}
-      </div></Table.Cell
+            {#if column.id === "name"}<div
+                class="flex min-w-0 items-center gap-2"
+                style:padding-left={tree
+                  ? `${Math.min(tree.depth, 10) * 16}px`
+                  : undefined}
+              >
+                {#if tree}{#if tree.childCount > 0}<Button
+                      variant="ghost"
+                      size="icon-xs"
+                      disabled={expansionLocked}
+                      aria-expanded={tree.expanded}
+                      aria-label={$t(
+                        tree.expanded ? "proc.collapseAria" : "proc.expandAria",
+                        { v: process.name },
+                      )}
+                      title={expansionLocked
+                        ? $t("proc.lockedBranch")
+                        : undefined}
+                      onclick={() => tree && onToggleExpand(tree.key)}
+                      >{#if tree.expanded}<ChevronDown />{:else}<ChevronRight
+                        />{/if}</Button
+                    >{:else}<span class="size-6 shrink-0" aria-hidden="true"
+                    ></span>{/if}{/if}<ProcessIcon
+                  pid={process.pid}
+                  startTime={process.start_time}
+                /><Button
+                  variant="link"
+                  class="h-auto min-w-0 shrink justify-start truncate p-0 text-left text-[13px] font-normal text-foreground"
+                  title={process.name}
+                  onclick={() => onShowDetails(process)}
+                  ><span class="max-w-64 truncate">{process.name}</span></Button
+                >{#if tree && tree.familyProcessCount > 1}<Tip
+                    text={$t("proc.familyCount", {
+                      n: tree.familyProcessCount,
+                    })}
+                    tabindex={-1}
+                  >
+                    {#snippet children(props)}<Badge
+                        variant="secondary"
+                        class="px-1.5 text-[10px] font-normal"
+                        {...props}>{tree.familyProcessCount}</Badge
+                      >{/snippet}
+                  </Tip>{/if}{#if isPinned}<Pin
+                    class="size-3 shrink-0 fill-primary/20 text-primary"
+                  />{/if}
+              </div>
+            {:else if column.id === "cpu_usage"}{@const cpu = tree
+                ? tree.familyCpuUsage
+                : process.cpu_usage}<Tip
+                text={cpu == null
+                  ? $t(tree ? "proc.familyCpuMissing" : "proc.noReading")
+                  : tree
+                    ? $t("proc.familyCpu", { n: tree.familyProcessCount })
+                    : ""}
+                tabindex={-1}
+              >
+                {#snippet children(props)}<span
+                    class={cpu != null && cpu > 50
+                      ? "rounded bg-destructive/10 px-1.5 py-1 text-destructive"
+                      : ""}
+                    {...props}>{cpu == null ? "—" : `${cpu.toFixed(1)}%`}</span
+                  >{/snippet}
+              </Tip>
+            {:else if tree && column.id === "memory_usage"}<Tip
+                text={$t("proc.familyRam")}
+                tabindex={-1}
+              >
+                {#snippet children(props)}<span {...props}
+                    >{(tree.familyMemoryUsage / (1024 * 1024)).toFixed(1)} MB</span
+                  >{/snippet}
+              </Tip>
+            {:else if column.id === "status"}<span
+                class="flex items-center gap-1.5 text-xs text-muted-foreground"
+                ><span
+                  class="size-1.5 shrink-0 rounded-full"
+                  style:background={process.status === "Running"
+                    ? "var(--status-running)"
+                    : process.status === "Zombie" ||
+                        process.status === "Stopped"
+                      ? "var(--status-stopped)"
+                      : "var(--status-idle)"}
+                ></span>{statusLabel(process.status, $t)}</span
+              >
+            {:else if column.nullable && process[column.id] == null}<span
+                class="text-muted-foreground">—</span
+              >
+            {:else if column.format}{column.format(process[column.id], $t)}
+            {:else}<span
+                class={["pid", "ppid", "session_id"].includes(column.id)
+                  ? "font-mono text-xs text-muted-foreground"
+                  : column.id === "user"
+                    ? "text-muted-foreground"
+                    : ""}>{process[column.id] ?? "—"}</span
+              >{/if}
+          </div>{/snippet}
+      </Tip></Table.Cell
     >{/each}<Table.Cell class="col-filler p-0" aria-hidden="true"
   ></Table.Cell><ActionButtons
     {process}

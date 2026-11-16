@@ -33,6 +33,7 @@
   import DiskHealthSummary from "./DiskHealthSummary.svelte";
   import { locale, t } from "$lib/i18n";
   import * as Tooltip from "$lib/components/ui/tooltip/index.js";
+  import Tip from "$lib/components/Tip.svelte";
   import {
     engineLabel,
     engineTitle,
@@ -404,12 +405,13 @@
           {#each device.engines ?? [] as [engine, load]}<div
               class="grid grid-cols-[7rem_1fr_3rem] items-center gap-3 text-sm"
             >
-              <span
-                class="truncate text-muted-foreground"
-                data-engine={engine}
-                title={engineTitle(engine, $t)}
-                >{engineLabel(engine, $locale)}</span
-              ><Progress
+              <Tip text={engineTitle(engine, $t)}>
+                {#snippet children(props)}<span
+                    class="truncate text-muted-foreground"
+                    data-engine={engine}
+                    {...props}>{engineLabel(engine, $locale)}</span
+                  >{/snippet}
+              </Tip><Progress
                 value={Math.min(100, Math.max(0, load))}
                 aria-label={engineLabel(engine, $locale)}
                 style="--primary:var(--chart-2)"

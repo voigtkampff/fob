@@ -17,6 +17,7 @@
     type DiskHealthView,
   } from "$lib/utils/disk-health.js";
   import { t } from "$lib/i18n";
+  import Tip from "$lib/components/Tip.svelte";
 
   let { onDetails }: { onDetails: () => void } = $props();
   let view = $state<DiskHealthView>({ kind: "loading" });
@@ -93,15 +94,22 @@
             ]}>{status(d)}</span
           >
         </div>
-        <p class="truncate text-xs text-muted-foreground" title={where}>
-          {where}
-        </p>
-        {#if lines.length}<p
-            class="facts text-xs text-muted-foreground tabular-nums"
-            title={$t("dh.usedNote")}
-          >
-            {lines.join(" · ")}
-          </p>{/if}
+        <Tip text={where}>
+          {#snippet children(props)}<p
+              class="truncate text-xs text-muted-foreground"
+              {...props}
+            >
+              {where}
+            </p>{/snippet}
+        </Tip>
+        {#if lines.length}<Tip text={$t("dh.usedNote")}>
+            {#snippet children(props)}<p
+                class="facts text-xs text-muted-foreground tabular-nums"
+                {...props}
+              >
+                {lines.join(" · ")}
+              </p>{/snippet}
+          </Tip>{/if}
       </div>
     {:else}
       <p class="text-sm text-muted-foreground">{$t("dh.none")}</p>

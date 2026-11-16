@@ -1,6 +1,7 @@
 <script lang="ts">
   import ResourceDetails from "./ResourceDetails.svelte";
   import StatCard from "./StatCard.svelte";
+  import Tip from "$lib/components/Tip.svelte";
   import ResourceTrend from "./ResourceTrend.svelte";
   import type { SystemStats, GpuDevice, ResourceSample } from "$lib/types";
   import { Gpu } from "@lucide/svelte";
@@ -47,12 +48,14 @@
     <div class="text-2xl font-semibold tracking-tight tabular-nums">
       {percent(device?.utilization)}
     </div>
-    <p
-      class="truncate text-xs leading-4 text-muted-foreground"
-      title={device?.name ?? $t("dash.noGpu")}
-    >
-      {device?.name ?? $t("dash.noGpu")}
-    </p>
+    <Tip text={device?.name ?? $t("dash.noGpu")}>
+      {#snippet children(props)}<p
+          class="truncate text-xs leading-4 text-muted-foreground"
+          {...props}
+        >
+          {device?.name ?? $t("dash.noGpu")}
+        </p>{/snippet}
+    </Tip>
   {/snippet}
   {#snippet middle()}
     <p class="text-xs leading-4 text-muted-foreground">

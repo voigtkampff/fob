@@ -5,6 +5,7 @@
   import type { Snippet } from "svelte";
   import * as Card from "$lib/components/ui/card/index.js";
   import { Badge } from "$lib/components/ui/badge/index.js";
+  import Tip from "$lib/components/Tip.svelte";
   import { getContext } from "svelte";
   let {
     title,
@@ -37,7 +38,11 @@
         class={`sc-icon size-5 shrink-0 rounded-md border-0 p-0 [&>svg]:size-3! ${color ? "bg-primary/10 text-primary" : "bg-muted text-muted-foreground"}`}
         style={color ? `--primary:${color}` : ""}
         aria-hidden="true">{@render icon()}</Badge
-      ><span class="truncate" {title}>{title}</span></span
+      ><Tip text={title}>
+        {#snippet children(props)}<span class="truncate" {...props}
+            >{title}</span
+          >{/snippet}
+      </Tip></span
     >
     {#if badge}<Badge
         variant="secondary"

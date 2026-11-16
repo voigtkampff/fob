@@ -1,6 +1,7 @@
 <script lang="ts">
   import StatCard from "./StatCard.svelte";
   import StatItem from "./StatItem.svelte";
+  import Tip from "$lib/components/Tip.svelte";
   import ResourceDetails from "./ResourceDetails.svelte";
   import { HardDrive } from "@lucide/svelte";
   import { Progress } from "$lib/components/ui/progress/index.js";
@@ -44,9 +45,14 @@
     <div class="text-2xl font-semibold tracking-tight tabular-nums">
       {ready ? formatBytes(diskFreeBytes) : "—"}
     </div>
-    <p class="truncate text-xs leading-4 text-muted-foreground" title={sub}>
-      {sub}
-    </p>
+    <Tip text={sub}>
+      {#snippet children(props)}<p
+          class="truncate text-xs leading-4 text-muted-foreground"
+          {...props}
+        >
+          {sub}
+        </p>{/snippet}
+    </Tip>
   {/snippet}
   {#snippet middle()}
     <StatItem

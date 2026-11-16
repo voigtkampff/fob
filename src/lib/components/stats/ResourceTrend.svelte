@@ -11,6 +11,7 @@
   import type { ResourceSample } from "$lib/types";
   import { formatBytes } from "$lib/utils";
   import ChartCursor from "$lib/components/charts/ChartCursor.svelte";
+  import Tip from "$lib/components/Tip.svelte";
   import { percentText } from "$lib/utils/chart-cursor.js";
   import {
     RESOURCE_WINDOW_MS,
@@ -308,10 +309,12 @@
         </div>{/if}
     </Chart.Container>
   </ChartCursor>
-  <div
-    class="min-h-3 truncate text-[10px] leading-3 text-muted-foreground tabular-nums"
-    title={$t("trend.title", { caption })}
-  >
-    {caption}
-  </div>
+  <Tip text={$t("trend.title", { caption })}>
+    {#snippet children(props)}<div
+        class="min-h-3 truncate text-[10px] leading-3 text-muted-foreground tabular-nums"
+        {...props}
+      >
+        {caption}
+      </div>{/snippet}
+  </Tip>
 </div>

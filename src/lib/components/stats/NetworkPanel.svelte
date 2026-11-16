@@ -1,6 +1,7 @@
 <script lang="ts">
   import ResourceDetails from "./ResourceDetails.svelte";
   import StatCard from "./StatCard.svelte";
+  import Tip from "$lib/components/Tip.svelte";
   import StatItem from "./StatItem.svelte";
   import ResourceTrend from "./ResourceTrend.svelte";
   import type { SystemStats, ResourceSample } from "$lib/types";
@@ -27,18 +28,22 @@
       {history}
     />{/snippet}
   {#snippet value()}
-    <div
-      class="truncate text-2xl font-semibold tracking-tight tabular-nums"
-      title={networkRxBytes !== null && Number.isFinite(networkRxBytes)
+    <Tip
+      text={networkRxBytes !== null && Number.isFinite(networkRxBytes)
         ? `${formatBytes(networkRxBytes)}/s`
-        : undefined}
+        : ""}
     >
-      {networkRxBytes !== null && Number.isFinite(networkRxBytes)
-        ? formatBytes(networkRxBytes)
-        : "—"}<span class="ml-0.5 text-base font-normal text-muted-foreground"
-        >/s</span
-      >
-    </div>
+      {#snippet children(props)}<div
+          class="truncate text-2xl font-semibold tracking-tight tabular-nums"
+          {...props}
+        >
+          {networkRxBytes !== null && Number.isFinite(networkRxBytes)
+            ? formatBytes(networkRxBytes)
+            : "—"}<span
+            class="ml-0.5 text-base font-normal text-muted-foreground">/s</span
+          >
+        </div>{/snippet}
+    </Tip>
     <p
       class="flex items-center gap-1.5 text-xs leading-4 text-muted-foreground"
     >
