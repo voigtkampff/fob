@@ -12,17 +12,6 @@ export function formatMemorySize(bytes: number): string {
   return `${gb.toFixed(1)} GB`;
 }
 
-export function formatPercentage(value: number): string {
-  return `${value.toFixed(1)}%`;
-}
-
-export function getUsageClass(percentage: number): string {
-  if (percentage >= 90) return "critical";
-  if (percentage >= 60) return "high";
-  if (percentage >= 30) return "medium";
-  return "low";
-}
-
 export function formatBytes(bytes: number): string {
   const units = ["B", "KB", "MB", "GB", "TB"];
   let value = bytes;

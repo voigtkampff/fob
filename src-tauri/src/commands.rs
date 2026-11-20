@@ -113,10 +113,73 @@ pub async fn process_location(
     start_time: u64,
     state: State<'_, AppState>,
 ) -> Result<crate::native_icons::Executable, String> {
+    location_of(&state, pid, start_time)
+}
+
+/// The command's body, apart from Tauri so it can be tested: a snapshot lock and
+/// the identity lookup. A pid that is no longer listed, or one whose start time
+/// changed, is `Gone` rather than an error, so the menu can say the process
+/// ended instead of failing.
+fn location_of(
+    state: &AppState,
+    pid: u32,
+    start_time: u64,
+) -> Result<crate::native_icons::Executable, String> {
     let sys = state.sys.lock().map_err(|e| e.to_string())?;
     Ok(crate::native_icons::process_executable(
         &sys, pid, start_time,
     ))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::native_icons::Executable;
+
+    #[test]
+    fn location_says_gone_instead_of_failing_for_an_unknown_pid() {
+        let state = AppState::new();
+        // Nothing holds these pids, so the answer is "it ended", not an error.
+        assert_eq!(
+            location_of(&state, u32::MAX - 1, 0).unwrap(),
+            Executable::Gone
+        );
+        assert_eq!(
+            location_of(&state, u32::MAX, u64::MAX).unwrap(),
+            Executable::Gone
+        );
+        // pid 0 is Windows' idle process: listed without an image name, so it is
+        // reported as unusable and never as a path the menu could reveal.
+        assert!(matches!(
+            location_of(&state, 0, 0).unwrap(),
+            Executable::Gone | Executable::Unreadable
+        ));
+    }
+
+    #[test]
+    fn location_pins_the_start_time_of_the_pid() {
+        let state = AppState::new();
+        let pid = std::process::id();
+        let start_time = {
+            let mut sys = state.sys.lock().unwrap();
+            sys.refresh_specifics(AppState::refresh_kind());
+            sys.process(sysinfo::Pid::from_u32(pid))
+                .expect("own process is listed")
+                .start_time()
+        };
+        match location_of(&state, pid, start_time).unwrap() {
+            Executable::Found { path } => {
+                assert!(std::path::Path::new(&path).is_absolute(), "{path}");
+            }
+            other => panic!("own executable should be found, got {other:?}"),
+        }
+        // The same pid with another start time is another process: a reused
+        // pid must not reveal the wrong file.
+        assert_eq!(
+            location_of(&state, pid, start_time.saturating_add(1)).unwrap(),
+            Executable::Gone
+        );
+    }
 }
 
 /// Physical disk health for the Disk detail. Cached for five minutes; one
