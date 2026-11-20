@@ -1,9 +1,12 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
+  locateOutcome,
   menuPlacement,
   procMenuItems,
   procRowOf,
+  revealLocation,
+  staleResponse,
 } from "../src/lib/utils/process-menu.js";
 
 const ctx = {
@@ -239,5 +242,92 @@ test("procRowOf finds the row that owns a target", () => {
     procRowOf({ closest: () => null }),
     null,
     "a target outside the table",
+  );
+});
+
+test("a reply with no path greys the reveal and never asks Explorer", async () => {
+  const process = { pid: 4, name: "a", command: "a" };
+  const revealed = [];
+  const reveal = (path) => {
+    revealed.push(path);
+    return Promise.resolve();
+  };
+  for (const [reply, kind, hintKey] of [
+    [{ kind: "gone" }, "gone", "proc.gone"],
+    [{ kind: "unreadable" }, "unreadable", "proc.locationUnreadable"],
+    // A state this build does not know must stay greyed too.
+    [{ kind: "something else" }, "unreadable", "proc.locationUnreadable"],
+    // Neither does a "found" that carries no path.
+    [{ kind: "found", path: "" }, "unreadable", "proc.locationUnreadable"],
+    [null, "unreadable", "proc.locationUnreadable"],
+  ]) {
+    const outcome = locateOutcome(reply);
+    assert.deepEqual(outcome, { location: { kind }, path: "" });
+    const entry = item(
+      procMenuItems(process, { location: outcome.location }),
+      "location",
+    );
+    assert.equal(entry.disabled, true, JSON.stringify(reply));
+    assert.equal(entry.hintKey, hintKey, JSON.stringify(reply));
+    // The click reaches the action, which must not call the command.
+    const result = await entry.run(process, {
+      ...ctx,
+      onOpenLocation: () => revealLocation(outcome, reveal),
+    });
+    assert.deepEqual(result, { keepOpen: true, location: { kind: "failed" } });
+  }
+  assert.deepEqual(revealed, [], "no reveal without a path");
+});
+
+test("a reply that arrives after its menu closed is dropped", () => {
+  assert.equal(staleResponse(1, 1), false, "the lookup's own menu");
+  assert.equal(staleResponse(1, 2), true, "the menu was closed");
+  assert.equal(staleResponse(2, 1), true, "the menu was replaced");
+
+  // A lookup that lost its menu writes nothing back, even when it found a path.
+  const menu = { location: { kind: "checking" }, path: "" };
+  const seen = (reply, mine, current) =>
+    staleResponse(mine, current) ? menu : { ...menu, ...locateOutcome(reply) };
+  const stale = seen({ kind: "found", path: "C:a.exe" }, 1, 2);
+  assert.deepEqual(stale, {
+    location: { kind: "checking" },
+    path: "",
+  });
+  const fresh = seen({ kind: "found", path: "C:a.exe" }, 2, 2);
+  assert.deepEqual(fresh, {
+    location: { kind: "ready" },
+    path: "C:a.exe",
+  });
+});
+
+test("a failed reveal keeps the menu open and says so in the item", async () => {
+  const process = { pid: 4, name: "a", command: "a" };
+  const ready = { location: { kind: "ready" }, path: "C:a.exe" };
+
+  const asked = [];
+  const opened = await revealLocation(ready, (path) => {
+    asked.push(path);
+    return Promise.resolve();
+  });
+  assert.deepEqual(opened, { keepOpen: false });
+  assert.deepEqual(asked, ["C:a.exe"], "the path is passed through");
+
+  // Explorer refusing lands in the state the item shows, not in a closed menu.
+  const failed = await revealLocation(ready, () =>
+    Promise.reject(new Error("explorer")),
+  );
+  assert.deepEqual(failed, { keepOpen: true, location: { kind: "failed" } });
+  const menu = { ...ready, location: failed.location };
+  const entry = item(procMenuItems(process, menu), "location");
+  assert.equal(entry.labelKey, "proc.location");
+  assert.equal(entry.disabled, true);
+  assert.equal(entry.hintKey, "proc.locationFailed");
+
+  // The open menu keeps every other item usable while it says the failure.
+  assert.deepEqual(
+    procMenuItems(process, menu)
+      .filter((other) => other.disabled)
+      .map((other) => other.id),
+    ["location"],
   );
 });
