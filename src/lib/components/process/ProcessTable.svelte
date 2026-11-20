@@ -7,6 +7,8 @@
   } from "$lib/utils/table-layout.js";
   import { previewOrder } from "$lib/utils/layout-order.js";
   import { TableHeader, ProcessRow } from "$lib/components";
+  import ProcessMenu from "./ProcessMenu.svelte";
+  import { procMenuItems } from "$lib/utils/process-menu.js";
   import { processIdentity } from "$lib/utils/process-tree.js";
   import { Button } from "$lib/components/ui/button/index.js";
   import * as Table from "$lib/components/ui/table/index.js";
@@ -41,6 +43,22 @@
 
   let regionWidth = 0;
   let resizing: { id: string; width: number } | null = null;
+  let menu: {
+    process: Process;
+    x: number;
+    y: number;
+    row: HTMLElement;
+  } | null = null;
+  // The clipboard can refuse (no permission, no focus); a failed copy stays
+  // silent so the menu still closes.
+  async function copyText(text: string) {
+    try {
+      await navigator.clipboard.writeText(text);
+    } catch {
+      // Best effort.
+    }
+  }
+  $: menuCtx = { onShowDetails, onTogglePin, onKillProcess, copyText };
   $: tree = viewMode === "tree";
   $: manual = {
     ...manualWidths(
@@ -129,6 +147,7 @@
             {onTogglePin}
             {onShowDetails}
             {onKillProcess}
+            onRowMenu={(next) => (menu = next)}
           />{:else}<Table.Row
             ><Table.Cell
               colspan={columns.filter((c) => c.visible).length + 2}
@@ -150,4 +169,13 @@
       ></Table.Root
     >
   </div>
+  {#if menu}<ProcessMenu
+      items={procMenuItems(menu.process, {
+        pinned: pinnedProcesses.has(menu.process.command),
+      })}
+      process={menu.process}
+      anchor={menu}
+      ctx={menuCtx}
+      onClose={() => (menu = null)}
+    />{/if}
 </section>

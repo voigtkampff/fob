@@ -7,6 +7,7 @@
   import { ChevronRight, ChevronDown, Pin } from "@lucide/svelte";
   import { t } from "$lib/i18n";
   import { statusLabel } from "$lib/utils/process-status";
+  import { procRowOf } from "$lib/utils/process-menu.js";
   export let process: Process;
   export let columns: Column[];
   export let isPinned: boolean;
@@ -17,9 +18,40 @@
   export let onTogglePin: (command: string) => void;
   export let onShowDetails: (process: Process) => void;
   export let onKillProcess: (process: Process) => void;
+  export let onRowMenu: (menu: {
+    process: Process;
+    x: number;
+    y: number;
+    row: HTMLElement;
+  }) => void = () => {};
+
+  function openMenu(x: number, y: number, target: EventTarget | null) {
+    const row = procRowOf(target) as HTMLElement | null;
+    if (row) onRowMenu({ process, x, y, row });
+  }
 </script>
 
-<Table.Row data-pinned={isPinned} data-high-usage={isHighUsage}
+<!-- svelte-ignore a11y_no_noninteractive_tabindex a11y_no_noninteractive_element_interactions (The row is only a tab stop and a key handler: it is where Shift+F10 opens the row's menu. The name button, chevron and action buttons stay the interactive controls.) -->
+<Table.Row
+  data-pinned={isPinned}
+  data-high-usage={isHighUsage}
+  data-process-row={process.pid}
+  tabindex={0}
+  oncontextmenu={(event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    window.getSelection()?.removeAllRanges();
+    openMenu(event.clientX, event.clientY, event.currentTarget);
+  }}
+  onkeydown={(event) => {
+    if (event.key !== "ContextMenu" && !(event.shiftKey && event.key === "F10"))
+      return;
+    const row = procRowOf(event.currentTarget) as HTMLElement | null;
+    if (!row) return;
+    event.preventDefault();
+    const rect = row.getBoundingClientRect();
+    openMenu(rect.left + 12, rect.top + rect.height / 2, row);
+  }}
   >{#each columns.filter((c) => c.visible) as column (column.id)}<Table.Cell
       data-col={column.id}
       class={`${column.numeric ? "text-right font-mono text-xs" : ""} ${column.id === "name" ? "overflow-hidden pl-4" : ""} ${tree && column.id === "name" ? "tree-name" : ""}`}
