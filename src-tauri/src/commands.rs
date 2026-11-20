@@ -104,6 +104,21 @@ pub async fn get_process_icons(
     .map_err(|e| e.to_string())?
 }
 
+/// One listed process's executable, for the row menu's Open file location.
+/// Paths never come from the frontend; the start time pins which process
+/// answers.
+#[tauri::command]
+pub async fn process_location(
+    pid: u32,
+    start_time: u64,
+    state: State<'_, AppState>,
+) -> Result<crate::native_icons::Executable, String> {
+    let sys = state.sys.lock().map_err(|e| e.to_string())?;
+    Ok(crate::native_icons::process_executable(
+        &sys, pid, start_time,
+    ))
+}
+
 /// Physical disk health for the Disk detail. Cached for five minutes; one
 /// scan at a time.
 #[tauri::command]

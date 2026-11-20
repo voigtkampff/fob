@@ -51,11 +51,44 @@ fn outer_app_bundle(executable: &Path) -> Option<PathBuf> {
         .map(Path::to_path_buf)
 }
 
+/// The listed process with this pid whose start time still matches: a reused
+/// pid is a different process.
+fn listed(sys: &sysinfo::System, pid: u32, start_time: u64) -> Option<&sysinfo::Process> {
+    sys.process(sysinfo::Pid::from_u32(pid))
+        .filter(|p| p.start_time() == start_time)
+}
+
 pub fn process_target(sys: &sysinfo::System, request: &IconRequest) -> Option<PathBuf> {
-    sys.process(sysinfo::Pid::from_u32(request.pid))
-        .filter(|p| p.start_time() == request.start_time)
+    listed(sys, request.pid, request.start_time)
         .and_then(|p| p.exe())
         .map(Path::to_path_buf)
+}
+
+/// The executable a listed process runs, or why Fob cannot name it. The row
+/// menu greys its Open file location item on the two failures.
+#[derive(Debug, Serialize, PartialEq, Eq)]
+#[serde(tag = "kind", rename_all = "camelCase")]
+pub enum Executable {
+    Found {
+        path: String,
+    },
+    /// Not in the snapshot: it ended, or the pid is another process now.
+    Gone,
+    /// Listed, but Windows would not give its image name; a non-elevated Fob
+    /// meets this on elevated and protected processes.
+    Unreadable,
+}
+
+pub fn process_executable(sys: &sysinfo::System, pid: u32, start_time: u64) -> Executable {
+    let Some(process) = listed(sys, pid, start_time) else {
+        return Executable::Gone;
+    };
+    match process.exe() {
+        Some(path) => Executable::Found {
+            path: path.to_string_lossy().into_owned(),
+        },
+        None => Executable::Unreadable,
+    }
 }
 
 impl IconCache {
@@ -202,6 +235,22 @@ mod tests {
             }
         )
         .is_none());
+    }
+    #[test]
+    fn executable_says_gone_for_a_missing_pid() {
+        let sys = sysinfo::System::new_all();
+        assert_eq!(process_executable(&sys, u32::MAX - 1, 0), Executable::Gone);
+        let pid = std::process::id();
+        let start_time = sys
+            .process(sysinfo::Pid::from_u32(pid))
+            .unwrap()
+            .start_time();
+        match process_executable(&sys, pid, start_time) {
+            Executable::Found { path } => {
+                assert!(Path::new(&path).is_absolute(), "{path} is absolute");
+            }
+            other => panic!("own process should be found, got {other:?}"),
+        }
     }
     #[test]
     fn nested_helpers_use_owning_bundle() {

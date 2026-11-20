@@ -9,6 +9,8 @@
   import { TableHeader, ProcessRow } from "$lib/components";
   import ProcessMenu from "./ProcessMenu.svelte";
   import { procMenuItems } from "$lib/utils/process-menu.js";
+  import type { ProcMenuLocation } from "$lib/utils/process-menu.js";
+  import { invoke } from "@tauri-apps/api/core";
   import { processIdentity } from "$lib/utils/process-tree.js";
   import { Button } from "$lib/components/ui/button/index.js";
   import * as Table from "$lib/components/ui/table/index.js";
@@ -48,7 +50,70 @@
     x: number;
     y: number;
     row: HTMLElement;
+    location: ProcMenuLocation;
+    /** The executable once the lookup named it; empty until then. */
+    path: string;
   } | null = null;
+  // A lookup's reply is only wanted while it belongs to the open menu.
+  let ticket = 0;
+  /** The command's answer: one listed process's executable, or why not. */
+  type Located =
+    | { kind: "found"; path: string }
+    | { kind: "gone" }
+    | { kind: "unreadable" };
+
+  function openMenu(next: {
+    process: Process;
+    x: number;
+    y: number;
+    row: HTMLElement;
+  }) {
+    menu = { ...next, location: { kind: "checking" }, path: "" };
+    ticket += 1;
+    void locate(next.process, ticket);
+  }
+
+  function closeMenu() {
+    menu = null;
+    ticket += 1;
+  }
+
+  // The row menu greys the reveal until the path is known, so a lookup that
+  // lost its menu, or its row, is dropped instead of shown.
+  async function locate(process: Process, mine: number) {
+    let result: Located;
+    try {
+      result = await invoke<Located>("process_location", {
+        pid: process.pid,
+        startTime: process.start_time,
+      });
+    } catch {
+      result = { kind: "unreadable" };
+    }
+    if (mine !== ticket || !menu) return;
+    menu =
+      result.kind === "found"
+        ? { ...menu, location: { kind: "ready" }, path: result.path }
+        : { ...menu, location: { kind: result.kind } };
+  }
+
+  /** Selects the executable in File Explorer. `false` keeps the menu open so
+   * the item can say the reveal failed instead of nothing happening. */
+  async function openLocation(process: Process) {
+    const path = menu?.path;
+    if (!path) {
+      if (menu) menu = { ...menu, location: { kind: "failed" } };
+      return false;
+    }
+    try {
+      await invoke("space_reveal", { path });
+      return true;
+    } catch {
+      if (menu) menu = { ...menu, location: { kind: "failed" } };
+      return false;
+    }
+  }
+
   // The clipboard can refuse (no permission, no focus); a failed copy stays
   // silent so the menu still closes.
   async function copyText(text: string) {
@@ -58,7 +123,13 @@
       // Best effort.
     }
   }
-  $: menuCtx = { onShowDetails, onTogglePin, onKillProcess, copyText };
+  $: menuCtx = {
+    onShowDetails,
+    onTogglePin,
+    onKillProcess,
+    copyText,
+    onOpenLocation: openLocation,
+  };
   $: tree = viewMode === "tree";
   $: manual = {
     ...manualWidths(
@@ -147,7 +218,7 @@
             {onTogglePin}
             {onShowDetails}
             {onKillProcess}
-            onRowMenu={(next) => (menu = next)}
+            onRowMenu={openMenu}
           />{:else}<Table.Row
             ><Table.Cell
               colspan={columns.filter((c) => c.visible).length + 2}
@@ -172,10 +243,11 @@
   {#if menu}<ProcessMenu
       items={procMenuItems(menu.process, {
         pinned: pinnedProcesses.has(menu.process.command),
+        location: menu.location,
       })}
       process={menu.process}
       anchor={menu}
       ctx={menuCtx}
-      onClose={() => (menu = null)}
+      onClose={closeMenu}
     />{/if}
 </section>

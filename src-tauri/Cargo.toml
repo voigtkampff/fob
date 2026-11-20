@@ -1,6 +1,6 @@
 [package]
 name = "winperf"
-version = "0.8.16"
+version = "0.8.17"
 description = "Fob, a Windows performance monitor"
 authors = ["you"]
 edition = "2021"

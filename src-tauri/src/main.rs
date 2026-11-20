@@ -93,6 +93,7 @@ fn main() {
             desktop::open_about,
             commands::get_processes,
             commands::get_process_icons,
+            commands::process_location,
             commands::kill_process,
             sampling::get_overview,
             sampling::set_monitor_paused,
