@@ -43,6 +43,7 @@ export const THEME_GROUPS = [
       "solarizedDark",
       "ayuDark",
       "ayuMirage",
+      "marathon",
     ],
   },
   {
