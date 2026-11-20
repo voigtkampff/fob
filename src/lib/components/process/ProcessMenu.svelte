@@ -6,7 +6,7 @@
   } from "$lib/utils/process-menu.js";
   import { menuPlacement } from "$lib/utils/process-menu.js";
   import { t } from "$lib/i18n";
-  import { Copy, Hash, Info, Pin, PinOff, X } from "@lucide/svelte";
+  import { Copy, FolderOpen, Hash, Info, Pin, PinOff, X } from "@lucide/svelte";
   import { onMount } from "svelte";
 
   export let items: ProcMenuItem[] = [];
@@ -21,6 +21,7 @@
     pinOff: PinOff,
     copy: Copy,
     hash: Hash,
+    folderOpen: FolderOpen,
     x: X,
   };
   const iconFor = (name: string) => icons[name as keyof typeof icons] ?? Info;
@@ -142,9 +143,18 @@
       class:danger={item.danger}
       disabled={item.disabled}
       onclick={() => {
-        item.run(process, ctx);
-        onClose();
-      }}><Icon size={14} /><span>{$t(item.labelKey)}</span></button
+        // A reveal can fail after the click: the menu then stays open, its
+        // item showing why.
+        const run = item.run(process, ctx);
+        if (run instanceof Promise)
+          void run.then((keep) => keep !== false && onClose());
+        else onClose();
+      }}
+      ><Icon size={14} /><span class="label"
+        ><span>{$t(item.labelKey)}</span>{#if item.hintKey}<span class="hint"
+            >{$t(item.hintKey)}</span
+          >{/if}</span
+      ></button
     >
   {/each}
 </div>
@@ -178,6 +188,15 @@
   .item:hover:not(:disabled),
   .item:focus {
     background: var(--accent);
+  }
+  .label {
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+  }
+  .hint {
+    font-size: 11px;
+    color: var(--muted-foreground);
   }
   .item:disabled {
     opacity: 0.45;

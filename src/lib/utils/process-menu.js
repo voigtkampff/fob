@@ -11,24 +11,47 @@
  *   disabled?: boolean,
  *   danger?: boolean,
  *   separator?: boolean,
- *   run: (process: Process, ctx: ProcMenuContext) => void,
+ *   hintKey?: string,
+ *   run: (process: Process, ctx: ProcMenuContext) => unknown,
  * }} ProcMenuItem */
+
+/**
+ * Where the executable lookup for the row stands: the reason the reveal item
+ * is greyed out when it is not `ready`.
+ * @typedef {{
+ *   kind: "checking" | "ready" | "gone" | "unreadable" | "failed",
+ * }} ProcMenuLocation
+ */
 
 /** @typedef {{
  *   onShowDetails: (process: Process) => void,
  *   onTogglePin: (command: string) => void,
  *   onKillProcess: (process: Process) => void,
  *   copyText: (text: string) => void,
+ *   onOpenLocation: (process: Process) => unknown,
  * }} ProcMenuContext */
 
 /** @param {unknown} value */
 const present = (value) => value != null && value !== "";
 
+/** Why the reveal item cannot be used, as an i18n key the component resolves.
+ * `checking` is the fallback for a state this build does not know, so a greyed
+ * reveal always says something.
+ * @type {Record<string, string>}
+ */
+const locationHints = {
+  checking: "proc.locationChecking",
+  gone: "proc.gone",
+  unreadable: "proc.locationUnreadable",
+  failed: "proc.locationFailed",
+};
+
 /**
- * The five row actions, in display order. An action whose data is missing is
+ * The six row actions, in display order. An action whose data is missing is
  * marked disabled instead of dropped, so the menu keeps a stable shape.
  * @param {Process | null | undefined} process
- * @param {{pinned?: boolean}} [opts]
+ * @param {{pinned?: boolean, location?: ProcMenuLocation}} [opts] `location`
+ * defaults to `checking`, so an unresolved lookup never enables the reveal.
  * @returns {ProcMenuItem[]}
  */
 export function procMenuItems(process, opts = {}) {
@@ -61,6 +84,12 @@ export function procMenuItems(process, opts = {}) {
       run: (proc, ctx) => ctx.copyText(String(proc.pid)),
     },
     {
+      id: "location",
+      labelKey: "proc.location",
+      icon: "folderOpen",
+      run: (proc, ctx) => ctx.onOpenLocation(proc),
+    },
+    {
       id: "end",
       labelKey: "proc.end",
       icon: "x",
@@ -69,17 +98,26 @@ export function procMenuItems(process, opts = {}) {
       run: (proc, ctx) => ctx.onKillProcess(proc),
     },
   ];
+  const kind = opts.location?.kind ?? "checking";
   /** @type {Record<string, boolean>} */
   const usable = {
     details: p.pid != null,
     pin: present(p.command),
     copyName: present(p.name),
     copyPid: p.pid != null,
+    location: kind === "ready",
     end: p.pid != null,
   };
-  return items.map((item) =>
-    usable[item.id] ? item : { ...item, disabled: true },
-  );
+  return items.map((item) => {
+    if (usable[item.id]) return item;
+    const hintKey =
+      item.id === "location"
+        ? (locationHints[kind] ?? locationHints.checking)
+        : undefined;
+    return hintKey
+      ? { ...item, disabled: true, hintKey }
+      : { ...item, disabled: true };
+  });
 }
 
 /**
