@@ -188,8 +188,8 @@ for (const [name, theme] of Object.entries(themes))
       "destructive fill label",
     );
   });
-test("all 24 saved identifiers and intended modes remain", () => {
-  assert.equal(Object.keys(themes).length, 24);
+test("all 25 saved identifiers and intended modes remain", () => {
+  assert.equal(Object.keys(themes).length, 25);
   for (const [name, t] of Object.entries(themes)) assert.equal(t.name, name);
   for (const name of [
     "githubLight",
@@ -209,6 +209,7 @@ test("all 24 saved identifiers and intended modes remain", () => {
     "ibmPC",
     "highContrast",
     "glassy",
+    "marathon",
   ])
     assert.equal(themeIsDark(themes[name].colors), true, name);
 });
