@@ -39,6 +39,33 @@ jobs:
       - run: npm run release:check
       - run: npm run build
 
+  rust-lint:
+    name: Rust lints
+    # Clippy runs on the platform that ships, not in `quality`: on Linux this
+    # crate reports 60 dead-code findings (disk_health, gpu, autostart,
+    # monitoring) for items only the cfg(windows) callers use, and several of
+    # the 0.8.19 findings were windows-only dead code a Linux compile cannot
+    # see. `quality` would also need the GTK and WebKit packages to compile.
+    runs-on: windows-2022
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri -> target
+      - run: npm ci
+      - name: Prepare frontend assets for the lint
+        # generate_context! reads frontendDist even in a clippy check.
+        run: npm run build
+      - run: npm run lint:rust
+
   windows-tests:
     name: Windows tests
     needs: quality
