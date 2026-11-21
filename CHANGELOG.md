@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.8.26
+
+- 清理 Rust 后端与前端共 117 个文件的冗余叙述性注释（约 1800 行），只删注释、不改代码，类型注解与平台/协议说明保留。
+- 修复两个孤儿测试 `tests/copy.mjs` 与 `tests/helper-settings-preview.mjs`：英文文案不再用句号分隔句子；helper 预览测试在 Windows 与新 Node 上可正常关闭 dev server。
+
 ## 0.8.25
 
 - 新增 `--show-all`，只影响本次运行并强制显示主窗口与状态栏，不改设置。
