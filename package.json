@@ -1,6 +1,6 @@
 {
   "name": "neohtop",
-  "version": "0.8.23",
+  "version": "0.8.24",
   "description": "",
   "type": "module",
   "scripts": {
@@ -21,6 +21,7 @@
     "format:check": "prettier --check ./src ./scripts ./docs ./site .github/workflows && cargo fmt --manifest-path src-tauri/Cargo.toml -- --check",
     "lint:rust": "cargo clippy --manifest-path src-tauri/Cargo.toml -- -D warnings",
     "release:check": "node scripts/release.mjs check-version",
+    "verify:ui": "powershell -ExecutionPolicy Bypass -File scripts/verify-ui.ps1",
     "test:release": "node --test scripts/*.test.mjs && npm run test:metrics",
     "prepare": "husky install",
     "build:site": "node scripts/build-site.mjs",

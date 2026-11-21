@@ -224,6 +224,7 @@ Put `llvm-rc` on `PATH` first.
 | `cargo test --manifest-path tools/monitoring-harness/Cargo.toml` | Monitoring modules, without the GTK and WebKit packages |
 | `cargo test --manifest-path sensors-helper/mft-worker/Cargo.toml` | MFT worker |
 | `npm run format:check` | Prettier and `cargo fmt` |
+| `npm run verify:ui` | Windows UI Automation smoke checks for the Fob interface |
 | `npm run lint:rust` | `cargo clippy -- -D warnings`, the same command CI runs |
 
 `npm run lint:rust` needs `npm run build` first: `generate_context!` reads
