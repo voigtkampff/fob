@@ -698,7 +698,7 @@ fn screen_at(point: (f64, f64), fallback: PxRect) -> Screen {
         GetMonitorInfoW, MonitorFromPoint, MONITORINFO, MONITOR_DEFAULTTONEAREST,
     };
     use windows::Win32::UI::Shell::{
-        SHAppBarMessage, ABE_BOTTOM, ABE_LEFT, ABE_RIGHT, ABE_TOP, ABM_GETSTATE, ABM_GETTASKBARPOS,
+        SHAppBarMessage, ABE_LEFT, ABE_RIGHT, ABE_TOP, ABM_GETSTATE, ABM_GETTASKBARPOS,
         ABS_AUTOHIDE, APPBARDATA,
     };
     let px = |r: RECT| PxRect {
@@ -736,7 +736,9 @@ fn screen_at(point: (f64, f64), fallback: PxRect) -> Screen {
                 ABE_TOP => Edge::Top,
                 ABE_LEFT => Edge::Left,
                 ABE_RIGHT => Edge::Right,
-                ABE_BOTTOM | _ => Edge::Bottom,
+                // ABE_BOTTOM and any edge Windows adds later both mean the
+                // bottom of the work area.
+                _ => Edge::Bottom,
             };
             Some((edge, px(data.rc), autohide))
         } else {

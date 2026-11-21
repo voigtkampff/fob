@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.8.19
+
+- 本机 `cargo clippy -- -D warnings` 的 15 条报错全部修掉，这条检查重新有意义（此前长期红着，等于没有检查）。一条 `#[allow]` 都没加，全部改代码本身
+- 三个 GPU 来源常量 `linux-amdgpu`、`linux-drm`、`macos-ioreg` 在 Windows 的非测试构建里确实没有消费者，但 `gpu/linux.rs:102/104`、`gpu/macos.rs:137` 在用，跨平台测试也拿它们当反例。所以补 `cfg(any(target_os = "linux", target_os = "macos", test))`，一个没删，Linux 和 macOS 的构建路径不变
+- `mft_wire::frame` 同理：生产路径里应答帧由提权助手写，Rust 侧只负责 `receive`，这个函数只在测试里造 fixture。改成 `#[cfg(test)]`，`Write` 的 import 一并收进测试；常量 `MAX_FRAME` 仍由 `receive` 用，没动
+- 其余按 clippy 的原意改，没有绕：`boot.rs` 两处多余的 `u32` 转换和点号列表段落缩进、`sensors/setup.rs` 的文档段落、`space.rs:594` 与 `space_mft.rs:93` 各一处多余的 `return`（`#[cfg(windows)]` / `#[cfg(not(windows))]` 两条分支的取值方式不变）、`overlay.rs` 的 `tick % 40 == 0` 换成 `tick.is_multiple_of(40)`、`companion.rs` 任务栏边界的 `ABE_BOTTOM | _` 改为 `_`（`ABE_BOTTOM` 与今后任何新边界都落到下边，行为不变）并删掉随之无用的 import、`hotkey.rs:260` 的槽位类型抽成 `type Slot`
+- `overlay.rs` 里那条扫描源码的测试跟着新写法改了匹配串，其余测试一条没动；`cargo test` 234 passed，`cargo clippy -- -D warnings` 零输出
+- 已知遗留，本次不动：`cargo clippy --all-targets` 另报 4 条，都在测试代码里（`space.rs:1146` 的 `child`、`companion.rs:1330` 与 `monitoring/system_monitor.rs:311` 的 `items_after_test_module`、`sampling.rs:812` 的 `clone`），待确认后再单开。CI 的 `build-check.yml` 里仍然没有 clippy 步骤，这次只恢复本机信号
+- 内置传感器助手 unchanged at 0.8.6
+
 ## 0.8.18
 
 - 删掉两个从未被调用的工具函数：`formatPercentage` 和 `getUsageClass`。整个仓库（`src`、`scripts`、`tests`、Rust 侧）一次都没有引用过它们，界面上的百分比和占用颜色分级都由各自的组件直接算；同文件里 `formatBytes`、`formatDate`、`debounce` 等导出逐个确认仍在用，一个没动

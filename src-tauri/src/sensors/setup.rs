@@ -10,6 +10,7 @@
 //!     and re-checks the copies,
 //!  4. registers the `fob-sensors` task (at logon, highest privileges,
 //!     interactive token) and starts it.
+//!
 //! Because the task points at the Program Files copy, moving winperf.exe does
 //! not break it; a changed bundled helper shows up as `update_available`.
 // Most of this is only reachable on Windows.

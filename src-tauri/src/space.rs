@@ -591,7 +591,7 @@ pub fn drives() -> Vec<Drive> {
         };
         const DRIVE_FIXED: u32 = 3;
         let mask = unsafe { GetLogicalDrives() };
-        return (0..26u8)
+        (0..26u8)
             .filter(|i| mask & (1 << i) != 0)
             .map(|i| format!("{}:\\", (b'A' + i) as char))
             .filter(|root| unsafe { GetDriveTypeW(&windows::core::HSTRING::from(root.as_str())) } == DRIVE_FIXED)
@@ -607,7 +607,7 @@ pub fn drives() -> Vec<Drive> {
                 };
                 Drive { root, total, free }
             })
-            .collect();
+            .collect()
     }
     #[cfg(not(windows))]
     {
