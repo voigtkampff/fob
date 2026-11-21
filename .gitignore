@@ -16,6 +16,9 @@ vite.config.ts.timestamp-*
 
 /.site-build/
 
+# Local Claude Code skills and settings
+.claude/
+
 # winperf build outputs
 /dist/
 /target/
