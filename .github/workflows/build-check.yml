@@ -65,6 +65,14 @@ jobs:
         # generate_context! reads frontendDist even in a clippy check.
         run: npm run build
       - run: npm run lint:rust
+      - name: Build the MFT worker
+        # `sensors-helper/mft-worker` includes src-tauri/src/mft_wire.rs with
+        # #[path] and calls it on its production path, so clippy on the winperf
+        # crate cannot see whether that file still compiles for the worker.
+        # 0.8.19 gated mft_wire::frame behind cfg(test) and only the tag-time
+        # `Package` job noticed, at release. This is the cheap gate: host
+        # build, no cargo-xwin, shares the rust-cache above.
+        run: cargo build --manifest-path sensors-helper/mft-worker/Cargo.toml
 
   windows-tests:
     name: Windows tests

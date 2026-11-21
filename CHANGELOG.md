@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.8.22
+
+- 修回 0.8.19 引入的回归：把 `mft_wire::frame` 标成测试专用导致 `fob-mft` 无法编译，发版打包会失败。现场是 tag `v0.8.21` 的 `Package (windows-x86_64)` 在 `scripts/package-windows.sh` 挂在 `error: could not compile fob-mft (bin "fob-mft") due to 4 previous errors`，note 指向 `src-tauri/src/mft_wire.rs:32` 那条 `#[cfg(test)] pub fn frame`；那个 tag 已删，没有生成草稿，没有发布任何东西
+- 0.8.19 当时"一条 allow 都不加"的前提在"同一份源码被两个 crate 用 `#[path]` 复用"这个场景下不成立：`sensors-helper/mft-worker/src/main.rs` 用 `#[path = "../../../src-tauri/src/mft_wire.rs"]` 把本文件当自己的模块，并在生产路径（main.rs 第 43/45/54/55 行）调 `frame`。winperf 二进制里确实没有调用者，但那只是这一个 crate 的视角，不是这份源码的事实
+- 修法：`frame` 去掉 `#[cfg(test)]`，恢复成普通 `pub fn`；只给这一个函数一条 `#[allow(dead_code)]`，注释写明 `sensors-helper/mft-worker` 通过 `#[path]` 包含本文件并在生产中使用 `frame`，只有 winperf 二进制看不到调用，并写明不要再把它塞回 `cfg(test)`。没有对模块或文件加 allow。原来那句"Test-only…"的文档注释一并改对
+- 反方向的那一半也各自标靶：`MAX_STREAM`、`IDLE_SECS`、`TOTAL_SECS`、`Links`、`Links::push`/`finish`、`receive` 是 winperf 用的，`fob-mft` 只吃 `request`/`frame`，它们在那一边是死代码。6 个 item 各一条 `#[allow(dead_code)]`，注释指向同一段说明，仍然没有模块级 allow。`cargo clippy --manifest-path sensors-helper/mft-worker/Cargo.toml -- -D warnings` 从 6 条 error 变零输出
+- 补一道门：`build-check.yml` 的 `Rust lints` job 新增 `cargo build --manifest-path sensors-helper/mft-worker/Cargo.toml`。`Package` 只在 tag 和手动时跑，所以 fob-mft 编坏了要等发版才发现；这一步是宿主直编，不需要 cargo-xwin 和 llvm，复用同一个 `Swatinem/rust-cache`，PR、push `main`、手动都会跑，`release.yml` 通过 `workflow_call` 复用时也会跑
+- 这道门真能拦住的实测（本机，先红后绿，命令与 CI 那一步逐字相同）：改代码之前 `cargo build --manifest-path sensors-helper/mft-worker/Cargo.toml` 退出码 101，输出 `error: could not compile fob-mft (bin "fob-mft") due to 4 previous errors`，两处 `cannot find function frame in module mft_wire`（main.rs:54、55）并附 `note: found an item that was configured out --> src-tauri/src/mft_wire.rs:32`，与发版现场同一份报错；`frame` 恢复成 `pub fn` 之后同一条命令退出码 0、`Finished dev profile`
+- 其余 clippy 保持零：`cargo clippy --manifest-path src-tauri/Cargo.toml -- -D warnings` 零输出
+- 实测：`cargo test --manifest-path src-tauri/Cargo.toml` 234 过 0 红 3 ignore；`npm run format:check`、`npm run check`（0 error 0 warning）、`npm run build:site`、`npm run test:release`、`npm run release:check`、`npm run build` 全过
+- 本机出包（没有 cargo-xwin/llvm-rc，沿用 0.8.17 起的做法：`cargo build --release` 原生编出 exe，MSVC 的 rc.exe 把清单/图标/VERSIONINFO 嵌进去，复用已提交的 0.8.6 助手产物，再复刻 `package-windows.sh` 的 staging）：`dist/fob-v0.8.22-x86_64-windows-fix.zip`，8 444 674 字节，sha256 `719ab76686aa2ceb36459c49576b212017c6a361a694e2d1eb0dc71c62ac59d5`；包内 `sensors/fob-sensors.exe` sha256 `51e30c2ce1a474e6fcd820c355d3581655f17e44b07cfeaf6aa10c8e022c9b2f`，与 `fob.exe` 内嵌 manifest 里那一行一致（`check-sensors-bundle.py` 报 17 个传感器文件全对）；`fob.exe` 的 FileVersion 与 ProductVersion 都是 0.8.22，CompanyName HCB；`check-windows-exe.py` 对 `fob.exe`、`fob-sensors.exe`、`fob-mft.exe` 三个都通过
+- `bash sensors-helper/build.sh` 在本机走不了：第一步 `dotnet run --project tests -c Release` 就报 `error NETSDK1045: The current .NET SDK does not support targeting .NET 8.0`（本机只有 SDK 6.0.410，仓库要 .NET 8）；补上 .NET 8 还会卡在 mft-worker 的 `cargo xwin build`（本机没有 cargo-xwin 和 llvm-rc）。它在 `rm -rf dist` 之前就退出，`sensors-helper/dist` 的已提交产物一个字节没动
+- 版本号 0.8.21 → 0.8.22，六处同步（`package.json`、`package-lock.json` 两处、`tauri.conf.json`、`Cargo.toml`、`Cargo.lock`）
+- 内置传感器助手 unchanged at 0.8.6
+
 ## 0.8.21
 
 - 本机 `npm run test:release` 上那 4 条红在说谎：`doctor rejects a live process without its own visible window (empty)` / `(failed-search)`、`doctor accepts its live process and scoped window with logs absent` / `logs present` 报的失败原因是 `application is not running`，实际进程活得好好的，是本平台没有 X11 能力。现在它们在不具备 X11 时挂 `t.skip` 并写明原因，不再假红也不假绿
