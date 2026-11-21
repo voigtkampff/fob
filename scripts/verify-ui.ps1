@@ -78,14 +78,6 @@ if (-not $webViewRuntime) {
 try {
     Add-Type -AssemblyName UIAutomationClient
     Add-Type -AssemblyName UIAutomationTypes
-    Add-Type -TypeDefinition @'
-using System;
-using System.Runtime.InteropServices;
-public static class FobVerifyKeyboard {
-    [DllImport("user32.dll", SetLastError = true)]
-    public static extern void keybd_event(byte bVk, byte bScan, uint dwFlags, UIntPtr dwExtraInfo);
-}
-'@
 } catch {
     Stop-Verify "Windows UI Automation is unavailable: $($_.Exception.Message)" 3
 }
@@ -99,12 +91,13 @@ $checks = [ordered]@{
     'Process table has a non-header DataItem row' = $false
     'Status text contains 实时 · N 秒' = $false
     'At least one numeric or percentage Text value exists' = $false
+    'Fob status bar window exists' = $false
 }
 try {
     $oldBrowserArgs = [Environment]::GetEnvironmentVariable('WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS', 'Process')
     [Environment]::SetEnvironmentVariable('WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS', '--force-renderer-accessibility', 'Process')
     try {
-        $started = Start-Process -FilePath $Exe -PassThru
+        $started = Start-Process -FilePath $Exe -ArgumentList '--show-all' -PassThru
     } finally {
         [Environment]::SetEnvironmentVariable('WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS', $oldBrowserArgs, 'Process')
     }
@@ -118,7 +111,7 @@ try {
                 [System.Windows.Automation.Condition]::TrueCondition
             )
             foreach ($candidate in $windows) {
-                if ($candidate.Current.ProcessId -eq $started.Id -and $candidate.Current.ClassName -eq 'Tauri Window') {
+                if ($candidate.Current.ProcessId -eq $started.Id -and $candidate.Current.ClassName -eq 'Tauri Window' -and $candidate.Current.Name -eq 'Fob') {
                     $window = $candidate
                     break
                 }
@@ -128,34 +121,27 @@ try {
         Start-Sleep -Milliseconds 500
     }
 
-    if (-not $window) {
-        Write-Output 'Tauri Window not found within 30 seconds; sending Ctrl+Shift+` once.'
-        $VK_CONTROL = 0x11; $VK_SHIFT = 0x10; $VK_OEM_3 = 0xC0; $KEYUP = 0x0002
-        foreach ($key in @($VK_CONTROL, $VK_SHIFT, $VK_OEM_3)) {
-            [FobVerifyKeyboard]::keybd_event([byte]$key, 0, 0, [UIntPtr]::Zero)
-        }
-        foreach ($key in @($VK_OEM_3, $VK_SHIFT, $VK_CONTROL)) {
-            [FobVerifyKeyboard]::keybd_event([byte]$key, 0, [uint32]$KEYUP, [UIntPtr]::Zero)
-        }
-        $deadline = [DateTime]::UtcNow.AddSeconds(10)
-        while ([DateTime]::UtcNow -lt $deadline) {
-            try {
-                $windows = [System.Windows.Automation.AutomationElement]::RootElement.FindAll(
-                    [System.Windows.Automation.TreeScope]::Children,
-                    [System.Windows.Automation.Condition]::TrueCondition
-                )
-                foreach ($candidate in $windows) {
-                    if ($candidate.Current.ProcessId -eq $started.Id -and $candidate.Current.ClassName -eq 'Tauri Window') {
-                        $window = $candidate
-                        break
-                    }
+    if (-not $window) { throw 'Could not find the launched Fob main window within 30 seconds despite --show-all. Check the app startup logs and WebView2 runtime.' }
+
+    $statusBar = $null
+    $deadline = [DateTime]::UtcNow.AddSeconds(30)
+    while ([DateTime]::UtcNow -lt $deadline) {
+        try {
+            $windows = [System.Windows.Automation.AutomationElement]::RootElement.FindAll(
+                [System.Windows.Automation.TreeScope]::Children,
+                [System.Windows.Automation.Condition]::TrueCondition
+            )
+            foreach ($candidate in $windows) {
+                if ($candidate.Current.ProcessId -eq $started.Id -and $candidate.Current.Name -eq 'Fob status bar') {
+                    $statusBar = $candidate
+                    break
                 }
-            } catch { }
-            if ($window) { break }
-            Start-Sleep -Milliseconds 500
-        }
+            }
+        } catch { }
+        if ($statusBar) { break }
+        Start-Sleep -Milliseconds 500
     }
-    if (-not $window) { throw 'Could not find the launched fob Tauri Window after the hotkey retry. Ensure the window is visible.' }
+    $checks['Fob status bar window exists'] = $null -ne $statusBar
 
     $descendants = $window.FindAll(
         [System.Windows.Automation.TreeScope]::Descendants,

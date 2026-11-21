@@ -7,6 +7,11 @@ use crate::monitoring::{ProcessMonitor, SystemMonitor};
 use std::sync::Mutex;
 use sysinfo::{Disks, Networks, RefreshKind, System};
 
+/// Per-process command-line override. It is initialized before Tauri starts and
+/// never participates in preference updates or persistence.
+#[derive(Clone, Copy, Debug, Default)]
+pub struct ShowAll(pub bool);
+
 /// Global application state
 ///
 /// Maintains thread-safe access to system information and monitoring components
