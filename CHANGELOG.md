@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.8.23
+
+- 仓库新增 agent 说明文件 `AGENTS.md`，记录项目交付与验证规则。
+- `.claude/` 本地 Claude Code 配置不再纳入版本控制。
+- 版本号 0.8.22 → 0.8.23，六处同步（`package.json`、`package-lock.json` 两处、`tauri.conf.json`、`Cargo.toml`、`Cargo.lock`）。
+- 内置传感器助手 unchanged at 0.8.6
+
 ## 0.8.22
 
 - 修回 0.8.19 引入的回归：把 `mft_wire::frame` 标成测试专用导致 `fob-mft` 无法编译，发版打包会失败。现场是 tag `v0.8.21` 的 `Package (windows-x86_64)` 在 `scripts/package-windows.sh` 挂在 `error: could not compile fob-mft (bin "fob-mft") due to 4 previous errors`，note 指向 `src-tauri/src/mft_wire.rs:32` 那条 `#[cfg(test)] pub fn frame`；那个 tag 已删，没有生成草稿，没有发布任何东西
