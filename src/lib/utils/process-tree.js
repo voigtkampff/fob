@@ -7,9 +7,6 @@ export function processIdentity(process) {
 }
 
 /**
- * Keep sibling order from the existing sort, retain ancestors of search matches,
- * and tolerate disappearing parents, reused PIDs, and malformed cycles.
- * Traversal is iterative so deep process chains cannot overflow the stack.
  * @param {Process[]} sortedProcesses
  * @param {Set<string>} expanded
  * @param {Set<number> | null} matchingPids null means no active search/filter
@@ -198,7 +195,6 @@ export function buildProcessTree(
 }
 
 /**
- * Paginate root families, keeping each expanded family together.
  * @param {{rows: ProcessTreeRow[], rootCount: number}} tree
  * @param {number} page
  * @param {number} perPage

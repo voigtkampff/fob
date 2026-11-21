@@ -1,7 +1,3 @@
-//! Window effects and customization
-//!
-//! Provides platform-specific window effects like transparency and vibrancy.
-
 use tauri::WebviewWindow;
 
 #[cfg(target_os = "windows")]
@@ -33,15 +29,12 @@ impl MainBackdrop {
     }
 }
 
-/// Applies Windows-specific window effects: Mica until the page says its
-/// theme is Glassy (`set_main_backdrop`).
 #[cfg(target_os = "windows")]
 pub fn setup_window_effects(window: &WebviewWindow) -> Result<(), Box<dyn std::error::Error>> {
     apply_main_backdrop(window, MainBackdrop::Mica).ok_or("no window backdrop")?;
     Ok(())
 }
 
-/// Turns a material on or off on the main window.
 #[cfg_attr(not(target_os = "windows"), allow(dead_code))]
 pub trait Materials {
     fn apply(&mut self, material: MainBackdrop) -> bool;
@@ -110,7 +103,6 @@ static MAIN_BACKDROP: std::sync::Mutex<BackdropState> = std::sync::Mutex::new(Ba
     applied: None,
 });
 
-/// Returns the material now on the window, if any.
 #[cfg(target_os = "windows")]
 pub fn apply_main_backdrop(window: &WebviewWindow, want: MainBackdrop) -> Option<MainBackdrop> {
     MAIN_BACKDROP
@@ -119,7 +111,6 @@ pub fn apply_main_backdrop(window: &WebviewWindow, want: MainBackdrop) -> Option
         .set(want, &mut Native(window))
 }
 
-/// The main window's page applied a theme; `glass` is the Glassy theme.
 #[tauri::command]
 pub async fn set_main_backdrop(app: tauri::AppHandle, glass: bool) -> Result<(), String> {
     #[cfg(target_os = "windows")]
@@ -238,8 +229,6 @@ mod tests {
         use super::MainBackdrop;
         assert_eq!(MainBackdrop::for_page(true), MainBackdrop::Acrylic);
         assert_eq!(MainBackdrop::for_page(false), MainBackdrop::Mica);
-        // Glassy is the one theme whose page lets the backdrop show.
-        // Windows checkouts may use CRLF, so compare with line endings removed.
         let css = include_str!("../../../src/app.css").replace('\r', "");
         assert!(css.contains("[data-theme=\"glassy\"] body {\n  background: transparent;"));
         let theme = include_str!("../../../src/lib/stores/theme.ts");
@@ -247,7 +236,6 @@ mod tests {
             theme.contains("invoke(\"set_main_backdrop\", { glass: theme.name === \"glassy\" })")
         );
     }
-    /// A window that records calls; `mica` is whether Mica exists here.
     struct Fake {
         mica: bool,
         acrylic: bool,
@@ -318,7 +306,6 @@ mod tests {
         assert_eq!(s.set(Acrylic, &mut w), Some(Acrylic));
         assert_eq!(s.set(Mica, &mut w), Some(Acrylic));
         assert_eq!(w.on, vec![Acrylic]);
-        // Neither material: nothing on, and no panic.
         let mut bare = fake(false, false);
         assert_eq!(BackdropState::default().set(Mica, &mut bare), None);
         assert!(bare.on.is_empty());
@@ -344,7 +331,6 @@ mod tests {
     }
 }
 
-/// Applies macOS-specific window effects
 #[cfg(target_os = "macos")]
 pub fn setup_window_effects(window: &WebviewWindow) -> Result<(), Box<dyn std::error::Error>> {
     apply_vibrancy(
@@ -356,7 +342,6 @@ pub fn setup_window_effects(window: &WebviewWindow) -> Result<(), Box<dyn std::e
     Ok(())
 }
 
-/// No-op for platforms without specific window effects
 #[cfg(not(any(target_os = "windows", target_os = "macos")))]
 pub fn setup_window_effects(_window: &WebviewWindow) -> Result<(), Box<dyn std::error::Error>> {
     Ok(())

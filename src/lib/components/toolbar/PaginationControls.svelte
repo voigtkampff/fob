@@ -15,7 +15,6 @@
   export let currentPage: number;
   export let totalPages: number;
   export let totalResults: number;
-  /** Already translated, e.g. "283 个进程". */
   export let resultLabel = "";
   $: options = ITEMS_PER_PAGE_OPTIONS.includes(itemsPerPage)
     ? ITEMS_PER_PAGE_OPTIONS

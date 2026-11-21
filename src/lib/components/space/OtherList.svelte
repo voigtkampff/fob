@@ -1,8 +1,4 @@
 <script lang="ts">
-  // Fob: the items of a folder's "other" block, largest first. Items the
-  // page merged come from the scan; items the scan itself folded (their
-  // names are not cached) are listed and measured by the backend now, in
-  // pages. Only the rows in view are drawn, so long lists stay light.
   import { invoke, isTauri } from "@tauri-apps/api/core";
   import { X, Folder, File } from "@lucide/svelte";
   import type { SpaceNode, Block } from "$lib/utils/treemap.js";

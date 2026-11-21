@@ -1,7 +1,3 @@
-// Fob UI strings: one key -> string table per locale, no i18n framework.
-// Keep both tables in the same key order; tests/i18n.mjs checks that every key
-// exists in both and that every key used in src/ exists.
-
 /** @type {Record<string, string>} */
 export const en = {
   "helper.title": "Sensor helper",
@@ -1582,7 +1578,7 @@ export function resolveLocale(pref, system) {
   return /^zh\b/i.test(system ?? "") ? "zh" : "en";
 }
 
-/** Look up `key` and fill "{name}" placeholders; falls back to English, then the key.
+/**
  * @param {"en" | "zh"} locale
  * @param {string} key
  * @param {Record<string, string | number>} [vars]
@@ -1596,7 +1592,7 @@ export function translate(locale, key, vars) {
     : text;
 }
 
-/** English translator, the default for helpers called without one.
+/**
  * @param {string} key
  * @param {Record<string, string | number>} [vars]
  */

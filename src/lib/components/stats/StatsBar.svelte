@@ -39,7 +39,6 @@
   export let order: string[] = PROCESS_CARDS;
   export let onReorder: ((order: string[]) => void) | null = null;
   let move: { id: string; target: string; after: boolean } | null = null;
-  // StatCard shows the drag grip and hint only when its cards can move.
   setContext("movable-cards", !!onReorder);
   $: shown = previewOrder(order, move);
 </script>

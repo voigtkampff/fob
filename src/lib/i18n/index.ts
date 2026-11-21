@@ -34,7 +34,6 @@ export const t = derived(
       translate(current, key, vars),
 );
 
-// <html lang> for fonts and screen readers.
 if (typeof document !== "undefined")
   locale.subscribe((current) => {
     document.documentElement.lang = current === "zh" ? "zh-CN" : "en";

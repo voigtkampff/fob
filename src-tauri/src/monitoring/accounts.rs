@@ -15,7 +15,6 @@ use std::collections::HashMap;
 use std::sync::mpsc::{sync_channel, SyncSender};
 use std::sync::{Arc, Mutex, PoisonError};
 
-/// Why a SID shows as its own text.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Unresolved {
     /// No account has this SID (a deleted user, a foreign domain).
@@ -26,18 +25,13 @@ pub enum Unresolved {
 
 pub type Lookup = fn(&str) -> Result<String, Unresolved>;
 
-/// SIDs waiting for the worker; a SID that finds the queue full is tried
-/// again on a later refresh.
 const QUEUE: usize = 64;
 
-/// SID text to what the owner column shows; `None` while the lookup waits.
 type Shown = Arc<Mutex<HashMap<String, Option<String>>>>;
 
 #[derive(Debug)]
 pub struct AccountNames {
     shown: Shown,
-    /// Started with the first lookup; `None` until then or if the worker
-    /// thread could not start (owners then stay SIDs).
     queue: Option<SyncSender<String>>,
     started: bool,
     lookup: Lookup,
@@ -53,7 +47,6 @@ impl AccountNames {
         }
     }
 
-    /// What the owner column shows for `sid` now. Never waits for a lookup.
     pub fn name(&mut self, sid: &str) -> String {
         let shown = Arc::clone(&self.shown);
         let mut shown = shown.lock().unwrap_or_else(PoisonError::into_inner);
@@ -178,7 +171,6 @@ mod tests {
     use std::sync::atomic::{AtomicUsize, Ordering};
     use std::time::{Duration, Instant};
 
-    /// Generic accounts only: well-known SIDs and a made-up user.
     fn answer(sid: &str) -> Result<String, Unresolved> {
         match sid {
             "S-1-5-18" => Ok("SYSTEM".into()),
@@ -191,7 +183,6 @@ mod tests {
         }
     }
 
-    /// What `sid` shows once its lookup has finished.
     pub(crate) fn settled(names: &mut AccountNames, sid: &str) -> String {
         let until = Instant::now() + Duration::from_secs(5);
         loop {

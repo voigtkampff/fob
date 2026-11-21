@@ -3,7 +3,6 @@
   import { SERIES_COLOR } from "$lib/utils/chart-style.js";
   import CoreGrid from "$lib/components/stats/CoreGrid.svelte";
   import { cpuGroups } from "$lib/utils/cpu-groups.js";
-  // winperf: one detail view for any card (back button / Esc returns).
   import type {
     GpuDevice,
     NetApp,
@@ -103,18 +102,12 @@
   let netRows = new Map();
   $: if (kind === "network" && netApps)
     netRows = mergeNetApps(netRows, netApps, Date.now());
-  // Fixed slots so the list keeps its height while apps come and go.
-  // The mini window has one fixed height: 7 app rows and the 2 busiest
-  // adapters keep the network detail inside it.
   $: appSlots = compact ? 7 : 12;
   $: shownInterfaces = compact ? interfaces.slice(0, 2) : interfaces;
   $: appRows = sortedNetRows(netRows).slice(0, appSlots);
   $: appMax = Math.max(1, ...appRows.map((r) => Math.max(r.rx, r.tx)));
   $: summary = sensorSummary(sensors);
   $: fans = fanGroups(sensors);
-  // The card only lists readings this machine actually has: an AMD CPU with
-  // no P/E cores gets two rows, not two empty ones. Per-core values stay in
-  // the main window's CPU panel.
   $: voltageRows = voltageCardRows(sensors).map((row) => ({
     key: row.key,
     label: voltageLabel(row.key),
@@ -146,15 +139,11 @@
       parts.push($t("detail.fanPct", { v: g.fan_percent.toFixed(0) }));
     return parts.join(" · ");
   }
-  // The CPU header: the model on its own line (ellipsised, never wrapped) and
-  // cores/threads under it, which stays whole even in the mini window.
   $: cpuModel = systemStats.details.identity.cpu_model ?? "";
   $: coresText = $t("detail.coresThreads", {
     c: systemStats.details.identity.physical_cores ?? "?",
     n: cores.length,
   });
-  // Fans are listed on their own above; the per-hardware lists show the rest
-  // (voltages are on the CPU detail).
   $: groups = groupByHardware(
     sensors.filter((s) => s.kind !== "fan" && s.kind !== "voltage"),
   );
@@ -395,7 +384,6 @@
         <p class="note">{$t("detail.noDrives")}</p>
       {/each}
     </div>
-    <!-- The mini window keeps its fixed height, so health stays in the main window. -->
     {#if !compact}<DiskHealth />{/if}
   {:else if kind === "network"}
     <div class="panel">
@@ -577,8 +565,6 @@
 </section>
 
 <style>
-  /* App rows are ordinary list rows (.item: same font and padding as every
-     other detail list) laid out as a grid with two thin bars underneath. */
   .apps-head,
   .item.app {
     display: grid;
@@ -660,9 +646,6 @@
     gap: 10px;
     min-width: 0;
   }
-  /* One header for the CPU and GPU details: model, one specs line, then the
-     reading in the same size, weight and colour on both. Left aligned, in the
-     panel's flow rather than floating right. */
   .head-block {
     display: flex;
     flex-direction: column;
@@ -754,8 +737,6 @@
     padding: 8px 12px;
     border-radius: 10px;
     border: 1px solid var(--border);
-    /* Not a .card/.panel, so app.css's mini-window rule misses it: fade with
-       the mini opacity here (--mini-alpha is 1 outside the mini window). */
     background: color-mix(
       in oklab,
       var(--card) calc(var(--mini-alpha, 1) * 100%),

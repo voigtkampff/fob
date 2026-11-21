@@ -1,8 +1,4 @@
 <script lang="ts">
-  // Fob: the squarified treemap of one folder. Folders big enough show their
-  // own largest items inside; clicking a folder opens it, right-click offers
-  // File Explorer. Blocks are absolutely positioned divs (no canvas), so
-  // labels use the theme's text colours in light and dark themes.
   import {
     squarify,
     blocks,
@@ -28,11 +24,8 @@
     root: string;
     path: string[];
     sep: string;
-    /** Open the folder at these names (below the root). */
     onOpen: (names: string[]) => void;
-    /** Right-click: the item's full path at the pointer. */
     onMenu: (target: string, x: number, y: number) => void;
-    /** The "other" block of the folder at these names was clicked. */
     onOther: (names: string[], parent: SpaceNode, block: Block) => void;
   } = $props();
 
@@ -108,11 +101,9 @@
       ? tile.block.node.n
       : $t("space.other", { n: tile.block.count });
 
-  // Hover tooltip: full path, size, share of its folder.
   let hover = $state<{ tile: Tile; x: number; y: number } | null>(null);
   let tipWidth = $state(0);
   let tipHeight = $state(0);
-  // The "other" block's names are its folder's.
   const fullPath = (tile: Tile) => joinPath(root, tile.names, sep);
   function pick(event: MouseEvent): Tile | null {
     const el = (event.target as HTMLElement).closest("[data-tile]");
@@ -128,8 +119,6 @@
   function click(event: MouseEvent) {
     const tile = pick(event);
     if (!tile) return;
-    // A folder opens; "other" lists its items; a file inside a folder
-    // block opens that folder.
     const node = tile.block.node;
     if (!node) return onOther(tile.names, tile.parent, tile.block);
     const names = node?.d

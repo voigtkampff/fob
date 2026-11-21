@@ -46,7 +46,6 @@
     after: boolean,
   ) => void = () => {};
 
-  /** Widths set by dragging a column's edge (behavior.columnWidths). */
   export let savedWidths: unknown = {};
   export let onResizeColumn: (id: string, width: number) => void = () => {};
   export let onResetColumn: (id: string) => void = () => {};
@@ -59,10 +58,8 @@
     y: number;
     row: HTMLElement;
     location: ProcMenuLocation;
-    /** The executable once the lookup named it; empty until then. */
     path: string;
   } | null = null;
-  // A lookup's reply is only wanted while it belongs to the open menu.
   let ticket = 0;
 
   function openMenu(next: {
@@ -81,8 +78,6 @@
     ticket += 1;
   }
 
-  // The row menu greys the reveal until the path is known, so a lookup that
-  // lost its menu, or its row, is dropped instead of shown.
   async function locate(process: Process, mine: number) {
     let reply: ProcLocationReply;
     try {
@@ -97,8 +92,6 @@
     menu = { ...menu, ...locateOutcome(reply) };
   }
 
-  /** Selects the executable in File Explorer. `false` keeps the menu open so
-   * the item can say the reveal failed instead of nothing happening. */
   async function openLocation(process: Process) {
     const outcome = await revealLocation(menu, (path) =>
       invoke("space_reveal", { path }),
@@ -108,14 +101,10 @@
     return !outcome.keepOpen;
   }
 
-  // The clipboard can refuse (no permission, no focus); a failed copy stays
-  // silent so the menu still closes.
   async function copyText(text: string) {
     try {
       await navigator.clipboard.writeText(text);
-    } catch {
-      // Best effort.
-    }
+    } catch {}
   }
   $: menuCtx = {
     onShowDetails,
@@ -133,8 +122,6 @@
     ...(resizing ? { [resizing.id]: resizing.width } : {}),
   };
   $: ({ widths, filler } = columnLayout(columns, tree, regionWidth, manual));
-  // A header drag in progress shows its landing order in the header and the
-  // rows alike; the saved order changes only on release.
   let move: { id: string; target: string; after: boolean } | null = null;
   $: shownColumns = previewOrder(
     columns.map((c) => c.id),

@@ -18,11 +18,8 @@
     try {
       const os = platform();
       glassySupported = os === "windows" || os === "macos";
-    } catch {
-      /* Native-only effects are absent in browser builds. */
-    }
+    } catch {}
   });
-  // Group headings: THEME_GROUPS labels plus the native Glassy group.
   $: groupName = (label: string) =>
     ({
       Dark: $t("theme.dark"),

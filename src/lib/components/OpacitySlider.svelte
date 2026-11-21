@@ -1,7 +1,4 @@
 <script lang="ts">
-  // Fob: the mini window opacity slider, in Settings and in the mini
-  // window's title bar popover. Both write behavior.miniOpacity; every
-  // window follows the saved value (preferences-change).
   import { settingsStore } from "$lib/stores/settings";
   import {
     miniOpacity,
@@ -49,7 +46,6 @@
 </div>
 
 <style>
-  /* Fob: track fill and thumb follow the theme accent (--primary). */
   .fob-range {
     appearance: none;
     height: 16px;

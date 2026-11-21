@@ -2,13 +2,10 @@
 //! `Fob`, under HKCU\Software\Microsoft\Windows\CurrentVersion\Run; per user,
 //! so no administrator rights. Nothing else in the registry is touched.
 
-/// What the Run value should hold: the quoted path of this exe.
 pub fn command_line(exe: &std::path::Path) -> String {
     format!("\"{}\"", exe.display())
 }
 
-/// The registration a setting wants, given what is registered now.
-/// `None` means leave it alone (already in sync).
 #[derive(Debug, PartialEq)]
 pub enum Change {
     Write(String),
@@ -23,8 +20,6 @@ pub fn plan(enabled: bool, wanted: &str, current: Option<&str>) -> Option<Change
     }
 }
 
-/// Bring the Run value in line with the setting: on launch (it may have
-/// drifted, e.g. Fob moved or the value was removed) and whenever it changes.
 pub fn sync(enabled: bool) {
     #[cfg(target_os = "windows")]
     {
@@ -110,7 +105,6 @@ mod tests {
         assert_eq!(me, r#""C:\Apps\Fob\fob.exe""#);
         assert_eq!(plan(true, &me, None), Some(Change::Write(me.clone())));
         assert_eq!(plan(true, &me, Some(&me)), None);
-        // Moved since it was registered: point it at this copy.
         assert_eq!(
             plan(true, &me, Some(r#""D:\old\fob.exe""#)),
             Some(Change::Write(me.clone()))

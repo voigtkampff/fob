@@ -1,4 +1,3 @@
-// Create a new types file to centralize interfaces
 export interface Process {
   pid: number;
   ppid: number;
@@ -15,13 +14,10 @@ export interface Process {
   virtual_memory: number;
   start_time: number;
   run_time: number;
-  /** Disk speed in bytes/s over the last refresh; null: no reading. */
   disk_read: number | null;
   disk_write: number | null;
-  /** Windows: dedicated GPU memory in bytes; null: no reading. */
   gpu_memory: number | null;
   session_id?: number;
-  /** Local bound ports (TCP LISTEN + UDP). Empty unless a port search is active. */
   ports: number[];
 }
 
@@ -44,7 +40,6 @@ export interface ResourceDetailsData {
     total: number;
     available: number;
     read_only: boolean;
-    /** Fob: bytes/s; null when the drive reports no I/O counters. */
     read?: number | null;
     written?: number | null;
   }[];
@@ -73,7 +68,6 @@ export type CpuTopology =
 export interface SystemStats {
   details: ResourceDetailsData;
   cpu_usage: number[];
-  /** Fob: which `cpu_usage` threads are performance / efficiency cores. */
   cpu_topology?: CpuTopology;
   memory_total: number;
   memory_used: number;
@@ -86,12 +80,10 @@ export interface SystemStats {
   disk_total_bytes: number;
   disk_used_bytes: number;
   disk_free_bytes: number;
-  /** Fob: storage read / write, bytes/s (null: not reported). */
   disk_read_bytes?: number | null;
   disk_write_bytes?: number | null;
 }
 
-/** Volatile resource observations, timed at completion of the existing read. */
 export interface ResourceSample {
   timestamp: number;
   interval: number;
@@ -101,10 +93,8 @@ export interface ResourceSample {
   sent: number | null;
   gpus: Record<string, number | null>;
   gpu?: number | null;
-  /** Fob: Temp & fan card headline readings, °C. */
   cpu_temp?: number | null;
   gpu_temp?: number | null;
-  /** Fob: storage read / write, bytes/s. */
   disk_read?: number | null;
   disk_write?: number | null;
 }
@@ -126,9 +116,7 @@ export interface Column {
   label: string;
   visible: boolean;
   required?: boolean;
-  /** Right-aligned monospace numbers. */
   numeric?: boolean;
-  /** null means no reading, never 0. */
   nullable?: boolean;
   format?: (
     value: any,
@@ -173,41 +161,27 @@ export interface AppConfig {
     refreshRate: number;
     defaultStatusFilter: string;
     processView?: "flat" | "tree";
-    /** Process columns after the name column, by id (utils/layout-order.js). */
     columnOrder?: string[];
-    /** Column widths set by dragging a column's edge, by column id. */
     columnWidths?: Record<string, number>;
-    /** Card order of the Dashboard tab and the Processes tab's stats row. */
     dashboardCards?: string[];
     processCards?: string[];
-    /** Process column layout version (preferences.rs migrate_columns). */
     processColumns?: number;
     menuBarEnabled: boolean;
     launchAtLogin: boolean;
     keepRunning: boolean;
-    /** winperf: launch with only the tray icon (mini window mode). */
     startInTray: boolean;
-    /** Fob: mini window stays open on focus loss (pin button). */
     miniPinned: boolean;
-    /** "auto" follows the Windows display language. */
     language: "auto" | "en" | "zh";
-    /** Fob: global hotkey that toggles the mini window ("" = off). */
     miniHotkey?: string;
-    /** Fob: mini window opacity, 0–100 (%). */
     miniOpacity?: number;
-    /** Fob status bar (utils/overlay.js, overlay.rs). */
     overlayEnabled?: boolean;
     overlayMetrics?: string[];
     overlayDock?: "top" | "bottom" | "free";
     overlayOpacity?: number;
-    /** 0.7.5 锁定位置: Ctrl no longer drags (replaces overlayUnlocked). */
     overlayLocked?: boolean;
     overlayCharts?: boolean;
-    /** 0.7.3: metrics drawn with a chart (replaces overlayCharts). */
     overlayChartMetrics?: string[];
-    /** 0.7.5: the bar's own theme; "" follows the main window. */
     overlayTheme?: string;
-    /** Global hotkey that toggles the status bar ("" = off). */
     overlayHotkey?: string;
     mainHotkey?: string;
   };
@@ -268,7 +242,6 @@ export interface GpuDevice {
 /** winperf: temperatures and fans (LibreHardwareMonitor, NVML). */
 export interface Sensor {
   hardware: string;
-  /** e.g. "/lpc/example/0/fan/1"; "" when the source has none. */
   id: string;
   name: string;
   kind: "temperature" | "fan" | "control" | "voltage" | "power";
@@ -279,7 +252,6 @@ export interface Sensor {
 export interface SensorSetupStatus {
   supported: boolean;
   bundled: boolean;
-  /** The first missing file or hash mismatch when bundled is false. */
   bundle_error: string | null;
   pawnio_installed: boolean;
   installed: boolean;
@@ -299,7 +271,6 @@ export interface ThrottleReport {
   prochotLog: boolean;
   /** MSR 0x613 advanced during the helper's last interval. */
   package: boolean;
-  /** Hottest core/package distance to TjMax, °C. */
   distanceToTjMax: number | null;
   thermalPercent: number;
   packagePercent: number;
@@ -310,11 +281,8 @@ export interface FrameExtra {
     sources: string[];
     throttle: ThrottleReport | null;
   };
-  /** Windows commit charge [used, limit] in bytes. */
   commit: [number, number] | null;
-  /** Last power-on: Unix seconds and kind; null = only kernel uptime known. */
   started?: [number, "cold" | "fast" | "hibernate"] | null;
-  /** Per-process network rates (bytes/s) from the sensor helper's ETW session. */
   net_apps?: NetApp[] | null;
 }
 export interface NetApp {
@@ -416,7 +384,6 @@ export type NvmeState =
   | { kind: "denied" }
   | { kind: "bad_reply" }
   | { kind: "error"; code: number };
-/** ATA Device Statistics; null when the drive did not report the item. */
 export interface AtaStats {
   temperature_c: number | null;
   percent_used: number | null;

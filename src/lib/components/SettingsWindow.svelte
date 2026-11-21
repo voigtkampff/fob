@@ -48,7 +48,6 @@
   import { themes } from "$lib/definitions/themes";
   import { themeStore } from "$lib/stores/theme";
   import ThemeDots from "./ThemeDots.svelte";
-  // One icon per status-bar field (0.8.13). The chart is its own button.
   const FIELD_ICONS = /** @type {Record<string, typeof Gauge>} */ {
     cpu: Gauge,
     gpu: Gauge,
@@ -58,8 +57,6 @@
     gpuTemp: Thermometer,
     cpuVoltage: Zap,
     cpuClock: Clock,
-    // Non-CPU/GPU blocks are single rows and never use these icons, but the
-    // field type covers every metric id.
     ram: Gauge,
     vram: Gauge,
     disk: Gauge,
@@ -69,7 +66,6 @@
   import { t } from "$lib/i18n";
   let pane = "general";
   let runtimeError = "";
-  // Fob: the mini window has a dragged position (reset button enabled).
   let dragged = false;
   const readDragged = () =>
     invoke<boolean>("get_mini_position_saved")
@@ -88,9 +84,7 @@
     pane = value;
     try {
       localStorage.setItem("settings-pane", value);
-    } catch {
-      /* Session selection remains available. */
-    }
+    } catch {}
   }
   function save(
     key:
@@ -107,12 +101,8 @@
     });
   }
   $: overlay = overlaySettings($settingsStore.behavior);
-  // The theme the bar shows: its own, or the main window's when following.
   $: overlayOwn = overlayTheme(overlay.theme, null, themes);
   $: overlayShown = overlayOwn ?? $themeStore;
-  // 0.8.13: dragging reorders whole blocks. The reused dragReorder action
-  // moves the block <li> (with its indented switches) as one item, so a
-  // field can never be left behind. Block order saves under overlayOrder.
   let move: { id: string; target: string; after: boolean } | null = null;
   /** @type {Record<string, { id: string, target: string, after: boolean } | null>} */
   let fieldMoves = {};
@@ -132,8 +122,6 @@
   }
   const setMetrics = (metrics: MetricId[]) =>
     saveOverlay({ overlayMetrics: metrics });
-  /** Parent checkbox: visibility only. A single-reading block also turns its
-   * field on when shown; CPU/GPU keep every child choice untouched. */
   function setBlockVisible(
     block: { id: string; single: boolean; field: MetricId | null },
     on: boolean,
@@ -145,7 +133,6 @@
       patch.overlayMetrics = toggleMetric(overlay.metrics, block.field, true);
     saveOverlay(patch);
   }
-  /** The tooltip is just the short field name; state lives in the icon. */
   function fieldTitle(row: { id: MetricId; label: string }) {
     return $t(FIELD_TIPS[row.id] ?? row.label);
   }
@@ -411,11 +398,7 @@
                     ids: shownBlocks,
                     handle: ".grip",
                     vertical: true,
-                    // One block per row, wider than it is tall: the side comes
-                    // from Y, not from which end of the row the pointer is at.
                     stacked: true,
-                    // The ghost stays inside this list and is portalled out of
-                    // the scrolling pane so no ancestor can clip it.
                     clampToNode: true,
                     portal: true,
                     onMove: (id, target, after) =>
@@ -805,8 +788,6 @@
     flex-direction: column;
     gap: 6px;
   }
-  /* One block per row: the header is the drag handle (the whole block moves),
-     its fields are the row of icon switches, never reordered on their own. */
   .overlay-metrics > li {
     display: block;
     border-radius: 6px;
@@ -863,8 +844,6 @@
     opacity: 0.25;
     cursor: not-allowed;
   }
-  /* The dragged slot keeps its target slot as an empty dashed placeholder;
-     the icon itself is hidden while the ghost follows the pointer. */
   .field-slots > [data-drag-slot] {
     opacity: 1;
     border: 1px dashed color-mix(in oklab, var(--primary), transparent 35%);

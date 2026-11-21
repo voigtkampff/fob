@@ -1,4 +1,4 @@
-/** Compare the numeric release triplet, including prefixed platform tags.
+/**
  * @param {string} latest @param {string} current
  */
 export function isNewerVersion(latest, current) {

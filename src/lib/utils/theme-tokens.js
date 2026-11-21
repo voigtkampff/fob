@@ -1,4 +1,4 @@
-/** Parse the palette's RGB/RGBA hex colors, retaining alpha until compositing.
+/**
  * @param {string} hex
  */
 function rgba(hex) {
@@ -18,7 +18,7 @@ function hex(rgb) {
     "#" + rgb.map((c) => Math.round(c).toString(16).padStart(2, "0")).join("")
   );
 }
-/** Composite a color/opacity over a known surface, using CSS sRGB alpha behavior.
+/**
  * @param {string} foreground @param {string} background @param {number} [opacity]
  */
 export function composite(foreground, background, opacity = 1) {
@@ -36,8 +36,7 @@ export function luminance(color) {
   });
   return 0.2126 * rgb[0] + 0.7152 * rgb[1] + 0.0722 * rgb[2];
 }
-/** Alpha in a foreground is resolved over its background; a translucent background
- * needs a canvas, defaulting to white. Theme surfaces below are always opaque.
+/**
  * @param {string} foreground @param {string} background @param {string} [canvas]
  */
 export function contrast(foreground, background, canvas = "#ffffff") {
@@ -50,8 +49,7 @@ export function contrast(foreground, background, canvas = "#ffffff") {
 export function themeIsDark(colors) {
   return luminance(colors.base) < 0.45;
 }
-/** Find the smallest sRGB adjustment toward black or white that satisfies all
- * actual component surfaces/states. This keeps the original hue where possible.
+/**
  * @param {string} color @param {(candidate:string)=>boolean} accepts
  */
 function fit(color, accepts) {
@@ -75,7 +73,7 @@ function readable(color, surfaces, minimum = 4.5, washes = [0]) {
     ),
   );
 }
-/** Resolve label ink for the stock opaque and /80-hover primary button states.
+/**
  * @param {string} fill @param {string[]} surfaces
  */
 function actionInk(fill, surfaces) {
@@ -97,8 +95,7 @@ function action(seed, surfaces) {
   );
   return { fill, ink: actionInk(fill, surfaces) ?? "#ffffff" };
 }
-/** Full semantic shadcn roles, derived from the original community palette.
- * No palette definitions or saved theme identifiers are rewritten.
+/**
  * @param {import('../types').Theme['colors']} colors
  * @param {{name?:string}} [options]
  * @returns {Record<string,string>}
@@ -108,7 +105,6 @@ export function themeTokens(colors, { name = "" } = {}) {
     glassy = name === "glassy";
   const dark = themeIsDark(colors),
     background = composite(colors.base, "#ffffff");
-  // Legacy RGBA (notably Ayu Light's mantle) becomes a stable, opaque surface.
   const card = composite(colors.mantle, background);
   const popover = dark
     ? composite(colors.text, card, 0.04)

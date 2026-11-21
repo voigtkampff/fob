@@ -1,7 +1,3 @@
-// Saved orders of process columns and summary cards. A saved list may come
-// from an older or newer version: unknown and repeated ids are dropped and
-// missing ones are put back at their default place, so every item shows once.
-
 /** Dashboard tab cards (DASHBOARD_CARDS in src-tauri/src/preferences.rs). */
 export const DASHBOARD_CARDS = [
   "cpu",
@@ -36,7 +32,6 @@ export function normalizeOrder(saved, defaults) {
       ),
     ),
   ];
-  // A missing id goes right after the nearest default neighbour before it.
   defaults.forEach((id, i) => {
     if (order.includes(id)) return;
     const before = defaults
@@ -48,7 +43,7 @@ export function normalizeOrder(saved, defaults) {
   return order;
 }
 
-/** Moves id next to target (after it when after is true).
+/**
  * @param {string[]} order @param {string} id @param {string} target @param {boolean} after
  * @returns {string[]} */
 export function moveNextTo(order, id, target, after) {
@@ -59,7 +54,7 @@ export function moveNextTo(order, id, target, after) {
   return rest;
 }
 
-/** The order a drag in progress would land in; the saved order without one.
+/**
  * @param {string[]} order @param {{ id: string, target: string, after: boolean } | null} move
  * @returns {string[]} */
 export function previewOrder(order, move) {

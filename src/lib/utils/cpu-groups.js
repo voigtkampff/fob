@@ -1,6 +1,3 @@
-// Fob: performance / efficiency core groups for the CPU views. The backend
-// reads which logical processors belong to each group once (Windows
-// efficiency class); each refresh averages the group's own threads.
 import { averageCpu } from "./dashboard.js";
 
 /**
@@ -12,11 +9,6 @@ import { averageCpu } from "./dashboard.js";
  */
 
 /**
- * The groups to show, performance first, or null for no split: a uniform
- * CPU, an unread layout, or one that does not cover exactly the threads in
- * `usage`. A group's usage is the average of its threads (0-100), so a
- * P-core group with 16 threads on 8 cores counts each thread once, like the
- * total. null when a thread has no reading (shown as "—", never 0%).
  * @param {CpuTopology | undefined | null} topology
  * @param {number[]} usage
  * @returns {CpuGroup[] | null}
@@ -53,6 +45,6 @@ const LABELS = {
 /** @param {string} kind */
 const kindOrder = (kind) => (kind === "performance" ? 0 : 1);
 
-/** "42" for a reading, "—" for none. @param {number | null} value */
+/** @param {number | null} value */
 export const groupPercent = (value) =>
   value == null ? "—" : String(Math.round(value));

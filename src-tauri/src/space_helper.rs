@@ -223,7 +223,6 @@ mod win {
                 Ok(())
             },
         );
-        // Closing the duplex pipe cancels the server's worker on every exit path.
         drop(input);
         progress.files.store(0, Ordering::Relaxed);
         let links = links?;

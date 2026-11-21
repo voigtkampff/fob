@@ -86,12 +86,10 @@ pub fn run(name: &str) -> windows::core::Result<()> {
     })
 }
 
-/// Stop all running instances.
 pub fn stop(name: &str) -> windows::core::Result<()> {
     with_root(|root| unsafe { root.GetTask(&BSTR::from(name))?.Stop(0) })
 }
 
-/// Delete the task; a task that is already gone counts as deleted.
 pub fn delete(name: &str) -> windows::core::Result<()> {
     match with_root(|root| unsafe { root.DeleteTask(&BSTR::from(name), 0) }) {
         Err(e) if e.code() == NOT_FOUND => Ok(()),

@@ -1,4 +1,3 @@
-// App-owned configuration: changing or hiding toolbar controls never owns sampling/tray lifetime.
 import { get, writable } from "svelte/store";
 import { invoke, isTauri } from "@tauri-apps/api/core";
 import { committedSettings } from "./settings";

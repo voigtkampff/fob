@@ -15,14 +15,11 @@ use std::time::{Duration, Instant};
 use tauri::{AppHandle, Emitter, Manager, WebviewUrl, WebviewWindow, WebviewWindowBuilder};
 
 pub const LABEL: &str = "hud";
-/// Logical height of the bar.
 pub const HEIGHT: f64 = 26.0;
-/// A drag ending this close (logical px) to the top or bottom snaps there.
 const SNAP: f64 = 24.0;
 const POLL: Duration = Duration::from_millis(50);
 /// Moves the app makes itself; a Moved event inside this window is not a drag.
 const OWN_MOVE: Duration = Duration::from_millis(400);
-/// A drag is over once the bar has been still this long.
 const SETTLE: Duration = Duration::from_millis(400);
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, Default)]
@@ -34,7 +31,6 @@ pub enum Dock {
     Free,
 }
 
-/// Physical pixels.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Rect {
     pub x: i32,
@@ -57,8 +53,6 @@ impl Rect {
     }
 }
 
-/// Where the bar was left: its monitor and its offset from that monitor's
-/// work area, so it comes back to the same spot on the same screen.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct Saved {
     pub monitor: String,
@@ -66,22 +60,18 @@ pub struct Saved {
     pub dy: i32,
 }
 
-/// A monitor: its name and work area (without the taskbar).
 #[derive(Clone, Debug)]
 pub struct Screen {
     pub name: String,
     pub work: Rect,
 }
 
-/// `r` moved fully inside `work` (a bar wider than the area keeps its left edge).
 pub fn clamp(r: Rect, work: Rect) -> Rect {
     let x = r.x.min(work.right() - r.w).max(work.x);
     let y = r.y.min(work.bottom() - r.h).max(work.y);
     Rect { x, y, ..r }
 }
 
-/// The bar after a drag: inside the work area, and on the top or bottom edge
-/// when it ended within `threshold` px of it.
 pub fn snap(r: Rect, work: Rect, threshold: i32) -> (Rect, Dock) {
     let r = clamp(r, work);
     if r.y - work.y <= threshold {
@@ -99,9 +89,6 @@ pub fn snap(r: Rect, work: Rect, threshold: i32) -> (Rect, Dock) {
     }
 }
 
-/// Where the bar goes: the saved monitor (or the primary one when that
-/// monitor is gone) at the saved offset, on the docked edge, inside the
-/// work area. Nothing saved: centred at the top.
 pub fn restore(
     saved: Option<&Saved>,
     screens: &[Screen],
@@ -129,7 +116,6 @@ pub fn restore(
     Some((r, index))
 }
 
-/// The screen the bar's centre is on, or the one it overlaps most.
 pub fn screen_of(r: Rect, screens: &[Screen]) -> Option<usize> {
     screens
         .iter()
@@ -144,14 +130,10 @@ pub fn screen_of(r: Rect, screens: &[Screen]) -> Option<usize> {
         })
 }
 
-/// The overlay settings (behavior.overlay*, validated in preferences.rs).
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub struct Config {
     pub enabled: bool,
     pub dock: Dock,
-    /// 锁定位置: Ctrl no longer lets the mouse in, so the bar can't be
-    /// dragged. 0.7.5 replaces overlayUnlocked (never read again, so every
-    /// bar starts unlocked: click-through, Ctrl to drag).
     pub locked: bool,
 }
 impl Config {
@@ -168,7 +150,6 @@ impl Config {
 #[derive(Default)]
 pub struct OverlayState {
     config: Config,
-    /// Logical width the page measured for its row.
     width: Option<f64>,
     own_move: Option<Instant>,
     moved: Option<Instant>,
@@ -177,9 +158,7 @@ pub struct OverlayState {
 }
 pub type Shared = Mutex<OverlayState>;
 static POLLING: AtomicBool = AtomicBool::new(false);
-/// Serializes `sync` (see there).
 static SYNC: Mutex<()> = Mutex::new(());
-/// How long turning the bar off waits for its window to be gone.
 const GONE_WAIT: Duration = Duration::from_secs(2);
 
 fn screens(window: &WebviewWindow) -> (Vec<Screen>, usize) {
@@ -337,7 +316,6 @@ fn raise(w: &WebviewWindow) {
 #[cfg(not(windows))]
 fn raise(_: &WebviewWindow) {}
 
-/// Puts the bar where `restore` says, at its measured width.
 fn place(app: &AppHandle, w: &WebviewWindow) {
     let (config, width) = match app.state::<Shared>().lock() {
         Ok(s) => (s.config, s.width.unwrap_or(420.0)),
@@ -365,7 +343,6 @@ fn place(app: &AppHandle, w: &WebviewWindow) {
     let _ = w.set_position(tauri::PhysicalPosition::new(r.x, r.y));
 }
 
-/// Mouse goes to the bar (drag) or through it (default).
 fn set_interactive(app: &AppHandle, w: &WebviewWindow, on: bool) {
     let changed = app
         .state::<Shared>()
@@ -378,7 +355,6 @@ fn set_interactive(app: &AppHandle, w: &WebviewWindow, on: bool) {
     }
 }
 
-/// Settings changed or loaded: show, hide or re-place the bar.
 pub fn sync(app: &AppHandle, prefs: &Value) {
     // One at a time: an off that is still waiting for its window to go must
     // finish before an on looks for the window. Callers run sync on their
@@ -418,8 +394,6 @@ pub fn sync(app: &AppHandle, prefs: &Value) {
     poll(app.clone());
 }
 
-/// Ctrl watcher, only while the bar is shown; also brings the bar back
-/// into view when its monitor goes away.
 fn poll(app: AppHandle) {
     if POLLING.swap(true, Ordering::SeqCst) {
         return;
@@ -442,8 +416,6 @@ fn poll(app: AppHandle) {
                 set_interactive(&app, &w, !config.locked && ctrl_down());
                 tick += 1;
                 if tick.is_multiple_of(40) {
-                    // Every 2 s: above a topmost game again, and off every
-                    // monitor (one was unplugged)? Re-place.
                     raise(&w);
                     if let (Ok(p), Ok(s)) = (w.outer_position(), w.outer_size()) {
                         let r = Rect {
@@ -474,8 +446,6 @@ fn ctrl_down() -> bool {
     false
 }
 
-/// The bar moved: unless the app moved it, wait for the drag to settle,
-/// then snap, save and remember the dock.
 pub fn moved(app: &AppHandle) {
     let shared = app.state::<Shared>();
     let start = {
@@ -539,7 +509,6 @@ fn finish_drag(app: &AppHandle) {
     );
     let old = app.state::<Shared>().lock().map(|s| s.config.dock).ok();
     if old != Some(dock) {
-        // sync() re-places the bar from the file just saved.
         let patch = serde_json::json!({ "behavior": { "overlayDock": dock } });
         let _ = crate::preferences::apply_patch(app, &patch);
     } else {
@@ -547,7 +516,6 @@ fn finish_drag(app: &AppHandle) {
     }
 }
 
-/// Toggles the bar from the tray.
 pub fn toggle(app: &AppHandle) {
     let on = app
         .state::<Shared>()
@@ -568,13 +536,11 @@ pub fn enabled(app: &AppHandle) -> bool {
         .unwrap_or(false)
 }
 
-/// Whether the bar takes the mouse now (the page asks once it listens).
 #[tauri::command]
 pub async fn overlay_interactive(app: AppHandle) -> bool {
     app.state::<Shared>().lock().is_ok_and(|s| s.interactive)
 }
 
-/// The page measured its row: size the bar to it (logical px).
 #[tauri::command]
 pub async fn overlay_fit(app: AppHandle, width: f64) -> Result<(), String> {
     if !(40.0..=4000.0).contains(&width) {
@@ -591,21 +557,15 @@ pub async fn overlay_fit(app: AppHandle, width: f64) -> Result<(), String> {
     Ok(())
 }
 
-/// The readings the bar can show, from the shared sampler's last frame.
 #[derive(Serialize, Default)]
 #[serde(rename_all = "camelCase")]
 pub struct Reading {
     pub cpu: Option<f64>,
     pub cpu_temp: Option<f64>,
     pub cpu_voltage: Option<f64>,
-    /// "measured" (board Vcore / CPU SVI2) or "requested" (CPU VID); the
-    /// bar writes Vcore or VID from it, and no prefix when both are missing.
     pub cpu_voltage_source: Option<crate::sampling::VoltageSource>,
-    /// Effective CPU frequency, MHz (see monitoring::cpu_clock).
     pub cpu_clock: Option<f64>,
-    /// CPU package power, W; separate from `gpu_power`.
     pub cpu_power: Option<f64>,
-    /// Real MSR-derived throttle state; None with a helper older than 0.8.5.
     pub throttle: Option<crate::sensors::ThrottleReport>,
     pub gpu: Option<f64>,
     pub gpu_temp: Option<f64>,
@@ -619,7 +579,6 @@ pub struct Reading {
     pub net_tx: Option<u64>,
     pub gpu_power: Option<f64>,
     pub paused: bool,
-    /// The last two minutes of samples, for the optional charts.
     pub history: Vec<crate::sampling::Sample>,
 }
 
@@ -733,7 +692,6 @@ mod tests {
         let s = screens();
         let (r, i) = restore(Some(&saved), &s, 0, (400, 26), Dock::Free).unwrap();
         assert_eq!((r, i), (bar(2020, 600), 1));
-        // The dock preset wins over the saved height.
         let (r, _) = restore(Some(&saved), &s, 0, (400, 26), Dock::Bottom).unwrap();
         assert_eq!(r, bar(2020, 1374));
     }
@@ -768,7 +726,6 @@ mod tests {
         // An on right after an off never gets the dying window back.
         assert!(off.contains("while app.get_webview_window(LABEL).is_some()"));
         assert!(sync.contains("SYNC.lock()"));
-        // close() would go through CloseRequested, which toggles the setting.
         assert!(!off.contains(".close()"));
     }
 
@@ -776,7 +733,6 @@ mod tests {
     fn the_bar_goes_back_on_top_while_shown() {
         let src = include_str!("overlay.rs");
         let sync = &src[src.find("pub fn sync(").unwrap()..src.find("fn poll(").unwrap()];
-        // Right after the show (CRLF on a Windows checkout).
         let after = &sync[sync.find("w.show();").unwrap() + "w.show();".len()..];
         assert!(after.trim_start().starts_with("raise(&w);"), "{after}");
         let poll = &src[src.find("fn poll(").unwrap()..src.find("fn ctrl_down(").unwrap()];
@@ -807,7 +763,6 @@ mod tests {
                 locked: true
             }
         );
-        // 0.7.5 migration: the old unlock flag is ignored; everyone unlocked.
         let c = Config::from_prefs_with_override(
             &serde_json::json!({ "behavior": { "overlayUnlocked": true } }),
             false,

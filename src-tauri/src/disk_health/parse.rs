@@ -26,13 +26,10 @@ fn u64_at(b: &[u8], at: usize) -> Option<u64> {
 fn u128_at(b: &[u8], at: usize) -> Option<u128> {
     Some(u128::from_le_bytes(b.get(at..at + 16)?.try_into().ok()?))
 }
-/// NVMe counters are 128-bit. f64 holds any of them without wrapping; past
-/// 2^53 it rounds, which no display here can show anyway.
 fn counter(b: &[u8], at: usize) -> Option<f64> {
     u128_at(b, at).map(|v| v as f64)
 }
 
-/// Why a reply could not be used. Kept apart from Windows error codes.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum BadReply {
     Short,
@@ -158,7 +155,6 @@ pub fn device_descriptor(reply: &[u8]) -> Result<DeviceInfo, BadReply> {
     })
 }
 
-/// Win32 error from a query, as the state the UI explains.
 pub fn refusal(code: u32) -> Refusal {
     const ERROR_INVALID_FUNCTION: u32 = 1;
     const ERROR_ACCESS_DENIED: u32 = 5;
@@ -211,8 +207,6 @@ fn statistic(page: Option<&[u8]>, at: usize) -> Option<u64> {
     (q >> 63 == 1 && (q >> 62) & 1 == 1).then_some(q & 0xFFFF_FFFF_FFFF)
 }
 
-/// Logical sectors as bytes; None when the sector size is unknown or the
-/// product does not fit.
 fn sectors_to_bytes(sectors: Option<u64>, sector_bytes: Option<u32>) -> Option<f64> {
     sectors?
         .checked_mul(u64::from(sector_bytes?))

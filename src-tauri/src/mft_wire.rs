@@ -93,7 +93,6 @@ impl Links {
         Ok(())
     }
     pub fn finish(self, mut check: impl FnMut() -> io::Result<()>) -> io::Result<Vec<MftLink>> {
-        // The tree builder recurses. Reject corrupt cycles and excessive depth first.
         let mut depths: HashMap<u64, usize> = HashMap::from([(5, 0)]);
         for &id in self.dirs.keys() {
             check()?;

@@ -69,7 +69,6 @@ const initialState: ProcessStore = {
 function createProcessStore() {
   const { subscribe, set, update } = writable<ProcessStore>(initialState);
 
-  // Define all methods first
   const setIsLoading = (isLoading: boolean) =>
     update((state) => ({ ...state, isLoading }));
 
@@ -251,7 +250,6 @@ function createProcessStore() {
     }
   };
 
-  // Return all methods
   return {
     subscribe,
     setGpuDetails(value: boolean) {

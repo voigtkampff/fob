@@ -1,4 +1,3 @@
-//! One serialized source of preferences for all desktop windows.
 use serde::Serialize;
 use serde_json::Value;
 use std::{fs, path::Path, sync::Mutex};
@@ -38,7 +37,6 @@ pub const DASHBOARD_CARDS: [&str; 6] = ["cpu", "gpu", "memory", "disk", "network
 pub const PROCESS_CARDS: [&str; 7] = [
     "cpu", "memory", "gpu", "storage", "system", "network", "temp",
 ];
-/// A saved order: distinct known ids. Missing ids are appended by the page.
 fn known_order(value: &Value, known: &[&str]) -> bool {
     value.as_array().is_some_and(|list| {
         let ids: Vec<_> = list.iter().filter_map(Value::as_str).collect();
@@ -47,8 +45,6 @@ fn known_order(value: &Value, known: &[&str]) -> bool {
             && ids.iter().enumerate().all(|(i, id)| !ids[..i].contains(id))
     })
 }
-/// Process column layout of this version. Settings saved before 0.8.3 have
-/// none and stored GPU % as hidden, its old default, so it shows once.
 const PROCESS_COLUMNS: u64 = 2;
 fn migrate_columns(config: &mut Value, saved: &Value) {
     if saved["behavior"]["processColumns"].as_u64() != Some(PROCESS_COLUMNS) {
@@ -81,8 +77,6 @@ impl Default for Preferences {
         }))
     }
 }
-// Only recognized fields are accepted. Old installations may have partial
-// configs, so merge valid leaves into current defaults rather than replacing groups.
 fn merge(config: &mut Value, patch: &Value) {
     for group in ["appearance", "behavior"] {
         let Some(values) = patch[group].as_object() else {
@@ -99,9 +93,6 @@ fn merge(config: &mut Value, patch: &Value) {
                 }
                 continue;
             }
-            // 0.8.7: widths set by dragging a column's edge, by column id.
-            // Only known ids with numbers are kept, rounded and clamped as
-            // the table does (src/lib/utils/table-layout.js).
             if group == "behavior" && key == "columnWidths" {
                 if let Some(widths) = value.as_object() {
                     let known = &config["appearance"]["columnVisibility"];
@@ -128,14 +119,10 @@ fn merge(config: &mut Value, patch: &Value) {
                 // Fob status bar (overlay.rs, src/lib/utils/overlay.js).
                 "overlayOpacity" => value.as_u64().is_some_and(|n| n <= 100),
                 "overlayCharts" => value.is_boolean(),
-                // 0.7.5: "" follows the main theme, else a theme name; the
-                // frontend falls back to following for names it doesn't know.
                 "overlayTheme" => value.as_str().is_some_and(|name| {
                     name.len() <= 64 && name.chars().all(|c| c.is_ascii_alphanumeric())
                 }),
                 "overlayDock" => matches!(value.as_str(), Some("top" | "bottom" | "free")),
-                // 0.7.3: the metrics drawn with a chart; until it's saved,
-                // overlayCharts (0.7.1 on/off for all) stands in for it.
                 "overlayChartMetrics" => value.as_array().is_some_and(|list| {
                     let ids: Vec<_> = list.iter().filter_map(Value::as_str).collect();
                     ids.len() == list.len()
@@ -148,13 +135,8 @@ fn merge(config: &mut Value, patch: &Value) {
                         && ids.iter().all(|id| OVERLAY_METRICS.contains(id))
                         && ids.iter().enumerate().all(|(i, id)| !ids[..i].contains(id))
                 }),
-                // 0.8.13: the order of whole blocks on the bar. A field never
-                // appears here, so moving a block cannot move its children.
                 "overlayOrder" => known_order(value, &OVERLAY_BLOCKS),
-                // 0.8.13: which family blocks the bar shows (parent
-                // checkboxes). Field switches stay in overlayMetrics.
                 "overlayBlocks" => known_order(value, &OVERLAY_BLOCKS),
-                // 0.8.13: per-family slot order (CPU/GPU only).
                 "overlayFieldOrder" => value.as_object().is_some_and(|obj| {
                     obj.len() == 2
                         && obj
@@ -164,10 +146,8 @@ fn merge(config: &mut Value, patch: &Value) {
                             .get("gpu")
                             .is_some_and(|v| field_order_valid(v, &OVERLAY_FIELD_SLOTS_GPU))
                 }),
-                // Fob: mini window opacity in percent (Settings and the mini window).
                 "miniOpacity" => value.as_u64().is_some_and(|n| (0..=100).contains(&n)),
                 "processView" => matches!(value.as_str(), Some("flat" | "tree")),
-                // The process name column stays first, so it is never in the order.
                 "columnOrder" => {
                     let known: Vec<&str> = config["appearance"]["columnVisibility"]
                         .as_object()
@@ -183,9 +163,7 @@ fn merge(config: &mut Value, patch: &Value) {
                 }
                 "dashboardCards" => known_order(value, &DASHBOARD_CARDS),
                 "processCards" => known_order(value, &PROCESS_CARDS),
-                // 0.8.3 process columns; a newer number is not ours to keep.
                 "processColumns" => value.as_u64() == Some(PROCESS_COLUMNS),
-                // Fob: "" (off) or a canonical combo; set via set_hotkey.
                 "miniHotkey" | "overlayHotkey" | "mainHotkey" => value.as_str().is_some_and(|s| {
                     s.is_empty() || crate::hotkey::parse(s).is_ok_and(|c| c.canonical() == s)
                 }),
@@ -199,8 +177,6 @@ fn merge(config: &mut Value, patch: &Value) {
             if group == "behavior" && valid {
                 config[group][key] = value.clone();
             }
-            // Fob 0.7.1: the status bar opacity is the whole bar's now, 10 %
-            // at least (0.7.0 allowed 0, which hid everything).
             if group == "behavior" && valid && key == "overlayOpacity" {
                 config[group][key] = Value::from(value.as_u64().unwrap_or(60).max(10));
             }
@@ -222,8 +198,6 @@ fn migrate_overlay_order(config: &mut Value, saved: &Value) {
             && ids.iter().all(|id| OVERLAY_BLOCKS.contains(id))
             && ids.iter().enumerate().all(|(i, id)| !ids[..i].contains(id))
         {
-            // Complete a partial order the same way the frontend does: a
-            // missing block goes after its nearest default neighbour.
             let mut full: Vec<&str> = ids;
             for (i, block) in OVERLAY_BLOCKS.iter().enumerate() {
                 if full.contains(block) {
@@ -261,9 +235,6 @@ fn migrate_overlay_order(config: &mut Value, saved: &Value) {
     config["behavior"]["overlayOrder"] = Value::Array(order.into_iter().map(Value::from).collect());
 }
 
-/// A valid distinct slot list for one family, completed with missing slots
-/// at their default places. `None` when any entry is unknown, repeated or not
-/// a string.
 fn ordered_slots(value: &Value, defaults: &[&'static str]) -> Option<Vec<&'static str>> {
     let list = value.as_array()?;
     let ids: Vec<&str> = list.iter().filter_map(Value::as_str).collect();
@@ -283,8 +254,6 @@ fn ordered_slots(value: &Value, defaults: &[&'static str]) -> Option<Vec<&'stati
                 .expect("validated slot")
         })
         .collect();
-    // Missing slots follow the saved ones in their default order, so a
-    // custom prefix stays exactly where the user put it.
     for slot in defaults {
         if !full.contains(slot) {
             full.push(slot);
@@ -442,7 +411,6 @@ pub async fn read_preferences(
     .await
     .map_err(|e| e.to_string())?
 }
-/// Merge `patch` into the live preferences, persist and broadcast them.
 pub fn apply_patch(app: &AppHandle, patch: &Value) -> Result<Snapshot, String> {
     let service = app.state::<Preferences>();
     let mut state = service.0.lock().map_err(|e| e.to_string())?;
@@ -469,8 +437,6 @@ pub fn apply_patch(app: &AppHandle, patch: &Value) -> Result<Snapshot, String> {
 }
 #[tauri::command]
 pub async fn update_preferences(app: AppHandle, mut patch: Value) -> Result<Snapshot, String> {
-    // Fob: the hotkey is only saved by set_hotkey, once it's registered
-    // (pages send their whole behavior group, possibly with an old value).
     if let Some(behavior) = patch["behavior"].as_object_mut() {
         behavior.remove("miniHotkey");
         behavior.remove("overlayHotkey");
@@ -481,24 +447,16 @@ pub async fn update_preferences(app: AppHandle, mut patch: Value) -> Result<Snap
         .map_err(|e| e.to_string())?
 }
 
-/// winperf: what launch needs before any webview has loaded the settings.
 #[derive(Debug, PartialEq)]
 pub struct Startup {
-    /// No settings file yet: this is the first launch.
     pub first_launch: bool,
     pub tray: bool,
     pub start_in_tray: bool,
-    /// Fob: the mini window stays open when another window is clicked.
     pub mini_pinned: bool,
-    /// "auto" | "en" | "zh" (validated by `merge`).
     pub language: Option<String>,
-    /// Fob: the mini window hotkey, canonical ("" = off).
     pub mini_hotkey: String,
-    /// Fob: the status bar hotkey, canonical ("" = off).
     pub overlay_hotkey: String,
-    /// Fob 0.7.12: the full window hotkey, canonical ("" = off).
     pub main_hotkey: String,
-    /// Fob 0.7.9: start with the Windows session (autostart.rs).
     pub launch_at_login: bool,
 }
 pub fn startup_from(saved: Option<&Value>) -> Startup {
@@ -696,11 +654,9 @@ mod tests {
             config["behavior"]["columnWidths"],
             json!({"name": 301, "pid": 48, "command": 1200})
         );
-        // A value that is not an object leaves the saved widths alone.
         let mut kept = config.clone();
         merge(&mut kept, &json!({"behavior":{"columnWidths":[120]}}));
         assert_eq!(kept, config);
-        // Settings from before 0.8.7 have none.
         let mut old = defaults();
         merge(&mut old, &json!({"behavior":{"refreshRate":3000}}));
         assert_eq!(old["behavior"]["columnWidths"], json!({}));
@@ -719,13 +675,11 @@ mod tests {
         assert_eq!(columns["virtual_memory"], false);
         assert!(columns.get("disk_usage").is_none());
         assert_eq!(config["behavior"]["processColumns"], 2);
-        // Hidden again after 0.8.3: the choice sticks across restarts.
         let saved = json!({"behavior":{"processColumns":2},"appearance":{"columnVisibility":{"gpu_usage":false}}});
         let mut config = defaults();
         merge(&mut config, &saved);
         migrate_columns(&mut config, &saved);
         assert_eq!(config["appearance"]["columnVisibility"]["gpu_usage"], false);
-        // A later patch never re-applies the migration.
         merge(&mut config, &json!({"behavior":{"language":"zh"}}));
         assert_eq!(config["appearance"]["columnVisibility"]["gpu_usage"], false);
     }
@@ -810,8 +764,6 @@ mod tests {
     }
     #[test]
     fn an_old_status_bar_config_keeps_its_fields_and_gets_a_block_order() {
-        // 0.8.12 saved a flat field list only. The fields are untouched; the
-        // block order comes from the first blocks that list mentions.
         let saved = json!({"behavior":{"overlayMetrics":["net","gpuTemp","cpu"]}});
         let mut config = defaults();
         merge(&mut config, &saved);
@@ -825,7 +777,6 @@ mod tests {
             json!(["net", "gpu", "cpu", "ram", "vram", "disk"])
         );
 
-        // A complete saved block order is kept as it is.
         let saved = json!({"behavior":{"overlayOrder":["net","cpu","gpu","ram","vram","disk"]}});
         let mut config = defaults();
         merge(&mut config, &saved);
@@ -835,7 +786,6 @@ mod tests {
             json!(["net", "cpu", "gpu", "ram", "vram", "disk"])
         );
 
-        // A partial one is completed at the missing blocks' default places.
         let saved = json!({"behavior":{"overlayOrder":["gpu","net"]}});
         let mut config = defaults();
         merge(&mut config, &saved);
@@ -845,7 +795,6 @@ mod tests {
             json!(["cpu", "gpu", "ram", "vram", "disk", "net"])
         );
 
-        // An invalid order is ignored; the old fields decide instead.
         let saved =
             json!({"behavior":{"overlayOrder":["cpu","cpu"],"overlayMetrics":["cpu","ram"]}});
         let mut config = defaults();
@@ -855,13 +804,10 @@ mod tests {
             config["behavior"]["overlayOrder"],
             json!(["cpu", "ram", "gpu", "vram", "disk", "net"])
         );
-        // A partial update without an order never resets the saved one.
         let before = config["behavior"]["overlayOrder"].clone();
         merge(&mut config, &json!({"behavior":{"language":"zh"}}));
         assert_eq!(config["behavior"]["overlayOrder"], before);
 
-        // Old configurations have no block visibility set: every block that
-        // had an enabled field is visible, and the field set is unchanged.
         let saved = json!({"behavior":{"overlayMetrics":["cpu","cpuTemp","gpu"]}});
         let mut config = defaults();
         merge(&mut config, &saved);
@@ -871,7 +817,6 @@ mod tests {
             config["behavior"]["overlayMetrics"],
             json!(["cpu", "cpuTemp", "gpu"])
         );
-        // A parent off/on patch never rewrites the child field set.
         let fields = config["behavior"]["overlayMetrics"].clone();
         merge(&mut config, &json!({"behavior":{"overlayBlocks":["gpu"]}}));
         assert_eq!(config["behavior"]["overlayMetrics"], fields);
@@ -881,7 +826,6 @@ mod tests {
         );
         assert_eq!(config["behavior"]["overlayMetrics"], fields);
 
-        // Old configurations have no per-family slot order: default order.
         let saved = json!({"behavior":{"overlayMetrics":["cpu","gpu"]}});
         let mut config = defaults();
         merge(&mut config, &saved);
@@ -893,8 +837,6 @@ mod tests {
                 "gpu": ["gpu", "power", "gpuTemp"]
             })
         );
-        // A saved order is kept; a partial one is completed in place, and an
-        // unknown/repeated slot is replaced by the default order.
         let saved = json!({"behavior":{"overlayFieldOrder":{
             "cpu":["cpuVoltage","cpu","cpuPower"],
             "gpu":["gpuTemp","gpu","power"]
@@ -921,8 +863,6 @@ mod tests {
             json!(["cpu", "cpuPower", "cpuTemp", "cpuVoltage", "cpuClock"])
         );
 
-        // Unchecking and re-checking fields only changes the enabled set;
-        // the block order (and so every block's position) stays put.
         let before = config["behavior"]["overlayOrder"].clone();
         merge(
             &mut config,
@@ -970,24 +910,20 @@ mod tests {
                 launch_at_login: false,
             }
         );
-        // Fob 0.7.9: login start is off until turned on, and only a boolean.
         let on = startup_from(Some(&json!({"behavior":{"launchAtLogin":true}})));
         assert!(on.launch_at_login);
         let bad = startup_from(Some(&json!({"behavior":{"launchAtLogin":"yes"}})));
         assert!(!bad.launch_at_login);
-        // v0.3 settings files have no startInTray key: still on.
         let old = startup_from(Some(&json!({"behavior":{"refreshRate":5000}})));
         assert!(!old.first_launch && old.start_in_tray && old.tray);
         let off = startup_from(Some(
             &json!({"behavior":{"startInTray":false,"menuBarEnabled":false}}),
         ));
         assert!(!off.start_in_tray && !off.tray);
-        // Language: valid values kept, anything else falls back to "auto".
         let zh = startup_from(Some(&json!({"behavior":{"language":"zh"}})));
         assert_eq!(zh.language.as_deref(), Some("zh"));
         let bad = startup_from(Some(&json!({"behavior":{"language":"klingon"}})));
         assert_eq!(bad.language.as_deref(), Some("auto"));
-        // Unreadable file: treat as existing with defaults.
         assert!(startup_from(Some(&Value::Null)).start_in_tray);
     }
     #[test]
@@ -1006,7 +942,6 @@ mod tests {
     }
     #[test]
     fn mini_pin_survives_a_restart() {
-        // What set_companion_pinned saves is what the next launch reads.
         let mut config = defaults();
         assert_eq!(config["behavior"]["miniPinned"], json!(false));
         merge(&mut config, &json!({"behavior":{"miniPinned":true}}));
@@ -1015,7 +950,6 @@ mod tests {
         assert!(startup_from(Some(&config)).mini_pinned, "non-bool rejected");
         merge(&mut config, &json!({"behavior":{"miniPinned":false}}));
         assert!(!startup_from(Some(&config)).mini_pinned);
-        // Older settings files have no key: unpinned.
         assert!(!startup_from(Some(&json!({"behavior":{}}))).mini_pinned);
     }
     #[test]

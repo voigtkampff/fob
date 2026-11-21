@@ -85,8 +85,6 @@ fn build_dir(
     Some(node)
 }
 
-/// Tries an MFT scan of `root` (e.g. `C:\`). `None` means fall back to the walk:
-/// not Windows, not NTFS, no elevation, or the reader failed.
 pub fn try_scan(root: &std::path::Path, progress: &Progress) -> Option<Node> {
     #[cfg(windows)]
     {

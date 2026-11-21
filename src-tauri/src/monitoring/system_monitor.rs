@@ -1,8 +1,3 @@
-//! System statistics monitoring
-//!
-//! This module handles collection and monitoring of system-wide statistics
-//! including CPU, memory, network, and disk usage.
-
 use super::{
     CpuClock, CpuTopology, CpuVendor, InterfaceDetails, ResourceDetails, SystemIdentity,
     SystemStats, VolumeDetails,
@@ -12,13 +7,10 @@ use std::fmt::Debug;
 use std::time::Instant;
 use sysinfo::{Disk, Disks, Networks, System};
 
-/// Monitors system-wide statistics
 #[derive(Debug)]
 pub struct SystemMonitor {
-    /// Tracks network usage between updates
     last_network_update: Instant,
     last_interfaces: BTreeMap<String, (u64, u64)>,
-    /// Fob: per-mount (read, written) byte totals at the last reading.
     last_disk_update: Instant,
     last_disks: BTreeMap<String, (u64, u64)>,
     identity: Option<SystemIdentity>,
@@ -28,11 +20,6 @@ pub struct SystemMonitor {
 }
 
 impl SystemMonitor {
-    /// Creates a new system monitor instance
-    ///
-    /// # Arguments
-    ///
-    /// * `sys` - System information provider for initial readings
     pub fn new(networks: &Networks) -> Self {
         Self {
             last_network_update: Instant::now(),
@@ -53,11 +40,6 @@ impl SystemMonitor {
         }
     }
 
-    /// Collects current system statistics
-    ///
-    /// # Arguments
-    ///
-    /// * `sys` - System information provider
     pub fn collect_stats(
         &mut self,
         sys: &System,
@@ -155,8 +137,6 @@ impl SystemMonitor {
         }
     }
 
-    /// Fob: read once the CPUs are listed; the core layout does not change
-    /// while Fob runs.
     fn topology(&mut self, sys: &System) -> CpuTopology {
         if let Some(t) = &self.topology {
             return t.clone();
@@ -200,7 +180,6 @@ impl SystemMonitor {
         rates
     }
 
-    /// Filters disks based on platform-specific criteria
     #[cfg(not(target_os = "windows"))]
     fn filter_disks(disks: &[Disk]) -> impl Iterator<Item = &Disk> {
         disks
@@ -208,13 +187,11 @@ impl SystemMonitor {
             .filter(|disk| disk.mount_point() == std::path::Path::new("/"))
     }
 
-    /// Windows-specific disk filtering
     #[cfg(target_os = "windows")]
     fn filter_disks(disks: &[Disk]) -> impl Iterator<Item = &Disk> {
         disks.iter()
     }
 
-    /// Calculates network usage rates
     fn calculate_network_stats(
         &mut self,
         networks: &Networks,
@@ -244,7 +221,6 @@ impl SystemMonitor {
         (rx_rate, tx_rate, interfaces)
     }
 
-    /// Calculates disk usage statistics and returns `(total, used, free)`.
     fn calculate_disk_stats(&self, disks: &Disks) -> (u64, u64, u64) {
         Self::filter_disks(disks).fold((0, 0, 0), |(total, used, free), disk| {
             (
@@ -285,7 +261,6 @@ fn interface_rates(
         .unwrap_or((None, None))
 }
 
-/// Fob: like interface_rates, but (0, 0) totals mean "no counters".
 fn disk_rates(
     previous: Option<(u64, u64)>,
     totals: (u64, u64),
@@ -298,8 +273,6 @@ fn disk_rates(
     }
 }
 
-/// Debug builds only (screenshots with real-world long names):
-/// WINPERF_FAKE_OS / WINPERF_FAKE_CPU replace the OS and CPU names.
 fn fake_identity(var: &str) -> Option<String> {
     if !cfg!(debug_assertions) {
         return None;
@@ -318,7 +291,6 @@ mod tests {
             disk_rates(Some((1000, 500)), (5000, 2500), 2.0),
             (Some(2000), Some(1000))
         );
-        // A drive whose counters could not be read stays unknown, not idle.
         assert_eq!(disk_rates(Some((0, 0)), (0, 0), 1.0), (None, None));
     }
     use sysinfo::System;
@@ -357,11 +329,9 @@ mod tests {
         assert_eq!(rate_total([Some(20), None].into_iter()), None);
         assert_eq!(rate_total([None, Some(20)].into_iter()), None);
         assert_eq!(rate_total([].into_iter()), None);
-        // Removing an interface does not subtract its lifetime byte counter.
         assert_eq!(rate_total([Some(20)].into_iter()), Some(20));
     }
 
-    /// Tests creation of system monitor
     #[test]
     fn test_system_monitor_creation() {
         let networks = Networks::new();
@@ -369,7 +339,6 @@ mod tests {
         assert!(monitor.last_interfaces.is_empty());
     }
 
-    /// Tests system statistics collection
     #[test]
     fn test_stats_collection() {
         let mut networks = Networks::new();
@@ -384,8 +353,6 @@ mod tests {
     }
 }
 
-/// Debug builds: WINPERF_FAKE_THREADS=N repeats the real readings to N
-/// logical processors, to check the per-core layouts on any machine.
 fn fake_threads(real: Vec<f32>) -> Vec<f32> {
     #[cfg(debug_assertions)]
     if let Some(n) = std::env::var("WINPERF_FAKE_THREADS")

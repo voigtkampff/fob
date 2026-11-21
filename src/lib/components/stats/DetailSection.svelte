@@ -1,6 +1,4 @@
 <script lang="ts">
-  // Fob: a detail card in a side panel (per-core, interfaces, drives, …):
-  // title + optional description, a count or button on the right, body.
   import type { Snippet } from "svelte";
   import * as Card from "$lib/components/ui/card/index.js";
   let {

@@ -4,8 +4,8 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 
 fn log() -> Vec<u8> {
     let mut b = vec![0u8; parse::HEALTH_LOG];
-    b[0] = 0b0000_0101; // spare below threshold, reliability degraded
-    b[1..3].copy_from_slice(&318u16.to_le_bytes()); // 318 K = 45 °C
+    b[0] = 0b0000_0101;
+    b[1..3].copy_from_slice(&318u16.to_le_bytes());
     b[3] = 87;
     b[4] = 10;
     b[5] = 12;
@@ -103,7 +103,6 @@ fn descriptor(model: &[u8], bus: u32, removable: bool) -> Vec<u8> {
     let mut b = vec![0u8; 40];
     b[10] = removable as u8;
     b[16..20].copy_from_slice(&40u32.to_le_bytes());
-    // A serial offset pointing at text that must never be read.
     b[24..28].copy_from_slice(&(40 + model.len() as u32 + 1).to_le_bytes());
     b[28..32].copy_from_slice(&bus.to_le_bytes());
     b.extend_from_slice(model);
@@ -226,12 +225,10 @@ fn volumes_and_windows_status_join_by_disk_number() {
             mounts: vec![r"C:\".into()],
             disks: vec![0],
         },
-        // EFI partition: on disk 0, no mount point.
         RawVolume {
             mounts: vec![],
             disks: vec![0],
         },
-        // Spanned over disks 2 and 5.
         RawVolume {
             mounts: vec![r"E:\".into(), r"C:\Data\".into()],
             disks: vec![2, 5],
@@ -240,7 +237,6 @@ fn volumes_and_windows_status_join_by_disk_number() {
     let rows = Ok(vec![
         wmi("0", 0, &[2], 17),
         wmi("2", 1, &[2, 5], 11),
-        // DeviceId 5 but a SATA bus: not disk 5 (NVMe), so not used.
         wmi("5", 2, &[6], 11),
         wmi("{pool-member}", 2, &[6], 16),
     ]);
@@ -423,7 +419,6 @@ fn a_slow_scan_returns_pending_and_is_not_started_twice() {
 const SUPPORTED: u64 = 1 << 63;
 const VALID: u64 = 1 << 62;
 
-/// A Device Statistics page with its header and QWORD statistics.
 fn page(number: u8, stats: &[(usize, u64)]) -> Vec<u8> {
     let mut p = vec![0u8; parse::ATA_PAGE];
     p[..8].copy_from_slice(&(1u64 | u64::from(number) << 16).to_le_bytes());
@@ -510,7 +505,6 @@ fn ata_byte_counts_need_a_sector_size_and_must_not_overflow() {
     let s = parse::ata_stats(Some(&general), None, None, None);
     assert_eq!((s.data_written_bytes, s.data_read_bytes), (None, None));
     let s = parse::ata_stats(Some(&general), None, None, Some(65536));
-    // 2^48 - 1 sectors of 64 KiB still fit in u64.
     assert_eq!(
         s.data_written_bytes,
         Some(((1u64 << 48) - 1) as f64 * 65536.0)
@@ -529,14 +523,11 @@ fn ata_page_replies_are_checked_before_use() {
     let good = page(5, &[(8, ok(30))]);
     let r = reply(&good, parse::PROTOCOL_DATA as u32, 512);
     assert_eq!(parse::ata_page_reply(&r, 5).unwrap(), &good[..]);
-    // Another page than the one asked for.
     assert_eq!(parse::ata_page_reply(&r, 7), Err(BadReply::Header));
-    // Revision 0.
     let mut zero = good.clone();
     zero[0] = 0;
     let r0 = reply(&zero, parse::PROTOCOL_DATA as u32, 512);
     assert_eq!(parse::ata_page_reply(&r0, 5), Err(BadReply::Header));
-    // Truncated data, short length, offset inside the header, huge offset.
     assert_eq!(
         parse::ata_page_reply(&r[..r.len() - 1], 5),
         Err(BadReply::Short)

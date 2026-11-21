@@ -128,7 +128,6 @@ pub enum NvmeState {
     /// The device, bridge or controller does not answer the query.
     Unsupported,
     Denied,
-    /// The reply was too short or its header did not check out.
     BadReply,
     /// Any other Windows error; often controller specific.
     Error {
@@ -176,7 +175,6 @@ pub enum AtaState {
     },
 }
 
-/// A refused DeviceIoControl, classified once for every query.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Refusal {
     Unsupported,
@@ -257,7 +255,6 @@ impl Operational {
     }
 }
 
-/// One MSFT_PhysicalDisk row: only these columns are selected (no serial).
 #[derive(Debug, Clone, PartialEq)]
 pub struct WmiDisk {
     pub device_id: String,
@@ -273,10 +270,11 @@ pub enum WindowsStatus {
         health: Health,
         operational: Vec<Operational>,
     },
-    /// No MSFT_PhysicalDisk row matched this disk number and bus.
     NotReported,
     /// The WMI query itself failed (code is the HRESULT).
-    Failed { code: i32 },
+    Failed {
+        code: i32,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
@@ -286,8 +284,6 @@ pub struct PhysicalDisk {
     pub model: Option<String>,
     pub bus: Bus,
     pub removable: bool,
-    /// Mount points of volumes on this disk ("C:\"); empty for disks
-    /// without drive letters.
     pub volumes: Vec<String>,
     pub windows: WindowsStatus,
     pub nvme: NvmeState,
@@ -301,14 +297,11 @@ pub enum Report {
         checked_at_ms: u64,
         disks: Vec<PhysicalDisk>,
     },
-    /// Not Windows.
     #[cfg_attr(windows, allow(dead_code))]
     Unavailable,
-    /// The scan took longer than the wait; the next request picks it up.
     Pending,
 }
 
-/// What a probe of one disk found, before WMI and volumes are joined.
 #[derive(Debug, Clone, PartialEq)]
 pub struct RawDisk {
     pub number: Option<u32>,
@@ -317,16 +310,12 @@ pub struct RawDisk {
     pub ata: AtaState,
 }
 
-/// A volume and the disk numbers its extents live on.
 #[derive(Debug, Clone, PartialEq)]
 pub struct RawVolume {
     pub mounts: Vec<String>,
     pub disks: Vec<u32>,
 }
 
-/// Joins probes, volumes and WMI rows. A WMI row is used only when its
-/// DeviceId is this disk's number and, where both report one, the bus
-/// matches; ambiguous rows are dropped rather than guessed.
 pub fn assemble(
     raw: Vec<RawDisk>,
     volumes: &[RawVolume],
@@ -410,8 +399,6 @@ struct Inner {
     scanning: bool,
 }
 
-/// One scan at a time, results reused for `TTL`. Nothing runs unless the
-/// Disk detail asks.
 #[derive(Default, Clone)]
 pub struct DiskHealthState(Arc<(Mutex<Inner>, Condvar)>);
 

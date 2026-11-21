@@ -1,7 +1,4 @@
 <script lang="ts">
-  // Physical disks in the storage side panel: one line per disk with the
-  // status, temperature and life used it reports, and a link to the full
-  // Disk detail. Reads only while the panel is open.
   import { invoke } from "@tauri-apps/api/core";
   import { Button } from "$lib/components/ui/button/index.js";
   import { HeartPulse } from "@lucide/svelte";
@@ -42,7 +39,6 @@
       ? `${health} · ${$t(`dh.op.${bad.kind}`)}`
       : health;
   }
-  /** Only what the drive reported: its NVMe log or ATA statistics. */
   function facts(d: PhysicalDisk) {
     const h = headline(d);
     const out: string[] = [];

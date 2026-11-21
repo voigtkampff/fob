@@ -1,4 +1,3 @@
-//! Native tray lifetime and a separate, rounded overview webview.
 use serde::{Deserialize, Serialize};
 use std::{
     sync::Mutex,
@@ -15,20 +14,11 @@ const TRAY_ID: &str = "neohtop-overview";
 pub struct CompanionState {
     pub keep_running: bool,
     pub hidden_at: Option<Instant>,
-    /// Fob: pinned mini window (behavior.miniPinned): focus loss doesn't hide it.
     pub pinned: bool,
-    /// winperf: last tray icon rect (physical px), so resizes stay anchored.
     pub anchor: Option<(f64, f64, f64, f64)>,
-    /// Fob 0.7.12: the title bar drag in progress (started, or last moved).
-    /// The window manager's move loop takes focus from the window; that is
-    /// not the user clicking elsewhere, so an unpinned window stays open.
     pub dragging_at: Option<Instant>,
-    /// winperf: tray menu "Start in tray only" item, kept in sync with settings.
     pub start_item: Option<CheckMenuItem<tauri::Wry>>,
-    /// winperf: tray items whose text follows the UI language.
     pub items: Option<TrayItems>,
-    /// Fob: where the user dragged the pinned mini window (its visible
-    /// rect, physical px), saved in mini-position.json. None: at the tray.
     user_rect: Option<PxRect>,
     /// Fob: the visible rect `place` last gave the window and when, so its
     /// own moves are not taken for a drag.
@@ -43,19 +33,15 @@ pub struct TrayItems {
     overview: MenuItem<tauri::Wry>,
     open: MenuItem<tauri::Wry>,
     start: CheckMenuItem<tauri::Wry>,
-    /// Fob status bar on/off (behavior.overlayEnabled).
     overlay: CheckMenuItem<tauri::Wry>,
-    /// Fob: opens the Settings window.
     settings: MenuItem<tauri::Wry>,
     language: Submenu<tauri::Wry>,
-    /// Auto / English / 中文, in that order.
     languages: [CheckMenuItem<tauri::Wry>; 3],
     quit: MenuItem<tauri::Wry>,
 }
 
 const LANGUAGES: [&str; 3] = ["auto", "en", "zh"];
 
-/// Set the tray texts for `pref` ("auto" | "en" | "zh") and tick it.
 fn relabel(app: &AppHandle, pref: &str) {
     let locale = crate::i18n::resolve(Some(pref), crate::i18n::system_locale().as_deref());
     let text = crate::i18n::tray(locale);
@@ -80,7 +66,6 @@ fn relabel(app: &AppHandle, pref: &str) {
     }
 }
 
-/// A language was picked in the tray: save it (the UI and the tray follow).
 fn set_language(app: &AppHandle, pref: &'static str) {
     relabel(app, pref);
     let app = app.clone();
@@ -94,13 +79,10 @@ fn set_language(app: &AppHandle, pref: &'static str) {
 /// window is shown from the tray. Nothing resizes or moves it afterwards (no
 /// view change, data refresh or click). The height is the sum of the fixed
 /// blocks in src/lib/utils/mini-layout.js (MINI_HEIGHT there; a test checks).
-/// A focus loss this soon after the drag started or last moved belongs to it.
 const DRAG_GRACE: Duration = Duration::from_millis(800);
 const MINI_WIDTH: f64 = 360.0;
 const MINI_HEIGHT: f64 = 652.0;
 
-/// Physical size at a monitor scale. Round up: a pixel lost to rounding at
-/// 125 %/150 % would cut the bottom row.
 fn mini_size(scale: f64) -> tauri::PhysicalSize<u32> {
     tauri::PhysicalSize::new(
         (MINI_WIDTH * scale).ceil() as u32,
@@ -116,8 +98,6 @@ const TRAY_FRAMES: [(u32, &[u8]); 3] = [
     (32, include_bytes!("../icons/tray-32.png")),
 ];
 
-/// Smallest frame that covers the small-icon size at this display scale
-/// (16 px at 100 %, 24 px at 150 %, 32 px at 200 %), else the largest.
 fn tray_frame_size(scale: f64) -> u32 {
     let want = (16.0
         * if scale.is_finite() && scale > 0.0 {
@@ -268,8 +248,6 @@ fn configure(
                 };
             })
             .on_tray_icon_event(|tray, event| {
-                // Fob 0.7.17: a left click toggles the mini window at once;
-                // the tray icon has no double-click action.
                 if let TrayIconEvent::Click {
                     rect,
                     button: MouseButton::Left,
@@ -316,18 +294,14 @@ fn configure(
             let _ = item.set_checked(checked);
         }
     }
-    // Only opt in to hiding the main window when the tray actually exists.
     app.state::<Mutex<CompanionState>>()
         .lock()
         .map_err(|e| e.to_string())?
-        // winperf: with a tray icon, closing the main window always hides it
-        // to the tray (Quit is in the tray menu); the old preference is ignored.
         .keep_running = enabled;
     let _ = keep_running;
     Ok(())
 }
 
-/// The tray check item toggled itself; save its new state as the setting.
 fn set_start_in_tray(app: &AppHandle) {
     let item = app
         .state::<Mutex<CompanionState>>()
@@ -340,17 +314,13 @@ fn set_start_in_tray(app: &AppHandle) {
     tauri::async_runtime::spawn_blocking(move || {
         let patch = serde_json::json!({ "behavior": { "startInTray": checked } });
         if crate::preferences::apply_patch(&app, &patch).is_err() {
-            let _ = item.set_checked(!checked); // settings not ready: undo
+            let _ = item.set_checked(!checked);
         }
     });
 }
 
-/// winperf launch: with "Start in tray only" (default) only the tray icon
-/// appears, except on the first launch (see `shows_main_at_launch`).
-/// Otherwise the main window opens as before.
 pub fn launch(app: &AppHandle) -> Result<(), String> {
     let startup = crate::preferences::startup(app);
-    // Fob: the mini window hotkey works in tray-only mode too.
     crate::hotkey::register_saved(app, crate::hotkey::Target::Mini, &startup.mini_hotkey);
     crate::hotkey::register_saved(app, crate::hotkey::Target::Overlay, &startup.overlay_hotkey);
     crate::hotkey::register_saved(app, crate::hotkey::Target::Main, &startup.main_hotkey);
@@ -369,20 +339,15 @@ pub fn launch(app: &AppHandle) -> Result<(), String> {
             .ok_or("Main window unavailable")?;
         return window.show().map_err(|e| e.to_string());
     }
-    // Debug builds: WINPERF_SHOW_MINI=1 pops it every time (screenshots).
     if cfg!(debug_assertions) && std::env::var_os("WINPERF_SHOW_MINI").is_some() {
         show(app, None)?;
     }
     Ok(())
 }
-/// Fob: the main window opens at launch without tray-only mode (or without
-/// a tray), and on the very first launch (no settings file yet) so the user
-/// sees Fob started; later launches in tray-only mode show only the icon.
 fn shows_main_at_launch(tray_only: bool, first_launch: bool, show_all: bool) -> bool {
     show_all || !tray_only || first_launch
 }
 
-/// Title bar "Collapse to tray": hide the main window (minimize without a tray).
 #[tauri::command]
 pub async fn collapse_to_tray(app: AppHandle) -> Result<(), String> {
     let window = app
@@ -422,8 +387,6 @@ pub fn native_frame(app: &AppHandle) {
     let _ = app;
 }
 
-/// Fob: the global hotkey: show the mini window at the tray if it's hidden,
-/// hide it if it's shown (pinned or not, like the tray icon).
 pub fn toggle(app: &AppHandle) {
     toggle_within(app, Duration::from_millis(200));
 }
@@ -460,7 +423,6 @@ pub fn hide(app: &AppHandle) {
     let _ = app.emit_to("overview", "companion-visibility", false);
 }
 
-/// A rectangle in physical pixels (virtual-screen coordinates).
 #[derive(Clone, Copy, Debug, PartialEq)]
 struct PxRect {
     left: i32,
@@ -488,8 +450,6 @@ enum Edge {
     Left,
     Right,
 }
-/// The display the tray icon is on: its full rect, its work area (without the
-/// taskbar) and, when known, the taskbar's edge, rect and auto-hide state.
 #[derive(Clone, Copy, Debug, PartialEq)]
 struct Screen {
     monitor: PxRect,
@@ -499,11 +459,7 @@ struct Screen {
 #[derive(Clone, Copy, Debug, PartialEq)]
 struct Placed {
     pos: PhysicalPosition<i32>,
-    /// The panel size: the requested one, or smaller when the work area
-    /// (minus gaps) is smaller than that.
     size: (u32, u32),
-    /// false: the requested panel was larger than the work area, so `size`
-    /// was shrunk to keep it off the taskbar.
     fits: bool,
 }
 impl Placed {
@@ -512,11 +468,6 @@ impl Placed {
     }
 }
 
-/// Fob: where the mini window goes. All geometry is physical pixels. The
-/// panel sits inside the WORK AREA (never over the taskbar), a 12 px (logical)
-/// gap from the taskbar edge like Windows 11 flyouts, centred on the tray icon
-/// along the taskbar and clamped into the work area. An auto-hidden taskbar
-/// does not shrink the work area, so its shown thickness is kept free.
 fn placement(
     screen: &Screen,
     panel: (u32, u32),
@@ -583,7 +534,6 @@ fn placement(
     };
     let fits_x = pw + 2 * gap <= area.right - area.left;
     let fits_y = ph + 2 * gap <= area.bottom - area.top;
-    // Larger than the work area: shrink to it (never over the taskbar).
     let pw = pw.min(area.right - area.left - 2 * gap).max(1);
     let ph = ph.min(area.bottom - area.top - 2 * gap).max(1);
     let clamp = |v: i32, lo: i32, hi: i32| v.clamp(lo, hi.max(lo));
@@ -623,7 +573,6 @@ fn contains(outer: &PxRect, inner: &PxRect) -> bool {
 /// was created larger than asked (AdjustWindowRectEx adds the WS_CAPTION
 /// title bar and frame that WM_NCCALCSIZE then turns into client area).
 /// Returns (window rect, visible rect) after placing.
-/// Windows: (window rect, visible rect = DWM extended frame bounds).
 #[cfg(target_os = "windows")]
 fn window_rects(window: &tauri::WebviewWindow) -> Result<(PxRect, PxRect), String> {
     use windows::Win32::Foundation::{HWND, RECT};
@@ -691,7 +640,6 @@ fn set_window_rect(
     Ok((win, visible))
 }
 
-/// The monitor containing `point` (the tray icon), its work area and the taskbar.
 #[cfg(target_os = "windows")]
 fn screen_at(point: (f64, f64), fallback: PxRect) -> Screen {
     use windows::Win32::Foundation::{POINT, RECT};
@@ -782,10 +730,6 @@ fn show(app: &AppHandle, rect: Option<Rect>) -> Result<(), String> {
     app.emit_to("overview", "companion-visibility", true)
         .map_err(|e| e.to_string())
 }
-/// Fob: give the mini window its fixed size and put it where the user
-/// dragged it (clamped into that monitor's work area) or, by default or when
-/// that monitor is gone, next to the tray icon (above it for a bottom
-/// taskbar). Only `show` calls this.
 fn place(
     app: &AppHandle,
     window: &tauri::WebviewWindow,
@@ -848,8 +792,6 @@ fn place(
     #[cfg(not(target_os = "windows"))]
     {
         record_placement(app, &source, &screen, anchor, scale, size, &placed, None);
-        // Position first, then size: the window is already on the target
-        // monitor when it gets its size.
         window.set_position(placed.pos).map_err(|e| e.to_string())?;
         window
             .set_size(tauri::Size::Physical(tauri::PhysicalSize::new(
@@ -859,7 +801,6 @@ fn place(
             .map_err(|e| e.to_string())
     }
 }
-/// The tray-anchored placement: screen, scale, panel size and rect.
 fn at_tray(
     app: &AppHandle,
     window: &tauri::WebviewWindow,
@@ -898,7 +839,6 @@ fn center(r: &PxRect) -> (f64, f64) {
         (r.top as f64 + r.bottom as f64) / 2.0,
     )
 }
-/// The part of `a` inside `b`, if they overlap.
 fn overlap(a: &PxRect, b: &PxRect) -> Option<PxRect> {
     let r = PxRect {
         left: a.left.max(b.left),
@@ -908,9 +848,6 @@ fn overlap(a: &PxRect, b: &PxRect) -> Option<PxRect> {
     };
     (r.right > r.left && r.bottom > r.top).then_some(r)
 }
-/// The monitor (rect, scale) holding most of `rect`, if one still overlaps
-/// it. A window dragged half off the bottom has its centre off-screen but
-/// still belongs to that monitor.
 fn monitor_of(rect: &PxRect, monitors: &[(PxRect, f64)]) -> Option<(PxRect, f64)> {
     let area = |r: PxRect| (r.right - r.left) as i64 * (r.bottom - r.top) as i64;
     monitors
@@ -920,8 +857,6 @@ fn monitor_of(rect: &PxRect, monitors: &[(PxRect, f64)]) -> Option<(PxRect, f64)
         .max_by_key(|(a, _)| *a)
         .map(|(_, found)| found)
 }
-/// Fob: the dragged position at the panel size of the monitor it's on, kept
-/// at its top-left but moved (and if need be shrunk) fully into `work`.
 fn restore(saved: PxRect, work: &PxRect, panel: tauri::PhysicalSize<u32>) -> Placed {
     let (aw, ah) = (work.right - work.left, work.bottom - work.top);
     let (pw, ph) = (
@@ -937,7 +872,6 @@ fn restore(saved: PxRect, work: &PxRect, panel: tauri::PhysicalSize<u32>) -> Pla
         fits: panel.width as i32 <= aw && panel.height as i32 <= ah,
     }
 }
-/// Fob: records the last placement's numbers (debug files removed in 0.8.0).
 #[allow(clippy::too_many_arguments)]
 fn record_placement(
     app: &AppHandle,
@@ -971,7 +905,6 @@ fn record_placement(
 }
 /// Fob 0.8.0: placement debug files removed; kept as a no-op so call sites stay.
 fn write_placement(_app: &AppHandle, _text: &str) {}
-/// Fob: mini-position.json in the settings folder: the dragged visible rect.
 fn position_file(app: &AppHandle) -> Option<std::path::PathBuf> {
     Some(app.path().app_config_dir().ok()?.join("mini-position.json"))
 }
@@ -1032,8 +965,6 @@ fn is_drag(placed: Option<(PxRect, Instant)>, now: PxRect) -> bool {
         None => true,
     }
 }
-/// Fob: the overview window moved. A drag of the pinned window is kept in
-/// memory and saved when the window settles, then wins over the tray spot.
 fn moved(app: &AppHandle) {
     let Some(window) = app.get_webview_window("overview") else {
         return;
@@ -1085,15 +1016,12 @@ fn moved(app: &AppHandle) {
         return;
     });
 }
-/// Fob 0.7.12: the mini page is about to start a title bar drag.
 #[tauri::command]
 pub fn mini_drag_begin(app: AppHandle) {
     if let Ok(mut state) = app.state::<Mutex<CompanionState>>().lock() {
         state.dragging_at = Some(Instant::now());
     }
 }
-/// Fob: double-click on the mini title bar: forget the dragged position and
-/// go back to the tray.
 #[tauri::command]
 pub async fn reset_mini_position(app: AppHandle) -> Result<(), String> {
     if let Ok(mut state) = app.state::<Mutex<CompanionState>>().lock() {
@@ -1110,20 +1038,15 @@ pub async fn reset_mini_position(app: AppHandle) -> Result<(), String> {
     }
     Ok(())
 }
-/// Whether the mini window has a dragged position (Settings shows reset).
 #[tauri::command]
 pub async fn get_mini_position_saved(
     state: tauri::State<'_, Mutex<CompanionState>>,
 ) -> Result<bool, String> {
     Ok(state.lock().map_err(|e| e.to_string())?.user_rect.is_some())
 }
-/// Fob: an unpinned mini window closes like a flyout when another window gets
-/// focus; a pinned one stays open (and on top) until the tray icon, Esc or
-/// "open full window" hides it.
 fn hides_on_focus_loss(pinned: bool) -> bool {
     !pinned
 }
-/// Fob: the mini window's pin button. Saved as behavior.miniPinned.
 #[tauri::command]
 pub async fn get_companion_pinned(
     state: tauri::State<'_, Mutex<CompanionState>>,
@@ -1147,13 +1070,12 @@ pub async fn set_companion_pinned(app: AppHandle, pinned: bool) -> Result<bool, 
     .and_then(|r| r);
     if let Err(e) = saved {
         if let Ok(mut state) = app.state::<Mutex<CompanionState>>().lock() {
-            state.pinned = before; // not saved: keep the old behaviour
+            state.pinned = before;
         }
         return Err(e);
     }
     Ok(pinned)
 }
-/// Fob 0.7.12 full window hotkey: hide it when it is in front, else open it.
 pub fn toggle_main(app: &AppHandle) {
     let Some(window) = app.get_webview_window("main") else {
         return;
@@ -1172,8 +1094,6 @@ pub fn open_main(app: &AppHandle) -> Result<(), String> {
     let _ = app.emit_to("main", "open-page", "processes");
     reveal_main(app)
 }
-/// Bring the main window back as it was left (tray, minimized, maximized or
-/// normal) without changing its page or size.
 pub fn reveal_main(app: &AppHandle) -> Result<(), String> {
     let window = app
         .get_webview_window("main")
@@ -1294,7 +1214,6 @@ pub async fn open_main_window(
     process: Option<ProcessTarget>,
     page: Option<String>,
 ) -> Result<(), String> {
-    // A page of the main window to show (the disk space map).
     if let Some(page) = page.filter(|p| p == "space") {
         open_main(&app)?;
         return app
@@ -1367,7 +1286,6 @@ mod tests {
     fn focus_loss_hides_only_an_unpinned_mini_window() {
         assert!(hides_on_focus_loss(false));
         assert!(!hides_on_focus_loss(true));
-        // The focus-loss handler is the only automatic hide and goes through it.
         let src = include_str!("companion.rs");
         let code = src.split("#[cfg(test)]").next().unwrap();
         let handler = code
@@ -1394,8 +1312,6 @@ mod tests {
     }
     #[test]
     fn nothing_but_show_sizes_or_moves_the_mini_window() {
-        // A blank-area click used to re-measure the page and call
-        // fit_companion -> set_size + set_position, moving the whole window.
         let src = include_str!("companion.rs");
         let code = src.split("#[cfg(test)]").next().unwrap();
         let callers = |needle: &str| code.matches(needle).count();
@@ -1408,7 +1324,6 @@ mod tests {
         assert_eq!(callers(concat!(".set_", "position(")), 1);
         assert!(!code.contains(concat!("fit_", "companion")));
     }
-    /// A 1920x1080 monitor at `scale` with a 48 px (logical) taskbar on `edge`.
     fn hd(scale: f64, edge: Edge, origin: (i32, i32)) -> (Screen, (f64, f64, f64, f64)) {
         let (w, h) = ((1920.0 * scale) as u32, (1080.0 * scale) as u32);
         let m = PxRect::new(origin.0, origin.1, w, h);
@@ -1514,21 +1429,16 @@ mod tests {
             let gap = (12.0 * scale).round() as i32;
             let p = placement(&screen, (size.width, size.height), Some(icon), scale);
             inside(&p, size, &screen.work, gap);
-            // Bottom edge exactly one gap above the taskbar, centred on the icon.
             assert_eq!(p.pos.y + size.height as i32, screen.work.bottom - gap);
             let cx = icon.0 + icon.2 / 2.0;
             assert_eq!(p.pos.x, (cx - size.width as f64 / 2.0).round() as i32);
         }
-        // The v0.5.3 numbers at 150 %: 2880x1620, taskbar 72 px, panel 540x978.
         let (screen, icon) = hd(1.5, Edge::Bottom, (0, 0));
         let p = placement(&screen, (540, 978), Some(icon), 1.5);
         assert_eq!(p.pos.y, 1620 - 72 - 18 - 978);
     }
     #[test]
     fn the_work_area_wins_over_the_monitor_and_a_bad_icon_rect() {
-        // v0.5.3 decided above/below from the icon rect and clamped to the
-        // monitor: an icon rect near the top put the panel at the monitor
-        // bottom, over the taskbar. The work area decides now.
         let (screen, _) = hd(1.0, Edge::Bottom, (0, 0));
         let size = mini_size(1.0);
         for icon in [
@@ -1600,7 +1510,6 @@ mod tests {
     }
     #[test]
     fn too_tall_for_the_work_area_shrinks_and_still_clears_the_taskbar() {
-        // 1920x1080 at 175 %: 1141 px panel, 1080 - 84 px taskbar = 996 px work area.
         let m = PxRect::new(0, 0, 1920, 1080);
         let screen = Screen {
             monitor: m,
@@ -1616,14 +1525,13 @@ mod tests {
             1.75,
         );
         assert!(!p.fits);
-        let gap = 21; // 12 px at 175 %
+        let gap = 21;
         assert_eq!(p.size, (size.width, 996 - 2 * gap as u32));
         assert_eq!((p.pos.y, p.rect().bottom), (gap, 996 - gap));
         assert!(contains(&screen.work, &p.rect()));
     }
     #[test]
     fn negative_coordinates_at_every_scale_and_edge() {
-        // A monitor left of and above the primary one (negative origin).
         for scale in [1.0, 1.25, 1.5, 1.75] {
             for edge in [Edge::Bottom, Edge::Top, Edge::Left, Edge::Right] {
                 let (screen, icon) = hd(scale, edge, (-2400, -1300));
@@ -1657,7 +1565,6 @@ mod tests {
                 bottom: 1285
             }
         );
-        // Without borders the window rect is the plan itself.
         assert_eq!(window_rect_for(planned, window, window), planned);
     }
     #[test]
@@ -1717,13 +1624,10 @@ mod tests {
         assert!(existing.contains("for _ in 0..40"));
         assert!(existing.contains("AllowSetForegroundWindow(pid)"));
         assert!(existing.contains("SendMessageTimeoutW("));
-        // The exit sits after the `if !hwnd.is_null()` block: a missed window still exits.
         let exit = existing.rfind("std::process::exit(0)").unwrap();
         assert!(exit > existing.rfind("SendMessageTimeoutW(").unwrap());
         assert_eq!(existing.matches("std::process::exit(0)").count(), 1);
     }
-    /// Real processes on Windows: the test binary relaunches itself as a
-    /// minimal Tauri app (MockRuntime) with the same single-instance plugin.
     #[cfg(target_os = "windows")]
     #[test]
     fn only_one_instance_runs_and_a_later_launch_reaches_it() {
@@ -1786,8 +1690,6 @@ mod tests {
             }
             (child, lines)
         };
-        // Waits for one of our lines; anything else the child printed (libtest,
-        // a panic) goes into the failure message.
         let wait = |lines: &Receiver<String>, want: &str| -> Result<(), String> {
             let until = Instant::now() + Duration::from_secs(60);
             let mut other = Vec::new();
@@ -1818,7 +1720,6 @@ mod tests {
             let _ = child.wait();
         };
 
-        // A later launch exits and the running one hears about it.
         let (mut first, first_lines) = start(&id);
         wait(&first_lines, "fob-si: primary").expect("first launch runs");
         let (mut second, second_lines) = start(&id);
@@ -1839,12 +1740,10 @@ mod tests {
         );
         stop(&mut first);
 
-        // After the first one is gone, a new launch runs normally.
         let (mut again, again_lines) = start(&id);
         wait(&again_lines, "fob-si: primary").expect("a launch after exit runs");
         stop(&mut again);
 
-        // Launches started together: exactly one stays.
         for round in 0..5 {
             let mut pair = [start(&id), start(&id)];
             let until = Instant::now() + Duration::from_secs(60);
@@ -1902,30 +1801,22 @@ mod tests {
         let main = (PxRect::new(0, 0, 2880, 1620), 1.5);
         let monitors = [left, main];
         let size = mini_size(1.5);
-        // On the main monitor, fully inside: kept as is.
         let saved = PxRect::new(1000, 200, size.width, size.height);
         assert_eq!(monitor_of(&saved, &monitors), Some(main));
-        let work = PxRect::new(0, 0, 2880, 1548); // 72 px taskbar
+        let work = PxRect::new(0, 0, 2880, 1548);
         let p = restore(saved, &work, size);
         assert_eq!(p.rect(), saved);
         assert!(p.fits);
-        // Hanging over the taskbar and the right edge: pulled inside.
         let over = PxRect::new(2700, 1200, size.width, size.height);
         let p = restore(over, &work, size);
         assert!(contains(&work, &p.rect()), "{p:?}");
         assert_eq!(p.size, (size.width, size.height));
-        // Saved on the left monitor at 100 %, which now is the panel size
-        // there (the caller passes mini_size(1.0)).
         let on_left = PxRect::new(-800, 300, 360, 652);
         assert_eq!(monitor_of(&on_left, &monitors), Some(left));
-        // Dragged half off the bottom: the centre is off-screen, the monitor
-        // is still the one it hangs from, and the restore pulls it inside.
         let hanging = PxRect::new(1500, 1300, size.width, size.height);
         assert_eq!(monitor_of(&hanging, &monitors), Some(main));
         assert!(contains(&work, &restore(hanging, &work, size).rect()));
-        // That monitor unplugged: no monitor, so the tray position is used.
         assert_eq!(monitor_of(&on_left, &[main]), None);
-        // A work area smaller than the panel: shrunk, still inside.
         let tiny = PxRect::new(0, 0, 800, 600);
         let p = restore(saved, &tiny, size);
         assert!(!p.fits && contains(&tiny, &p.rect()));
@@ -1945,7 +1836,6 @@ mod tests {
     }
 }
 
-/// Fob: keep the tray's status bar tick in step with the setting.
 pub fn set_overlay_checked(app: &AppHandle, on: bool) {
     if let Ok(state) = app.state::<Mutex<CompanionState>>().lock() {
         if let Some(items) = &state.items {

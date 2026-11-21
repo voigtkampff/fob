@@ -105,7 +105,6 @@ fn disk_paths() -> Vec<String> {
                         .map(String::from_utf16_lossy)
                         .collect()
                 }
-                // A disk arrived between the two calls.
                 CR_BUFFER_SMALL => continue,
                 _ => return Vec::new(),
             }
@@ -196,8 +195,6 @@ fn logical_sector_bytes(h: &Handle) -> Option<u32> {
     parse::logical_sector_bytes(&out[..n.min(out.len())])
 }
 
-/// The page list first, then only the listed pages Fob shows. A page that
-/// fails after the list leaves its fields out.
 fn ata_stats(h: &Handle) -> AtaState {
     if windows_says_asleep(h) {
         return AtaState::Sleeping;
@@ -352,7 +349,6 @@ fn wmi_row(obj: &IWbemClassObject) -> WmiDisk {
     row
 }
 
-/// MSFT_PhysicalDisk without SerialNumber or FriendlyName.
 fn wmi() -> Result<Vec<WmiDisk>, i32> {
     let _com = Com(unsafe { CoInitializeEx(None, COINIT_MULTITHREADED) }.is_ok());
     unsafe {
@@ -394,7 +390,6 @@ fn wmi() -> Result<Vec<WmiDisk>, i32> {
         loop {
             let mut objs = [None];
             let mut got = 0u32;
-            // 10 s per row at most; a stuck provider ends the list.
             let hr = rows.Next(10_000, &mut objs, &mut got);
             if hr.is_err() {
                 return if out.is_empty() { Err(hr.0) } else { Ok(out) };
@@ -500,8 +495,6 @@ mod tests {
         );
     }
 
-    /// Runs the real probes on the CI runner: no panic, no serial in the
-    /// output, every disk accounted for.
     #[test]
     fn probing_this_machine_does_not_fail_all_disks() {
         let (disks, volumes, wmi) = super::probe();
@@ -511,8 +504,6 @@ mod tests {
         assert!(volumes.iter().any(|v| v.mounts.iter().any(|m| m == r"C:\")));
     }
 
-    /// GetDevicePowerState on the same no-access handles the probe uses:
-    /// printed, since a runner's virtual disks say nothing about SATA.
     #[test]
     fn device_power_state_answers_on_a_no_access_handle() {
         for path in super::disk_paths() {

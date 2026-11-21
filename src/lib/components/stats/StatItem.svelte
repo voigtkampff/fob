@@ -1,9 +1,6 @@
 <script lang="ts">
-  // Fob: one line per row. A long value (an OS or GPU name) ends in "…"
-  // and shows in full as a tooltip; it never wraps into the rows below.
   export let label: string;
   export let value: string;
-  /** Full text for the tooltip when `value` is a shortened form. */
   export let full: string = value;
 </script>
 

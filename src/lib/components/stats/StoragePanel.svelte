@@ -15,9 +15,7 @@
   export let diskTotalBytes: number;
   export let diskUsedBytes: number;
   export let diskFreeBytes: number;
-  /** The panel's space map button. */
   export let onSpace: () => void = () => {};
-  /** The health link: opens the full Disk detail. */
   export let onDiskHealth: () => void = () => {};
   $: ready = Number.isFinite(diskTotalBytes) && diskTotalBytes > 0;
   $: sub = ready

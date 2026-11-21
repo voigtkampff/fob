@@ -1,9 +1,4 @@
 <script lang="ts">
-  // Fob: the hover cursor every history chart shares. Wrap a chart in it:
-  // moving the mouse over the chart snaps a vertical line to the nearest
-  // sample and shows that sample's value(s) and time in a small tooltip that
-  // flips sides near the edges. Everything is absolutely positioned on top of
-  // the chart, so hovering never changes the layout.
   import type { Snippet } from "svelte";
   import { cursorAt, tooltipLeft, clockTime } from "$lib/utils/chart-cursor.js";
   import { SPARK_WINDOW_MS } from "$lib/utils/dashboard.js";
@@ -120,7 +115,6 @@
   }
   .cursor-dot {
     position: absolute;
-    /* Same point as the Processes page cards: r 2, 1px card-coloured ring. */
     width: 4px;
     height: 4px;
     margin: -2px 0 0 -2px;
@@ -148,8 +142,6 @@
     pointer-events: none;
     box-shadow: 0 1px 4px rgb(0 0 0 / 0.12);
   }
-  /* Several series sit side by side with a clear gap (a plain space
-     between spans was dropped, so "CPU 44 °CGPU 44 °C" ran together). */
   .cursor-values {
     display: flex;
     gap: 8px;

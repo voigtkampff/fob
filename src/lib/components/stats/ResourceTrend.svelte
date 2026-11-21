@@ -54,7 +54,6 @@
   );
   let selectedStamp = $state<number | null>(null);
   let keyboard = $state(false);
-  // Byte-rate charts: two lines, a solid one in and a dashed one out.
   const isRate = $derived(metric === "network" || metric === "disk");
   const series = $derived(
     metric === "disk"

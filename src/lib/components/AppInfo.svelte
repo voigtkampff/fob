@@ -1,5 +1,4 @@
 <script lang="ts">
-  // winperf: no release check (NeoHtop's checked NeoHtop's GitHub releases).
   import { getVersion } from "@tauri-apps/api/app";
   import { onMount } from "svelte";
   import { themeStore } from "$lib/stores/theme";

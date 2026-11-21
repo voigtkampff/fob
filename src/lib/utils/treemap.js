@@ -1,17 +1,10 @@
-// Fob: disk space map layout — squarified treemap (Bruijn, Huizing & van
-// Wijk) and the folding of small items into one "other small files" block.
-
 /**
  * @template T
  * @param {T[]} items
  * @param {(item: T) => number} value
  * @param {{ x: number, y: number, w: number, h: number }} rect
- * @param {{ last?: (item: T) => boolean }} [options] Items `last` picks are
- *  laid out after all others, so they end in the bottom-right corner
- *  whatever their size.
+ * @param {{ last?: (item: T) => boolean }} [options]
  * @returns {{ item: T, x: number, y: number, w: number, h: number }[]}
- *  One rectangle per item with a positive value, largest first; the areas
- *  are proportional to the values and together fill `rect`.
  */
 export function squarify(items, value, rect, { last = () => false } = {}) {
   const sized = items
@@ -25,7 +18,6 @@ export function squarify(items, value, rect, { last = () => false } = {}) {
   /** @type {{ item: T, x: number, y: number, w: number, h: number }[]} */
   const out = [];
   let { x, y, w, h } = rect;
-  /** Worst aspect ratio of a row laid along a side of length `side`. */
   const worst = (
     /** @type {typeof nodes} */ row,
     /** @type {number} */ side,
@@ -41,7 +33,6 @@ export function squarify(items, value, rect, { last = () => false } = {}) {
   const place = (/** @type {typeof nodes} */ row, last = false) => {
     const s = row.reduce((sum, n) => sum + n.area, 0);
     if (w >= h) {
-      // A column on the left.
       const t = last ? w : s / h;
       let cy = y;
       row.forEach((n, i) => {
@@ -52,7 +43,6 @@ export function squarify(items, value, rect, { last = () => false } = {}) {
       x += t;
       w -= t;
     } else {
-      // A row along the top.
       const t = last ? h : s / w;
       let cx = x;
       row.forEach((n, i) => {
@@ -84,20 +74,13 @@ export function squarify(items, value, rect, { last = () => false } = {}) {
 /**
  * @typedef {{ n: string, s: number, f: number, d?: boolean, c?: SpaceNode[],
  *   o?: number, oc?: number, x?: boolean }} SpaceNode
- *  A folder or file of a scan (see src-tauri/src/space.rs).
  * @typedef {{ node: SpaceNode | null, size: number, count: number,
  *   merged?: SpaceNode[] }} Block
- *  `node` null: the "other" block of `count` items: `merged` are the scan's
- *  items too small to draw, plus the folder's `oc` items the scan folded.
  */
 
-/** A block smaller than this many square pixels is merged into "other". */
 export const MIN_TILE_AREA = 600;
 
 /**
- * The blocks of one folder drawn in `area` square pixels: its largest items,
- * then one block for the rest (items that would be under `minArea` px²,
- * past `maxItems`, and what the scan already folded).
  * @param {SpaceNode} folder
  * @param {{ area: number, minArea?: number, maxItems?: number }} options
  * @returns {Block[]}
@@ -134,7 +117,7 @@ export function blocks(
   return out;
 }
 
-/** The folder at `path` (names below the root), or null if it is gone.
+/**
  * @param {SpaceNode} root @param {string[]} path */
 export function folderAt(root, path) {
   let node = root;
@@ -146,7 +129,8 @@ export function folderAt(root, path) {
   return node;
 }
 
-/** Full path of `names` below `root`. @param {string} root
+/**
+ * @param {string} root
  * @param {string[]} names @param {string} sep */
 export function joinPath(root, names, sep) {
   if (!names.length) return root;
@@ -171,14 +155,13 @@ const BY_EXTENSION = new Map(
       .map((ext) => [ext, /** @type {keyof typeof TYPES} */ (kind)]),
   ),
 );
-/** File type of a file name, for its colour. @param {string} name */
+/** @param {string} name */
 export function fileKind(name) {
   const dot = name.lastIndexOf(".");
   if (dot <= 0) return "other";
   return BY_EXTENSION.get(name.slice(dot + 1).toLowerCase()) ?? "other";
 }
 
-/** Theme colour of each file type (folders are neutral boxes). */
 export const KIND_TONE = {
   video: "var(--status-stopped)",
   media: "var(--chart-2)",
@@ -187,8 +170,7 @@ export const KIND_TONE = {
   document: "var(--chart-5)",
   other: "var(--chart-1)",
 };
-/** Background of a block: a file's type colour, or a folder's depth shade,
- * mixed into the card colour so the theme's text stays readable on it.
+/**
  * @param {keyof typeof KIND_TONE | "folder" | "rest"} kind
  * @param {1 | 2} [depth] */
 export function tileColor(kind, depth = 1) {

@@ -28,7 +28,6 @@ pub fn event_time(xml: &str) -> Option<u64> {
     parse_utc(value)
 }
 
-/// "YYYY-MM-DDTHH:MM:SS[.fraction]Z" -> Unix seconds.
 pub fn parse_utc(value: &str) -> Option<u64> {
     let value = value.trim().strip_suffix('Z')?;
     let (date, time) = value.split_once('T')?;
@@ -51,7 +50,6 @@ pub fn parse_utc(value: &str) -> Option<u64> {
     u64::try_from(days * 86_400 + hh * 3_600 + mm * 60 + ss).ok()
 }
 
-/// What kind of start an event records.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum StartKind {
     Cold,
@@ -76,7 +74,6 @@ fn element<'a>(xml: &'a str, open: &str, close: &str) -> Option<&'a str> {
     Some(body[..body.find(close)?].trim())
 }
 
-/// Parse one rendered start event: its time and kind.
 pub fn start_event(xml: &str) -> Option<(u64, StartKind)> {
     let time = event_time(xml)?;
     let provider = {
@@ -107,9 +104,6 @@ pub fn start_event(xml: &str) -> Option<(u64, StartKind)> {
     Some((time, kind))
 }
 
-/// When the PC was last started: the newest start event that is not older
-/// than the kernel boot (a minute of slack for logging) nor in the future;
-/// the kernel boot itself when there is none.
 pub fn started_at(now: u64, kernel_boot: u64, events: &[u64]) -> u64 {
     events
         .iter()
@@ -136,7 +130,6 @@ fn latest_start_event() -> Result<(u64, StartKind), String> {
         .map_err(|e| format!("EvtQuery(System): {e}"))?;
         let mut result =
             Err("no Kernel-Boot 27 or Kernel-General 12 event in the System log".to_string());
-        // Newest first; skip anything we can't parse (e.g. an unknown boot type layout).
         'events: for _ in 0..8 {
             let mut events = [0isize; 4];
             let mut returned = 0u32;
@@ -174,7 +167,6 @@ fn latest_start_event() -> Result<(u64, StartKind), String> {
                 }
             }
             if result.is_ok() {
-                // close the remaining handles of this batch already done; stop.
                 break 'events;
             }
         }
@@ -188,9 +180,6 @@ fn latest_start_event() -> Result<(u64, StartKind), String> {
     Err("not Windows".into())
 }
 
-/// The last power-on (Unix seconds and kind), or `None` where we can't
-/// tell better than the kernel uptime (non-Windows, event log unavailable).
-/// Re-read every 5 minutes so a resume while Fob keeps running is seen.
 pub fn last_start(now: u64, kernel_uptime: u64) -> Option<(u64, StartKind)> {
     use std::sync::Mutex;
     use std::time::{Duration, Instant};
@@ -204,7 +193,6 @@ pub fn last_start(now: u64, kernel_uptime: u64) -> Option<(u64, StartKind)> {
     }
     let (event, kind) = cache.as_ref()?.1.clone().ok()?;
     let at = started_at(now, now.saturating_sub(kernel_uptime), &[event]);
-    // An event from before the kernel boot was dropped: that is a cold boot.
     Some((at, if at == event { kind } else { StartKind::Cold }))
 }
 
@@ -223,7 +211,7 @@ mod tests {
             Some(10)
         );
         assert_eq!(parse_utc("2000-02-29T00:00:00Z"), Some(951_782_400));
-        assert_eq!(parse_utc("2026-11-02T01:23:45"), None); // must be UTC
+        assert_eq!(parse_utc("2026-11-02T01:23:45"), None);
         assert_eq!(parse_utc("2026-13-02T01:23:45Z"), None);
         assert_eq!(event_time("<TimeCreated/>"), None);
     }
@@ -245,11 +233,8 @@ mod tests {
         );
         assert_eq!(start_event(BOOT_COLD).map(|e| e.1), Some(StartKind::Cold));
         assert_eq!(start_event(GENERAL_12).map(|e| e.1), Some(StartKind::Cold));
-        // Waking from sleep is not a start.
         assert_eq!(start_event(WAKE), None);
-        // The provider v0.5.0 queried by mistake is not a start event.
         assert_eq!(start_event(OLD_KERNEL_POWER), None);
-        // His case: kernel booted 2 days 21 h ago, Fast Startup resume this morning.
         let now = parse_utc("2026-11-02T11:00:00Z").unwrap();
         let kernel_boot = now - (2 * 24 + 21) * 3600;
         let (t, _) = start_event(BOOT_FAST).unwrap();
@@ -260,14 +245,11 @@ mod tests {
     #[test]
     fn fast_startup_resume_wins_over_old_kernel_boot() {
         let now = 1_000_000;
-        let kernel_boot = now - 69 * 3600; // "up 2 days, 21 hr"
-        let resumed = now - 3 * 3600; // Fast Startup resume this morning
+        let kernel_boot = now - 69 * 3600;
+        let resumed = now - 3 * 3600;
         assert_eq!(started_at(now, kernel_boot, &[resumed]), resumed);
-        // Cold boot: the event is logged a few seconds after the kernel boot.
         assert_eq!(started_at(now, now - 600, &[now - 590]), now - 590);
-        // Events older than the kernel boot (previous boots) are ignored.
         assert_eq!(started_at(now, now - 600, &[now - 9000]), now - 600);
-        // A clock oddity never puts the start in the future.
         assert_eq!(started_at(now, now - 600, &[now + 30]), now);
         assert_eq!(started_at(now, now - 600, &[]), now - 600);
     }

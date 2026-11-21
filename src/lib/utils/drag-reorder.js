@@ -1,18 +1,3 @@
-// Pointer reordering for the children of one element (table
-// header cells, summary cards). A press becomes a drag after THRESHOLD px:
-// the item lifts and follows the pointer, and the caller shows the order it
-// would land in (onPreview) while neighbours slide into their new places.
-// Release commits once (onMove); Escape or a cancelled pointer puts the
-// order back. The click that ends a drag is swallowed so it neither sorts
-// nor opens anything.
-// Animations run only for a change in order, never while idle.
-//
-// A header cell lifts in place, because its column's body cells move with it
-// inside the table's own scroll area. A card lifts as a copy in the top
-// layer (a manual popover), so no scrolling or clipped ancestor can cut it
-// off; the card itself stays in its slot, invisible, and keeps the drop
-// order, focus and hit test.
-
 import { tick } from "svelte";
 
 const THRESHOLD = 6;
@@ -21,17 +6,17 @@ const SLIDE = { duration: 160, easing: "cubic-bezier(0.2, 0, 0, 1)" };
 /** @typedef {{ id: string, target: string, after: boolean }} Move */
 /**
  * @typedef {object} ReorderOptions
- * @property {(string | null)[]} ids one per child of the node; null children stay put and take no drop
- * @property {(id: string, target: string, after: boolean) => void} onMove commit
- * @property {(move: Move | null) => void} onPreview show the order a drag would land in; null shows the saved order
- * @property {string} [handle] a drag only starts on an element matching this selector (the title)
- * @property {boolean} [vertical] the items wrap into rows and follow the pointer up and down too
- * @property {(id: string) => HTMLElement[]} [cells] other elements that belong to an item (a column's body cells) and move with it; items without cells lift as a copy in the top layer
- * @property {boolean} [clampToNode] keep the lifted copy inside the visible box of `node` (a scrolling list)
- * @property {string} [clampToClosest] use the nearest ancestor matching this selector as the visible bounds
- * @property {boolean} [portal] append the lifted copy to document.body, outside any transformed or clipped ancestor
- * @property {boolean} [rejectOutside] no reorder while the pointer is outside the node's box
- * @property {boolean} [stacked] the items sit one per row, so before or after comes from Y even where a row spans the whole width
+ * @property {(string | null)[]} ids
+ * @property {(id: string, target: string, after: boolean) => void} onMove
+ * @property {(move: Move | null) => void} onPreview
+ * @property {string} [handle]
+ * @property {boolean} [vertical]
+ * @property {(id: string) => HTMLElement[]} [cells]
+ * @property {boolean} [clampToNode]
+ * @property {string} [clampToClosest]
+ * @property {boolean} [portal]
+ * @property {boolean} [rejectOutside]
+ * @property {boolean} [stacked]
  */
 
 /**
@@ -41,7 +26,7 @@ const SLIDE = { duration: 160, easing: "cubic-bezier(0.2, 0, 0, 1)" };
 const reducedMotion = () =>
   matchMedia("(prefers-reduced-motion: reduce)").matches;
 
-/** Where an element's box is laid out, ignoring transforms and translate.
+/**
  * @param {HTMLElement} el */
 function layoutBox(el) {
   const parent = /** @type {HTMLElement | null} */ (el.offsetParent);
@@ -76,9 +61,7 @@ function layoutBox(el) {
   };
 }
 
-/** The visible part of a node: its box intersected with every scrolling
- * ancestor. Used to keep a lifted row inside the list instead of letting it
- * cover the rest of the window.
+/**
  * @param {HTMLElement} el */
 function visibleBox(el) {
   const rect = el.getBoundingClientRect();
@@ -110,8 +93,7 @@ function visibleBox(el) {
   return box;
 }
 
-/** Animate elements from where they are drawn now (or from `drawn`) to
- * where `change` lays them out (FLIP).
+/**
  * @param {Element[]} elements @param {() => unknown} change
  * @param {Map<Element, DOMRect>} [drawn] */
 async function slide(elements, change, drawn = new Map()) {
@@ -136,9 +118,7 @@ async function slide(elements, change, drawn = new Map()) {
   }
 }
 
-/** A copy of `el` drawn in the top layer over its slot. The copy sits in a
- * shallow copy of `list` placed next to it, so the selectors that style the
- * item (`.grid > [data-dragging]`, scoped classes) still match.
+/**
  * @param {HTMLElement} list @param {HTMLElement} el */
 /** @param {HTMLElement} list @param {HTMLElement} el
  * @param {HTMLElement | null} [parent] */
@@ -182,17 +162,7 @@ function liftCopy(list, el, parent = null) {
   return layer;
 }
 
-/** The slot a pointer asks for among laid-out items, as an index and a side.
- * The nearest item wins, measured down the page too when the items wrap into
- * rows, so a row change lands on the item under the pointer. The pointer's
- * side of that item then says before or after: from X when the items share a
- * row and from Y down a single column.
- *
- * `vertical` must not reach that side. The summary cards wrap into rows and
- * also follow the pointer down, so reading Y from `vertical` made a card need
- * the pointer past its vertical middle before it would take a drop on the
- * right. Only `stacked` reads the side from Y on a shared row, for a list of
- * full-width rows. Pure, so tests can pass plain boxes.
+/**
  * @param {{ x: number, y: number, items: Box[], from: number, vertical?: boolean, stacked?: boolean }} query
  * @returns {{ index: number, after: boolean } | null} */
 export function dropSlot({ x, y, items, from, vertical, stacked }) {
@@ -237,13 +207,11 @@ export function dragReorder(node, options) {
     target instanceof Node
       ? items().find((it) => it.el.contains(target))
       : undefined;
-  /** An item and the elements that move with it.
+  /**
    * @param {{ el: HTMLElement, id: string }} it @returns {HTMLElement[]} */
   const group = (it) => [it.el, ...(o.cells?.(it.id) ?? [])];
   const everything = () => items().flatMap(group);
 
-  /** Keep the lifted item under the pointer wherever its slot is now. A
-   * copy in the top layer can be clamped to the list's visible box. */
   const follow = () => {
     if (!press || !drag) return;
     const slot = layoutBox(press.el);
@@ -277,8 +245,6 @@ export function dragReorder(node, options) {
       el.style.translate = `${dx}px ${dy}px`;
   };
 
-  /** The move the pointer asks for: past the middle of a later item, or
-   * before the middle of an earlier one. */
   const wanted = () => {
     if (!press || !drag) return null;
     const { clientX: x, clientY: y } = drag.last;
@@ -321,7 +287,6 @@ export function dragReorder(node, options) {
     void reflow();
   };
 
-  /** The scrolling ancestor a drag at the edge should scroll. */
   const scrollParent = () => {
     for (
       let el = node.parentElement;
@@ -338,7 +303,6 @@ export function dragReorder(node, options) {
     return null;
   };
 
-  /** Keep scrolling while the pointer sits near the top or bottom edge. */
   let autoScrollFrame = 0;
   const autoScroll = () => {
     if (!drag) {
@@ -393,7 +357,6 @@ export function dragReorder(node, options) {
     swallowClick();
     delete document.documentElement.dataset.reordering;
     const lifted = group(it);
-    // The card glides from where its copy was drawn into its final slot.
     const drawn = new Map(
       was.layer?.firstElementChild
         ? [[it.el, was.layer.firstElementChild.getBoundingClientRect()]]
@@ -444,7 +407,6 @@ export function dragReorder(node, options) {
     e.preventDefault();
     e.stopPropagation();
     end(false);
-    // The button is still down; the click its release makes is cancelled too.
     window.addEventListener("pointerup", swallowClick, {
       capture: true,
       once: true,

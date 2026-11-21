@@ -6,14 +6,12 @@
 // toward white or black only as far as it must to stay readable.
 import { composite, contrast } from "./theme-tokens.js";
 
-/** Approximate Windows 11 Acrylic (transient window) tint per mode. */
 export const ACRYLIC = { dark: "#2c2c2c", light: "#f3f3f3" };
-/** Popups never fade below this (app.css). */
 export const POPUP_FLOOR = 0.8;
 export const PRIMARY_CONTRAST = 4.5;
 export const SECONDARY_CONTRAST = 3;
 
-/** Surfaces text sits on in the mini window at `opacity` (0–100).
+/**
  * @param {Record<string,string>} tokens themeTokens() output
  * @param {boolean} dark @param {number} opacity */
 export function miniSurfaces(tokens, dark, opacity) {
@@ -30,8 +28,7 @@ export function miniSurfaces(tokens, dark, opacity) {
   ];
 }
 
-/** The theme color nudged toward black or white (whichever needs less) until
- * it reaches `min` contrast on every surface.
+/**
  * @param {string} color @param {string[]} surfaces @param {number} min */
 function reach(color, surfaces, min) {
   for (let step = 0; step <= 100; step++)
@@ -48,7 +45,7 @@ function reach(color, surfaces, min) {
     : "#000000";
 }
 
-/** CSS variables for the mini window's text at `opacity` (0–100).
+/**
  * @param {Record<string,string>} tokens @param {boolean} dark @param {number} opacity */
 export function miniInk(tokens, dark, opacity) {
   const surfaces = miniSurfaces(tokens, dark, opacity);

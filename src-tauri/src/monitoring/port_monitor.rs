@@ -1,9 +1,3 @@
-//! Process-to-port mapping
-//!
-//! Collects local bound TCP/UDP ports and groups them by PID. This is more
-//! expensive than a sysinfo snapshot, so callers should invoke it only when
-//! a port search is active.
-
 use listeners::{Protocol, SocketState};
 use std::collections::HashMap;
 
@@ -36,7 +30,6 @@ pub fn collect_ports_by_pid() -> Result<HashMap<u32, Vec<u16>>, String> {
     Ok(ports_by_pid)
 }
 
-/// Whether a socket should be searchable from the process search field.
 fn should_index_socket(protocol: Protocol, state: SocketState, port: u16) -> bool {
     if port == 0 {
         return false;

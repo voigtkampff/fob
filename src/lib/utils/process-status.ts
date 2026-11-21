@@ -10,7 +10,6 @@ const KEYS: Record<string, string> = {
   Zombie: "status.zombie",
   Unknown: "status.unknown",
 };
-/** The statuses the filter offers, in order. */
 export const FILTER_STATUSES = Object.keys(KEYS);
 
 export function statusLabel(status: string, t: Translate): string {

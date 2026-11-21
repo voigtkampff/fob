@@ -1,6 +1,4 @@
 /**
- * Format a usage ratio for display, marking unavailable totals as N/A.
- *
  * @param {number} used
  * @param {number} total
  * @returns {string}

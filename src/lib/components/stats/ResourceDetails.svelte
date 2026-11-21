@@ -1,6 +1,4 @@
 <script lang="ts">
-  // Fob: the side panel shell every stats-row card opens: header (title,
-  // subtitle, reading time), the scrolling body, footer (pause / done).
   import * as Sheet from "$lib/components/ui/sheet/index.js";
   import { Button } from "$lib/components/ui/button/index.js";
   import { Badge } from "$lib/components/ui/badge/index.js";
@@ -52,7 +50,6 @@
     onDiskHealth?: () => void;
     open?: boolean;
   } = $props();
-  // Literal keys so the i18n check can see every one.
   const texts = $derived({
     cpu: {
       title: $t("rd.cpu.title"),
@@ -93,8 +90,6 @@
   const panel = $derived(texts[kind]);
   const headingId = $derived(`resource-details-${kind}`);
   const triggerId = $derived(`resource-trigger-${kind}`);
-  // A link that leaves the panel runs after the panel has closed, so focus
-  // and the page's pointer lock are released before the page changes.
   let afterClose: (() => void) | null = null;
 </script>
 
@@ -143,9 +138,6 @@
         >
       </div>
     </Sheet.Header>
-    <!-- The body is the scroll container and clips at its padding box. Cards
-         draw their border as a ring (a box-shadow outside the box), so the
-         body keeps padding on every side or a first card loses its top edge. -->
     <div class="panel-body min-h-0 flex-1 overflow-y-auto px-4 pt-5 pb-5">
       <ResourceDetailsContent
         {kind}

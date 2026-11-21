@@ -1,7 +1,4 @@
 <script lang="ts">
-  // Fob: logical processors laid out by count (see utils/cpu-layout.js):
-  // labeled bars, heat cells, or the average plus the busiest threads.
-  // On a hybrid CPU (`groups`) each core group gets its own labeled block.
   import {
     coreLayout,
     busiestThreads,
@@ -179,7 +176,6 @@
     border-radius: 2px;
     height: 100%;
   }
-  /* Four 14 px lines (56 px) fit the card's 60 px middle row. */
   .summary {
     display: flex;
     flex-direction: column;
@@ -199,8 +195,6 @@
   .num.none {
     color: var(--muted-foreground);
   }
-  /* Card: two groups of a 14 px line and a 10 px strip (52 px) fit the
-     card's 56 px core area. */
   .group-strips {
     display: flex;
     flex-direction: column;

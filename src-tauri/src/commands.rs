@@ -1,14 +1,7 @@
-//! Tauri command handlers
-//!
-//! This module contains the command handlers that are exposed to the frontend
-//! through Tauri's IPC mechanism. These commands provide the interface between
-//! the frontend and the system monitoring functionality.
-
 use crate::monitoring::ProcessMonitor;
 use crate::state::AppState;
 use tauri::State;
 
-/// The main window and companion share one interval-gated native capture.
 #[tauri::command]
 pub async fn get_processes(
     app: tauri::AppHandle,
@@ -116,10 +109,6 @@ pub async fn process_location(
     location_of(&state, pid, start_time)
 }
 
-/// The command's body, apart from Tauri so it can be tested: a snapshot lock and
-/// the identity lookup. A pid that is no longer listed, or one whose start time
-/// changed, is `Gone` rather than an error, so the menu can say the process
-/// ended instead of failing.
 fn location_of(
     state: &AppState,
     pid: u32,
@@ -139,7 +128,6 @@ mod tests {
     #[test]
     fn location_says_gone_instead_of_failing_for_an_unknown_pid() {
         let state = AppState::new();
-        // Nothing holds these pids, so the answer is "it ended", not an error.
         assert_eq!(
             location_of(&state, u32::MAX - 1, 0).unwrap(),
             Executable::Gone
@@ -182,8 +170,6 @@ mod tests {
     }
 }
 
-/// Physical disk health for the Disk detail. Cached for five minutes; one
-/// scan at a time.
 #[tauri::command]
 pub async fn disk_health(
     state: State<'_, crate::disk_health::DiskHealthState>,

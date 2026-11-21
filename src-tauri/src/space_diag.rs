@@ -1,11 +1,3 @@
-//! Windows-only diagnostics for the space scan (run explicitly, never in CI by
-//! default): does a raw MFT read show folders that were just deleted, moved or
-//! recycled, and what do delete-pending names look like to the walk, the MFT
-//! and Open? Prints `DIAG` lines; asserts only that each run was valid.
-//!
-//! cargo test --manifest-path src-tauri/Cargo.toml space::diag -- --ignored --nocapture --test-threads=1
-//! Env: FOB_DIAG_DIR (base folder, default the temp folder), FOB_DIAG_ITERS
-//! (default 40), FOB_DIAG_RECYCLE (0 turns the Recycle Bin probe off).
 use super::{Progress, Walker};
 use crate::mft_records::{read_volume, MftLink};
 use std::fs;
@@ -30,7 +22,6 @@ fn base_dir(tag: &str) -> PathBuf {
     dir
 }
 
-/// `C:\` for any path on C:.
 fn volume_root(path: &Path) -> PathBuf {
     let text = fs::canonicalize(path)
         .unwrap()
@@ -55,13 +46,11 @@ fn flush_volume(root: &Path) -> Duration {
 }
 
 struct Read {
-    /// Our links only (names starting with PREFIX), plus every link of `ids`.
     ours: Vec<MftLink>,
     total: u64,
     took: Duration,
 }
 
-/// The production MFT read, unchanged; keeps only what the diagnostics ask about.
 fn read_mft(root: &Path, ids: &[u64]) -> Read {
     let started = Instant::now();
     let (mut ours, mut total) = (Vec::new(), 0u64);
@@ -148,7 +137,6 @@ impl Wide for std::ffi::OsStr {
     }
 }
 
-/// Recycle once on a worker thread; a shell that hangs or refuses turns it off.
 fn recycle_works(base: &Path) -> Result<(), String> {
     if std::env::var("FOB_DIAG_RECYCLE").as_deref() == Ok("0") {
         return Err("off (FOB_DIAG_RECYCLE=0)".into());
@@ -205,8 +193,6 @@ impl Tally {
     }
 }
 
-/// Deleted / moved / recycled folders, read back at once with and without a
-/// volume flush first, alternating, N times.
 #[test]
 #[ignore = "Windows diagnostic: needs admin, reads the whole MFT many times"]
 fn diag_stale_mft_after_delete_move_recycle() {
@@ -240,7 +226,6 @@ fn diag_stale_mft_after_delete_move_recycle() {
         for n in [keep, del, mv, rc] {
             tree(&it.join(n));
         }
-        // The new folders must be on disk before the change under test.
         flush_volume(&root);
         delete_tree(&it.join(del));
         fs::rename(it.join(mv), moved.join(mvd)).unwrap();
@@ -278,7 +263,6 @@ fn diag_stale_mft_after_delete_move_recycle() {
             read.total,
             read.took.as_millis()
         );
-        // How long a stale entry lasts without any flush (first three only).
         if !flush && valid && (d || mo || r) && clear_after_ms.len() < 3 {
             let started = Instant::now();
             let mut result = "still stale after 180 s".to_string();
@@ -351,7 +335,6 @@ fn legacy_delete(path: &Path, dir: bool) -> Result<(), String> {
 }
 
 fn open_check(path: &Path) -> String {
-    // Same test as space_reveal.
     match fs::symlink_metadata(path) {
         Ok(_) => "exists".into(),
         Err(e) => format!(
@@ -376,7 +359,6 @@ fn diag_delete_pending_names() {
         parallel: false,
     };
     let base_id = file_index(&hold(&base, true));
-    // (name, is dir, how)
     let cases = [
         (format!("{PREFIX}_dir_api"), true, "RemoveDirectoryW"),
         (format!("{PREFIX}_dir_legacy"), true, "FileDispositionInfo"),

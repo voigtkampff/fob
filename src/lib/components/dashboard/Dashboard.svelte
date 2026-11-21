@@ -1,8 +1,6 @@
 <script lang="ts">
   import Spark from "$lib/components/charts/Spark.svelte";
   import { SERIES_COLOR } from "$lib/utils/chart-style.js";
-  // winperf: card dashboard (default view). Reads only what NeoHtop's sampler
-  // already provides: stats, GPU devices, the bounded history and processes.
   import CardDetail from "./CardDetail.svelte";
   import type { DetailKind } from "./detail";
   import type {
@@ -60,19 +58,14 @@
     Process,
     "pid" | "name" | "cpu_usage" | "memory_usage"
   > & { command?: string; gpu_usage?: number | null })[] = [];
-  /** winperf mini window (tray popup): tighter cards, no page title. */
   export let compact = false;
   export let extra: FrameExtra | null = null;
-  /** Top lists from the backend (mini window); computed from `processes` otherwise. */
   export let topCpu: typeof processes | null = null;
   export let topGpu: typeof processes | null = null;
   export let topMemory: typeof processes | null = null;
-  /** Cards open a detail view when clicked; `detail` is bindable (Esc handling). */
   export let expandable = false;
   export let detail: DetailKind | null = null;
-  /** Opens the disk space map (a button in the disk detail). */
   export let onSpace: (() => void) | null = null;
-  /** Card order; the main window can move cards (the mini window cannot). */
   export let order: string[] = DASHBOARD_CARDS;
   export let onReorder: ((order: string[]) => void) | null = null;
   let move: { id: string; target: string; after: boolean } | null = null;
@@ -90,14 +83,12 @@
   $: sensors = extra?.sensors.sensors ?? [];
   $: summary = sensorSummary(sensors);
   $: fansLine = fanText(sensors);
-  // A board source (helper pipe / LHM) is answering; NVML alone isn't enough.
   $: hasBoard = sensors.some((s) => s.source !== "NVML");
   $: setup = setupState($sensorSetup);
   $: offerSetup =
     !hasBoard &&
     ["enable", "repair", "update", "missing-files"].includes(setup);
   onMount(() => void refreshSensorSetup());
-  // Re-check when the temp view opens or a board source appears/disappears.
   $: if (detail === "temp" || hasBoard || !hasBoard) void refreshSensorSetup();
   $: lists = {
     cpu: topCpu ?? topBy(processes, (p) => p.cpu_usage),
@@ -109,8 +100,6 @@
     memory: topMemory ?? topBy(processes, (p) => p.memory_usage),
   };
 
-  // Temperature history: the same samples and series as the Processes
-  // page card (ResourceTrend metric "temp"), 0–100 °C.
   const TEMP_MAX = 100;
   const tempText = (v: number) => `${v.toFixed(0)} °C`;
   const TEMP_LINES = [
@@ -131,8 +120,6 @@
   $: identity = systemStats.details.identity;
   $: cores = systemStats.cpu_usage;
   $: cpu = averageCpu(cores);
-  // The mini window's card has one short footer line, too narrow for
-  // "Performance cores 75% · Efficiency cores 8%"; its CPU detail shows the split.
   $: coreGroups = compact ? null : cpuGroups(systemStats.cpu_topology, cores);
   $: memPct =
     systemStats.memory_total > 0
@@ -155,12 +142,8 @@
       ? ((volume.total - volume.available) / volume.total) * 100
       : null;
   $: top = topByMemory(processes, MINI.procRows);
-  // The mini window always shows exactly MINI.procRows rows (fixed height).
   $: topRows = compact ? fixedRows(top, MINI.procRows) : top;
-  // Two fixed rows: CPU + RAM, then Windows edition + uptime. Long names
-  // shrink with an ellipsis (full text in the tooltip) instead of wrapping.
   $: ram = formatGB(systemStats.memory_total, 0);
-  // Re-evaluated with every new sample (systemStats changes).
   $: since = uptimeInfo(
     systemStats.uptime,
     extra?.started?.[0],
@@ -578,7 +561,6 @@
       {/each}
     </section>
   {/if}
-  <!-- TODO(winperf): battery, health score and speed test are out of scope. -->
 </div>
 
 <style>
@@ -716,7 +698,6 @@
     gap: 2px;
     height: 36px;
   }
-  /* Hybrid CPUs: one block per core group, a wider gap between groups. */
   .bars:has(.bar-group) {
     gap: 6px;
   }
@@ -814,9 +795,6 @@
     border-color: color-mix(in oklab, var(--foreground) 30%, var(--border));
     outline: none;
   }
-  /* Fob mini window: same cards, squeezed into ~340 px. Every block of the
-     cards view has a fixed height (utils/mini-layout.js), so the window has
-     one size for every view and the cards never overflow it. */
   .dash.compact {
     flex: none;
     overflow: visible;
@@ -862,7 +840,6 @@
     white-space: nowrap;
     flex-shrink: 0;
   }
-  /* The "no sensor" note may take two lines. */
   .compact .grid .note {
     white-space: normal;
     display: -webkit-box;

@@ -74,7 +74,6 @@ export function engineDescription(raw, t) {
 }
 
 /**
- * Hover text is the description only; the visible label already shows the name.
  * @param {string} raw
  * @param {(key: string) => string} t
  */

@@ -7,25 +7,19 @@ use std::sync::Mutex;
 use tauri::{AppHandle, Manager};
 use tauri_plugin_global_shortcut::{Code, GlobalShortcutExt, Modifiers, Shortcut, ShortcutState};
 
-/// A parsed combo: modifiers in canonical order plus one key.
 #[derive(Clone, Debug, PartialEq)]
 pub struct Combo {
     pub ctrl: bool,
     pub alt: bool,
     pub shift: bool,
     pub win: bool,
-    /// Canonical key name: "A"–"Z", "0"–"9", "F1"–"F24", "Space", …
     pub key: String,
 }
 
-/// Why a combo was refused; the Settings page shows a message per code.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum Refused {
-    /// Not a combo Fob understands (unknown key, two keys, empty part).
     Invalid,
-    /// Needs Ctrl, Alt or Win (Shift alone only with F1–F24).
     NeedsModifier,
-    /// Another app (or Windows) already owns it.
     Taken,
 }
 impl Refused {
@@ -129,7 +123,6 @@ const FKEYS: [Code; 24] = [
     Code::F24,
 ];
 
-/// The key's canonical name and code, case-insensitive.
 fn key_code(name: &str) -> Option<(String, Code)> {
     let upper = name.to_ascii_uppercase();
     let bytes = upper.as_bytes();
@@ -153,11 +146,8 @@ fn key_code(name: &str) -> Option<(String, Code)> {
         .map(|(n, c)| (n.to_string(), *c))
 }
 
-/// Parses "ctrl + alt + f", "Control+Shift+F5", "Win+Space"… The last part is
-/// the key, the others modifiers (each at most once).
 pub fn parse(text: &str) -> Result<Combo, Refused> {
     let parts: Vec<&str> = text.split('+').map(str::trim).collect();
-    // "Ctrl++" style: a literal "+" key is not supported.
     if parts.len() < 2 || parts.iter().any(|p| p.is_empty()) {
         return Err(if parts.len() == 1 && key_code(parts[0]).is_some() {
             Refused::NeedsModifier
@@ -195,7 +185,6 @@ pub fn parse(text: &str) -> Result<Combo, Refused> {
 }
 
 impl Combo {
-    /// "Ctrl+Alt+Shift+Win+Key".
     pub fn canonical(&self) -> String {
         let mut out = Vec::new();
         for (on, name) in [
@@ -217,20 +206,15 @@ impl Combo {
         mods.set(Modifiers::ALT, self.alt);
         mods.set(Modifiers::SHIFT, self.shift);
         mods.set(Modifiers::SUPER, self.win);
-        // `parse` only accepts keys `key_code` knows.
         Shortcut::new(Some(mods), key_code(&self.key).map(|k| k.1).unwrap())
     }
 }
 
-/// What a hotkey toggles. Each has its own saved combo.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum Target {
-    /// The tray mini window (behavior.miniHotkey).
     Mini,
-    /// The status bar (behavior.overlayHotkey).
     Overlay,
-    /// Fob 0.7.12: the full window (behavior.mainHotkey).
     Main,
 }
 impl Target {
@@ -254,15 +238,11 @@ impl Target {
     }
 }
 
-/// One target's slot: the registered combo ("" = none), and the saved combo
-/// that failed to register at launch with why.
 type Slot = (String, Option<(&'static str, String)>);
 
-/// Per target: the registered combo and the combo that failed to register.
 #[derive(Default)]
 pub struct HotkeyState(Mutex<[Slot; 3]>);
 
-/// Which target owns `shortcut` right now.
 fn owner(app: &AppHandle, shortcut: &Shortcut) -> Option<Target> {
     let state = app.state::<HotkeyState>();
     let slots = state.0.lock().ok()?;
@@ -271,7 +251,6 @@ fn owner(app: &AppHandle, shortcut: &Shortcut) -> Option<Target> {
         .find(|t| parse(&slots[t.index()].0).is_ok_and(|c| c.shortcut().id() == shortcut.id()))
 }
 
-/// The plugin, with the handler that toggles the target of the combo.
 pub fn plugin() -> tauri::plugin::TauriPlugin<tauri::Wry> {
     tauri_plugin_global_shortcut::Builder::new()
         .with_handler(|app, shortcut, event| {
@@ -292,7 +271,6 @@ pub fn plugin() -> tauri::plugin::TauriPlugin<tauri::Wry> {
         .build()
 }
 
-/// Whether `next` is already another target's combo ("" never clashes).
 fn clashes(combos: &[String; 3], target: Target, next: &str) -> bool {
     !next.is_empty()
         && Target::ALL
@@ -300,9 +278,6 @@ fn clashes(combos: &[String; 3], target: Target, next: &str) -> bool {
             .any(|t| t != target && combos[t.index()] == next)
 }
 
-/// Registers `next` (canonical, "" = off) for `target` in place of its
-/// current combo, which stays registered if `next` can't be. A combo the
-/// other target already uses is refused as taken.
 fn swap(app: &AppHandle, target: Target, next: &str) -> Result<(), Refused> {
     let state = app.state::<HotkeyState>();
     let mut slots = state.0.lock().map_err(|_| Refused::Invalid)?;
@@ -328,7 +303,6 @@ fn swap(app: &AppHandle, target: Target, next: &str) -> Result<(), Refused> {
     Ok(())
 }
 
-/// At launch (also tray-only): register the saved combo.
 pub fn register_saved(app: &AppHandle, target: Target, saved: &str) {
     if saved.is_empty() {
         return;
@@ -342,9 +316,7 @@ pub fn register_saved(app: &AppHandle, target: Target, saved: &str) {
 #[derive(serde::Serialize)]
 pub struct HotkeyStatus {
     combo: String,
-    /// Why the saved combo couldn't be registered at launch.
     error: Option<&'static str>,
-    /// That saved combo (still saved; registering it is retried next launch).
     failed: String,
 }
 #[tauri::command]
@@ -365,8 +337,6 @@ pub fn get_hotkey(app: AppHandle, target: Target) -> HotkeyStatus {
         failed,
     }
 }
-/// While Settings records a new combo the current one is let go, so pressing
-/// it again reaches the recorder instead of toggling its window.
 #[tauri::command]
 pub fn suspend_hotkey(app: AppHandle, target: Target, suspend: bool) {
     let current = app

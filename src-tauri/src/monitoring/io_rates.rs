@@ -1,18 +1,9 @@
-//! Per-process disk read and write speed from the cumulative I/O counters.
-//!
-//! Each process's counters are compared with the previous capture of the
-//! same process (pid plus start time), and the growth is divided by the wall
-//! time between the two captures. A speed exists only when both readings are
-//! real, so a first reading, an unreadable process or a counter that went
-//! backwards shows as unknown, never as an idle 0 B/s.
-
 use std::collections::HashMap;
 use std::time::{Duration, Instant};
 
 /// A process: pid plus start time, so a reused pid starts a new baseline.
 pub(crate) type Identity = (u32, u64);
 
-/// Bytes a process has read and written since it started.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) struct IoTotals {
     pub read: u64,
@@ -29,7 +20,6 @@ impl IoTotals {
     }
 }
 
-/// Bytes per second over the last capture interval.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) struct IoRate {
     pub read: u64,
@@ -43,11 +33,6 @@ pub(crate) struct IoRates {
 }
 
 impl IoRates {
-    /// Speeds for this capture, then this capture becomes the baseline.
-    ///
-    /// Processes that left are dropped from the baseline here. A window
-    /// longer than `max_window` (paused updates, a stalled capture) is not
-    /// reported as a current speed; it only resets the baseline.
     pub fn advance(
         &mut self,
         now: Instant,
@@ -103,7 +88,6 @@ mod tests {
         assert!(io
             .advance(t0, MAX, [((7, 1), totals(1_000, 500))])
             .is_empty());
-        // 3 MiB read and 1.5 MiB written over 3 s: 1 MiB/s and 512 KiB/s.
         let rates = io.advance(
             t0 + Duration::from_secs(3),
             MAX,
@@ -143,7 +127,6 @@ mod tests {
         let mut io = IoRates::default();
         let t0 = Instant::now();
         io.advance(t0, MAX, [((9, 100), totals(5_000_000, 0))]);
-        // pid 9 is a different process now; its lifetime total is not a speed.
         let rates = io.advance(
             t0 + Duration::from_secs(3),
             MAX,
@@ -174,14 +157,12 @@ mod tests {
         let mut io = IoRates::default();
         let t0 = Instant::now();
         io.advance(t0, MAX, [((1, 1), totals(500, 500))]);
-        // Went backwards: no speed this time, new baseline.
         let rates = io.advance(
             t0 + Duration::from_secs(3),
             MAX,
             [((1, 1), totals(400, 600))],
         );
         assert!(rates.is_empty());
-        // Unreadable for one capture: unknown, and the process is not idle.
         let rates = io.advance(t0 + Duration::from_secs(6), MAX, [((1, 1), None)]);
         assert!(rates.is_empty());
         let rates = io.advance(
@@ -190,7 +171,6 @@ mod tests {
             [((1, 1), totals(700, 700))],
         );
         assert!(rates.is_empty(), "the gap left no baseline");
-        // Updates paused for a minute: that average is not a current speed.
         let rates = io.advance(
             t0 + Duration::from_secs(69),
             MAX,

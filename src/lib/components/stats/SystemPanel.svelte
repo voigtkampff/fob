@@ -1,6 +1,4 @@
 <script lang="ts">
-  // Fob: uptime from the same source as the dashboard and the mini window
-  // (the last real power-on from the boot log, else the kernel uptime).
   // Load average is gone: Windows has none.
   import ResourceDetails from "./ResourceDetails.svelte";
   import StatCard from "./StatCard.svelte";
@@ -15,7 +13,6 @@
   export let capturedAt = 0;
   export let isFrozen = false;
   export let unavailable = false;
-  /** [Unix seconds, kind] of the last power-on (Extra.started). */
   export let started: [number, string] | null = null;
   $: since = uptimeInfo(
     stats.uptime,

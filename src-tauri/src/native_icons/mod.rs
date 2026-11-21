@@ -41,7 +41,6 @@ pub struct IconCache {
     desktop: linux::DesktopIndex,
 }
 
-/// Choose the owning app, not a nested helper bundle or the first word of a name.
 #[cfg(any(target_os = "macos", test))]
 fn outer_app_bundle(executable: &Path) -> Option<PathBuf> {
     executable
@@ -64,8 +63,6 @@ pub fn process_target(sys: &sysinfo::System, request: &IconRequest) -> Option<Pa
         .map(Path::to_path_buf)
 }
 
-/// The executable a listed process runs, or why Fob cannot name it. The row
-/// menu greys its Open file location item on the two failures.
 #[derive(Debug, Serialize, PartialEq, Eq)]
 #[serde(tag = "kind", rename_all = "camelCase")]
 pub enum Executable {

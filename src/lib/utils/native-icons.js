@@ -1,4 +1,4 @@
-/** Batches visible icons, shares pending lookups, and bounds positive/negative caching.
+/**
  * @param {(requests:{pid:number,start_time:number}[])=>Promise<{pid:number,start_time:number,icon:string|null}[]>} fetchIcons
  * @param {()=>number} [now]
  * @param {number} [limit]
@@ -84,7 +84,6 @@ export function createNativeIconLoader(
     cache.delete(k);
     const waiting = pending.get(k);
     if (waiting) return waiting.promise;
-    // Pages may change while I/O is pending. Bound the backlog as well as the cache.
     if (pending.size >= 256) return Promise.resolve(null);
     /** @type {(icon:string|null)=>void} */
     let resolve = () => {};

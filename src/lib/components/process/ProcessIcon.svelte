@@ -18,7 +18,6 @@
     )
       return;
     const icon = await getNativeProcessIcon(pid, start);
-    // Recycled rows and closed details must not receive an earlier process's icon.
     if (current === generation) nativeIcon = icon;
   }
   $: load(pid, startTime);

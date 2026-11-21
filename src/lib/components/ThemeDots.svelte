@@ -1,6 +1,4 @@
 <script lang="ts">
-  // The three colour dots that stand for a theme (blue, red, green), as in
-  // the theme picker.
   import type { Theme } from "$lib/types";
   let { theme }: { theme: Theme } = $props();
 </script>

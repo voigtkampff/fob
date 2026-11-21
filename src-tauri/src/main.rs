@@ -1,9 +1,4 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
-//! NeoHtop - A modern system monitor built with Tauri
-//!
-//! This is the main entry point for the application. It sets up the Tauri
-//! application, initializes plugins, and configures window effects.
-
 mod autostart;
 mod boot;
 mod commands;
@@ -32,18 +27,8 @@ mod window_icon;
 use state::AppState;
 use tauri::Manager;
 
-/// Main entry point for the application
-///
-/// # Panics
-///
-/// Will panic if:
-/// - Unable to create the main window
-/// - Failed to apply window effects
-/// - Failed to initialize the application state
 fn main() {
-    // Parse this process-only display override before building the Tauri app.
     let show_all = std::env::args().any(|arg| arg == "--show-all");
-    // winperf: elevated one-shot sensor setup/removal (relaunched via UAC).
     if let Some(code) = sensors::setup::handle_cli() {
         std::process::exit(code);
     }
@@ -53,8 +38,6 @@ fn main() {
     }
 
     tauri::Builder::default()
-        // First plugin: a second launch exits here, before any window, helper
-        // or hotkey of its own exists, and brings the running Fob forward.
         .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
             let _ = companion::reveal_main(app);
         }))
@@ -69,7 +52,6 @@ fn main() {
             sampling::sample_in_background(app.handle().clone());
             let login = preferences::startup(app.handle()).launch_at_login;
             std::thread::spawn(move || autostart::sync(login));
-            // winperf: tray-only start (default) or the main window.
             companion::launch(app.handle())?;
             Ok(())
         })
@@ -139,8 +121,6 @@ fn main() {
                 ..
             } = event
             {
-                // Reactivating the app must not steal focus from Settings or About.
-                // Restore the monitor when all document windows are hidden instead.
                 let auxiliary_visible = ["settings", "about"].iter().any(|label| {
                     app.get_webview_window(label)
                         .is_some_and(|window| window.is_visible().unwrap_or(false))
