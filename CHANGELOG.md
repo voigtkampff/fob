@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.8.21
+
+- 本机 `npm run test:release` 上那 4 条红在说谎：`doctor rejects a live process without its own visible window (empty)` / `(failed-search)`、`doctor accepts its live process and scoped window with logs absent` / `logs present` 报的失败原因是 `application is not running`，实际进程活得好好的，是本平台没有 X11 能力。现在它们在不具备 X11 时挂 `t.skip` 并写明原因，不再假红也不假绿
+- `bin/fob-verify.sh` 的 `doctor` 先做能力检测：`xdotool` 是否在、`DISPLAY` 是否非空、`xdotool getdisplaygeometry` 能不能拿到答复。任何一项不成立就输出 `unsupported on this platform: the verification harness needs X11 and xdotool（原因）` 并退出 3，一次都不去看进程和窗口。退出码从此三档写死在脚本头：0 通过、1 合同失败、2 用法错、3 平台不支持
+- 能力检测只靠 bash 内建完成（`command -v`、`[`、函数），`mkdir` 等外部命令都在它之后，所以 PATH 里连 `xdotool` 都没有时它也能把话说清楚，而不是先死在 `command not found` 上
+- 进程存活判断改成双路：`kill -0` 仍是第一判据（POSIX 上照旧是真正的检查）；只有当 shell 完全不认得这个 pid 时才退到 `$H/alive`，那是 `launch`/`relaunch` 在看到窗口之后写下的确认，`stop` 会一并删掉。`doctor` 的输出写成 `alive pid N (kill)` 或 `alive pid N (launcher-confirmed)`，用哪条证据写在脸上，失败时仍然是真的失败
+- 为什么不选别的：Git Bash 的 `kill -0` 和 `ps -p` 都只能看见 MSYS 自己起过的 pid，explorer 这类系统 pid 一律 `No such process`（本机实测 `kill -0 27376` 失败，与报错一致）；`tasklist` 认的是 Windows pid，而 `$H/pid` 里记的是 MSYS pid，两个号对不上，用它当判据反而会编造结论。剩下一路能真验证的是窗口：拿到 pid 的证据之后，`xdotool search --pid` 还必须找到这个 pid 自己的可见窗口，所以崩溃后残留的 `$H/alive` 过不了 doctor
+- 测试分流按能力检测写，没写 `process.platform === 'win32'`：4 条合同测试跑之前用 `xdotool getdisplaygeometry` 探一次真实显示，探不通就 skip 并把原因写进 skip 文案（`needs X11 and xdotool: xdotool could not run (ENOENT)`），将来 Linux 机器缺 `xdotool` 也是同样的 skip，不会变成假绿
+- 新增 2 条所有平台都跑的用例：PATH 里没有 `xdotool` 时 `doctor` 必须退出 3、输出那句不支持、一句 `application is not running` 都不能有；`xdotool` 在但 `DISPLAY` 上没有 X server 答复时必须同样退出 3，并且一次窗口搜索都没发生。本机这两条是真绿
+- `.cursor/skills/verify-fob/SKILL.md` 补一句：这套工具要 X11 和 `xdotool`，缺了就退出 3；`Doctor` 一节说明 `alive pid N (…)` 括号里的证据含义。其余没动
+- 实测：`npm run test:release` 从 240 条 236 过 4 红 0 skip 变成 242 条 238 过 0 红 **4 skip**，新增的 2 条在 Windows 上真绿；`cargo clippy -- -D warnings` 零输出，`npm run format:check`、`check`、`build:site`、`build`、`release:check` 全过
+- 应用二进制一行没动，不出安装包
+- 版本号 0.8.20 → 0.8.21，六处同步（`package.json`、`package-lock.json` 两处、`tauri.conf.json`、`Cargo.toml`、`Cargo.lock`）
+- 内置传感器助手 unchanged at 0.8.6
+
 ## 0.8.20
 
 - CI 接上 clippy：`build-check.yml` 新增 `Rust lints` job（`windows-2022`，只跑 clippy，不跑测试，PR、push main、手动都能触发），本地用 `npm run lint:rust` 跑的是同一条命令 `cargo clippy -- -D warnings`。0.8.19 修的 15 条问题当初就是在 main 上静默存活了很久，只因为这条检查只在本机跑
