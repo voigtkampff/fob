@@ -359,10 +359,11 @@ pub fn launch(app: &AppHandle) -> Result<(), String> {
         state.pinned = startup.mini_pinned;
         state.user_rect = saved;
     }
+    let show_all = app.state::<crate::state::ShowAll>().0;
     let tray_only = startup.tray
         && startup.start_in_tray
         && configure(app, true, true, Some(true), startup.language.as_deref()).is_ok();
-    if shows_main_at_launch(tray_only, startup.first_launch) {
+    if shows_main_at_launch(tray_only, startup.first_launch, show_all) {
         let window = app
             .get_webview_window("main")
             .ok_or("Main window unavailable")?;
@@ -377,8 +378,8 @@ pub fn launch(app: &AppHandle) -> Result<(), String> {
 /// Fob: the main window opens at launch without tray-only mode (or without
 /// a tray), and on the very first launch (no settings file yet) so the user
 /// sees Fob started; later launches in tray-only mode show only the icon.
-fn shows_main_at_launch(tray_only: bool, first_launch: bool) -> bool {
-    !tray_only || first_launch
+fn shows_main_at_launch(tray_only: bool, first_launch: bool, show_all: bool) -> bool {
+    show_all || !tray_only || first_launch
 }
 
 /// Title bar "Collapse to tray": hide the main window (minimize without a tray).
@@ -1674,10 +1675,12 @@ mod tests {
     }
     #[test]
     fn the_first_launch_shows_the_main_window_even_in_tray_only_mode() {
-        assert!(shows_main_at_launch(true, true));
-        assert!(!shows_main_at_launch(true, false));
-        assert!(shows_main_at_launch(false, false));
-        assert!(shows_main_at_launch(false, true));
+        assert!(shows_main_at_launch(true, true, false));
+        assert!(!shows_main_at_launch(true, false, false));
+        assert!(shows_main_at_launch(false, false, false));
+        assert!(shows_main_at_launch(false, true, false));
+        assert!(shows_main_at_launch(true, false, true));
+        assert!(shows_main_at_launch(false, false, true));
     }
     #[test]
     fn tray_menu_starts_with_status_bar_mini_full_and_the_icon_has_no_double_click() {

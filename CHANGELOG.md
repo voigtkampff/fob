@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.8.25
+
+- 新增 `--show-all`，只影响本次运行并强制显示主窗口与状态栏，不改设置。
+- 界面自检改用 `--show-all` 启动，不再依赖热键设置。
+
 ## 0.8.24
 
 - 新增 Windows 界面自检脚本与文档：`npm run verify:ui` 使用 UI Automation 检查主窗口、页签、进程表和状态栏。
