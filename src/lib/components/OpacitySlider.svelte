@@ -17,8 +17,16 @@
   export let min = OPACITY_MIN;
   $: saved = $settingsStore.behavior[key];
   $: value = saved == null ? fallback : Math.max(min, miniOpacity(saved));
-  function set(next: number) {
-    const v = Math.max(min, miniOpacity(next));
+  /** Preview while dragging; the saved value is written only on commit. */
+  let draft: number | null = null;
+  $: shown = draft ?? value;
+  function preview(next: number) {
+    draft = Math.max(min, miniOpacity(next));
+  }
+  function commit() {
+    if (draft == null) return;
+    const v = draft;
+    draft = null;
     if (v === value) return;
     settingsStore.updateConfig({
       behavior: { ...$settingsStore.behavior, [key]: v },
@@ -35,13 +43,15 @@
     {min}
     max={OPACITY_MAX}
     step={OPACITY_STEP}
-    {value}
+    value={shown}
     aria-describedby={describedby}
-    aria-valuetext={$t("opacity.value", { v: value })}
-    oninput={(e) => set(Number(e.currentTarget.value))}
+    aria-valuetext={$t("opacity.value", { v: shown })}
+    oninput={(e) => preview(Number(e.currentTarget.value))}
+    onchange={commit}
+    onblur={commit}
   />
   <span class="w-10 text-right text-xs tabular-nums text-muted-foreground"
-    >{value}%</span
+    >{shown}%</span
   >
 </div>
 
