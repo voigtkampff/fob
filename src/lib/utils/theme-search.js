@@ -1,4 +1,4 @@
-/** Theme labels should match ordinary unaccented keyboard searches.
+/**
  * @param {string} label @param {string} query
  */
 export function matchesTheme(label, query) {

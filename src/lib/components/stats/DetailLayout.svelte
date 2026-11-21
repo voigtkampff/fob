@@ -1,7 +1,4 @@
 <script lang="ts">
-  // Fob: the one body layout every side panel uses, in this order:
-  // (picker) → identity → key stats → history chart → detail sections →
-  // note. Panels fill the parts; spacing, card style and type come from here.
   import type { Snippet } from "svelte";
   import * as Card from "$lib/components/ui/card/index.js";
   let {
@@ -15,14 +12,12 @@
     noteTitle = "",
     note = "",
   }: {
-    /** Above the identity, e.g. the GPU adapter choice. */
     picker?: Snippet;
     name: string;
     sub?: string;
     facts?: [string, string][];
     chartTitle?: string;
     chart?: Snippet;
-    /** One or more DetailSection cards. */
     detail?: Snippet;
     noteTitle?: string;
     note?: string;

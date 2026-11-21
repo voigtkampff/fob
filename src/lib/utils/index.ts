@@ -29,7 +29,6 @@ export function formatDate(timestamp: number) {
   return new Date(timestamp * 1000).toLocaleString();
 }
 
-// Debounce utility to reduce frequency of expensive operations
 export function debounce<T extends (...args: any[]) => any>(
   func: T,
   wait: number,
@@ -41,12 +40,10 @@ export function debounce<T extends (...args: any[]) => any>(
   };
 }
 
-// Cache for compiled regex patterns
 const regexCache = new Map<string, RegExp>();
 
 const PORT_TERM_PATTERN = /^(?:port:|:)(\d{1,5})$/i;
 
-/** Parse `:3000` or `port:443` into a port number. Bare digits are not ports. */
 export function parsePortTerm(term: string): number | null {
   const match = term.trim().match(PORT_TERM_PATTERN);
   if (!match) {
@@ -61,7 +58,6 @@ export function parsePortTerm(term: string): number | null {
   return port;
 }
 
-/** True when any comma-separated search term is an explicit port query. */
 export function searchHasPortQuery(searchTerm: string): boolean {
   if (searchTerm.length === 0) {
     return false;
@@ -81,7 +77,6 @@ export function filterProcesses(
     status: { values: string[]; enabled: boolean };
   },
 ): Process[] {
-  // Early return for empty search and no active filters
   if (
     searchTerm.length === 0 &&
     !Object.values(filters).some((f) => f.enabled)
@@ -89,21 +84,18 @@ export function filterProcesses(
     return processes;
   }
 
-  // Pre-process search terms once
   const terms =
     searchTerm.length > 0
       ? searchTerm.split(",").map((term) => term.trim())
       : [];
 
   return processes.filter((process) => {
-    // Apply status filter
     if (filters.status.enabled && filters.status.values.length > 0) {
       if (!filters.status.values.includes(process.status)) {
         return false;
       }
     }
 
-    // Apply CPU filter
     if (filters.cpu.enabled) {
       const cpuValue = process.cpu_usage;
       if (
@@ -128,7 +120,6 @@ export function filterProcesses(
     )
       return false;
 
-    // Apply RAM filter (convert bytes to MB)
     if (filters.ram.enabled) {
       const ramMB = process.memory_usage / (1024 * 1024);
       if (!compareValue(ramMB, filters.ram.operator, filters.ram.value)) {
@@ -136,7 +127,6 @@ export function filterProcesses(
       }
     }
 
-    // Apply runtime filter (convert to minutes)
     if (filters.runtime.enabled) {
       const runtimeMin = process.run_time / 60;
       if (
@@ -150,17 +140,14 @@ export function filterProcesses(
       }
     }
 
-    // Skip search if no terms
     if (terms.length === 0) {
       return true;
     }
 
-    // Cache lowercase values
     const processNameLower = process.name.toLowerCase();
     const processCommandLower = process.command.toLowerCase();
     const processPidString = process.pid.toString();
 
-    // Check each term
     return terms.some((term) => {
       const port = parsePortTerm(term);
       if (port !== null) {
@@ -169,7 +156,6 @@ export function filterProcesses(
 
       const termLower = term.toLowerCase();
 
-      // Try exact matches first (faster)
       if (
         processNameLower.includes(termLower) ||
         processCommandLower.includes(termLower) ||
@@ -178,7 +164,6 @@ export function filterProcesses(
         return true;
       }
 
-      // Try regex match last (slower)
       try {
         let regex = regexCache.get(term);
         if (!regex) {
@@ -193,7 +178,6 @@ export function filterProcesses(
   });
 }
 
-// Helper function to compare values based on operator
 function compareValue(
   value: number,
   operator: string,
@@ -215,7 +199,6 @@ function compareValue(
   }
 }
 
-// Create a Map for quick pinned status lookup
 const isPinned = new Map<string, boolean>();
 
 export function sortProcesses(
@@ -223,23 +206,19 @@ export function sortProcesses(
   sortConfig: SortConfig,
   pinnedProcesses: Set<string>,
 ): Process[] {
-  // Clear the cache before sorting
   isPinned.clear();
 
   return [...processes].sort((a, b) => {
-    // Cache pinned status
     let aPin = pinnedProcesses.has(a.command);
     isPinned.set(a.command, aPin);
 
     let bPin = pinnedProcesses.has(b.command);
     isPinned.set(b.command, bPin);
 
-    // Quick pin comparison
     if (aPin !== bPin) {
       return aPin ? -1 : 1;
     }
 
-    // Only compute direction once
     const direction = sortConfig.direction === "asc" ? 1 : -1;
     const aValue = a[sortConfig.field];
     const bValue = b[sortConfig.field];
@@ -249,7 +228,6 @@ export function sortProcesses(
       return aValue == null ? (bValue == null ? 0 : 1) : -1;
     }
 
-    // Type-specific comparisons
     if (typeof aValue === "string") {
       return direction * aValue.localeCompare(bValue as string);
     }

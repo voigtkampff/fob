@@ -64,8 +64,6 @@ fn memory_instance_pid(name: &str) -> Option<u32> {
     pid.parse().ok()
 }
 
-/// pid -> dedicated GPU memory in bytes, summed over adapters. Unparseable
-/// instances and invalid values are ignored.
 pub fn process_memory<'a>(samples: impl IntoIterator<Item = (&'a str, f64)>) -> BTreeMap<u32, u64> {
     let mut memory: BTreeMap<u32, u64> = BTreeMap::new();
     for (name, bytes) in samples {
@@ -81,13 +79,9 @@ pub fn process_memory<'a>(samples: impl IntoIterator<Item = (&'a str, f64)>) -> 
     memory
 }
 
-/// What one PDH sample says about each process. `None` from
-/// `ProcessGpu::from_sample` means there is no reading at all (first sample,
-/// PDH unavailable, no GPU engines reported), so every process is unknown.
 #[derive(Debug, Default, Clone, PartialEq)]
 pub struct ProcessGpu {
     busy: BTreeMap<u32, f64>,
-    /// None when the memory counter is unavailable this sample.
     dedicated: Option<BTreeMap<u32, u64>>,
 }
 
@@ -116,8 +110,6 @@ impl ProcessGpu {
     }
 }
 
-/// Map of adapter id -> utilization percent (0..=100). Unparseable instances and
-/// non-finite values are ignored.
 #[cfg(test)]
 pub fn adapter_utilization<'a>(
     samples: impl IntoIterator<Item = (&'a str, f64)>,
@@ -142,16 +134,11 @@ pub fn adapter_utilization<'a>(
     adapters
 }
 
-/// winperf detail view: per-adapter engine-type loads and per-process GPU %.
 #[derive(Debug, Default, Clone, PartialEq)]
 pub struct EngineSnapshot {
-    /// adapter id -> busiest engine (same as `adapter_utilization`).
     pub adapters: BTreeMap<String, f64>,
-    /// adapter id -> (engine type, busiest engine of that type), by type name.
     pub engines: BTreeMap<String, Vec<(String, f64)>>,
-    /// pid -> that process's busiest engine on any adapter.
     pub processes: BTreeMap<u32, f64>,
-    /// pid -> dedicated GPU memory bytes; None when that counter is unavailable.
     pub process_memory: Option<BTreeMap<u32, u64>>,
 }
 
@@ -267,7 +254,6 @@ mod tests {
         assert_eq!(snap.processes[&10], 20.0);
         assert_eq!(snap.processes[&11], 50.0);
         assert_eq!(snap.processes[&12], 2.0);
-        // Same per-adapter answer as the simple aggregation.
         let samples = [
             ("pid_1_luid_0x0_0xA_phys_0_eng_0_engtype_3D", 80.0),
             ("pid_2_luid_0x0_0xA_phys_0_eng_0_engtype_3D", 70.0),
@@ -293,11 +279,9 @@ mod tests {
             ("pid_13_luid_0x0_0xA", 9.0),
         ]));
         let gpu = ProcessGpu::from_sample(&snap).unwrap();
-        // pid 10's engines on two adapters are not added together.
         assert_eq!(gpu.of(10), (65.0, Some(1_342_177_280)));
         assert_eq!(gpu.of(11), (3.0, Some(0)));
         assert_eq!(gpu.of(12), (0.0, Some(0)));
-        // No GPU context at all: idle, with no dedicated memory.
         assert_eq!(gpu.of(99), (0.0, Some(0)));
     }
 
@@ -308,7 +292,6 @@ mod tests {
             ProcessGpu::from_sample(&engine_snapshot([("garbage", 5.0)])),
             None
         );
-        // Engine counters without the memory counter: GPU % known, memory unknown.
         let snap = engine_snapshot([("pid_1_luid_0x0_0xA_phys_0_eng_0_engtype_3D", 12.5)]);
         let gpu = ProcessGpu::from_sample(&snap).unwrap();
         assert_eq!(gpu.of(1), (12.5, None));

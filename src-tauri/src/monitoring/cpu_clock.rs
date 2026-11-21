@@ -21,8 +21,6 @@
 #[cfg(target_os = "windows")]
 use std::sync::OnceLock;
 
-/// Effective MHz from the counter's percent and the nominal MHz. `None` for
-/// a missing or implausible pair (counter reset, a made-up value).
 fn effective_mhz(percent: f64, base_mhz: f64) -> Option<f64> {
     if !percent.is_finite()
         || !(0.0..=1000.0).contains(&percent)
@@ -94,7 +92,6 @@ mod native {
 
     const KEY: PCWSTR = w!(r"HARDWARE\DESCRIPTION\System\CentralProcessor\0");
     const VALUE: PCWSTR = w!("~MHz");
-    /// The CPU's busiest-engine counter parsers treat these as usable.
     const PDH_CSTATUS_VALID_DATA: u32 = 0;
     const PDH_CSTATUS_NEW_DATA: u32 = 1;
 
@@ -183,9 +180,7 @@ mod tests {
 
     #[test]
     fn effective_mhz_is_nominal_times_the_counter() {
-        // A 3.418 GHz nominal part at 100 % runs at its base clock.
         assert_eq!(effective_mhz(100.0, 3418.0), Some(3418.0));
-        // Above 100 % is turbo, below 100 % is a clock below nominal.
         assert_eq!(effective_mhz(155.0, 3418.0), Some(5297.9));
         assert_eq!(effective_mhz(60.0, 3418.0), Some(2050.8));
     }
@@ -208,8 +203,6 @@ mod tests {
         assert!((100.0..=10_000.0).contains(&base), "{base} MHz");
     }
 
-    /// Real-machine check of the counter this module exists for: the first
-    /// collection is only a baseline, the second one gives a frequency.
     #[cfg(target_os = "windows")]
     #[test]
     fn this_machine_reports_an_effective_frequency() {

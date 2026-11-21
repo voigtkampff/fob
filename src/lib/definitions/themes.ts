@@ -194,27 +194,27 @@ export const themes: Record<string, Theme> = {
     name: "highContrast",
     label: "High Contrast",
     colors: {
-      base: "#000000", // Pure black background
-      mantle: "#0a0a0a", // Slightly lighter black for layering
-      crust: "#141414", // Even lighter black for depth
-      text: "#ffffff", // Pure white text
-      subtext0: "#e0e0e0", // Very light grey for secondary text
-      subtext1: "#f0f0f0", // Almost white for important secondary text
-      surface0: "#1a1a1a", // Dark surface for contrast
-      surface1: "#2a2a2a", // Lighter surface for hover states
-      surface2: "#3a3a3a", // Even lighter surface for active states
-      overlay0: "#4a4a4a", // Medium grey for overlays
-      overlay1: "#5a5a5a", // Lighter grey for overlay hover states
-      blue: "#00ffff", // Cyan for primary actions
-      lavender: "#ff00ff", // Magenta for accents
-      sapphire: "#00ccff", // Bright blue for links
-      sky: "#00ffee", // Bright cyan for highlights
-      red: "#ff0000", // Pure red for errors/warnings
-      maroon: "#ff3333", // Lighter red for secondary warnings
-      peach: "#ffaa00", // Bright orange for notifications
-      yellow: "#ffff00", // Pure yellow for important highlights
-      green: "#00ff00", // Pure green for success states
-      teal: "#00ffcc", // Bright teal for special actions
+      base: "#000000",
+      mantle: "#0a0a0a",
+      crust: "#141414",
+      text: "#ffffff",
+      subtext0: "#e0e0e0",
+      subtext1: "#f0f0f0",
+      surface0: "#1a1a1a",
+      surface1: "#2a2a2a",
+      surface2: "#3a3a3a",
+      overlay0: "#4a4a4a",
+      overlay1: "#5a5a5a",
+      blue: "#00ffff",
+      lavender: "#ff00ff",
+      sapphire: "#00ccff",
+      sky: "#00ffee",
+      red: "#ff0000",
+      maroon: "#ff3333",
+      peach: "#ffaa00",
+      yellow: "#ffff00",
+      green: "#00ff00",
+      teal: "#00ffcc",
     },
   },
   githubLight: {
@@ -329,216 +329,216 @@ export const themes: Record<string, Theme> = {
     name: "bubblegum",
     label: "Bubblegum",
     colors: {
-      base: "#ff9ac1", // Light pink background
-      mantle: "#ffa7cc", // Slightly darker pink
-      crust: "#ffb4d8", // Even darker pink for depth
-      text: "#2d1c2d", // Dark purple text
-      subtext0: "#4b384b", // Medium purple for secondary text
-      subtext1: "#5c465c", // Lighter purple for tertiary text
-      surface0: "#ffc1e0", // Light pink surface
-      surface1: "#ffcee7", // Lighter pink surface
-      surface2: "#ffdaf0", // Even lighter pink surface
-      overlay0: "#7e5c7e", // Muted purple overlay
-      overlay1: "#6e4f6e", // Darker purple overlay
-      blue: "#7287fd", // Soft blue
-      lavender: "#b4befe", // Soft lavender
-      sapphire: "#89dceb", // Soft cyan
-      sky: "#89dceb", // Matching cyan
-      red: "#ff8089", // Soft red
-      maroon: "#ff9999", // Soft maroon
-      peach: "#ffb4a1", // Soft peach
-      yellow: "#ffe5a0", // Soft yellow
-      green: "#a6e3a1", // Soft green
-      teal: "#94e2d5", // Soft teal
+      base: "#ff9ac1",
+      mantle: "#ffa7cc",
+      crust: "#ffb4d8",
+      text: "#2d1c2d",
+      subtext0: "#4b384b",
+      subtext1: "#5c465c",
+      surface0: "#ffc1e0",
+      surface1: "#ffcee7",
+      surface2: "#ffdaf0",
+      overlay0: "#7e5c7e",
+      overlay1: "#6e4f6e",
+      blue: "#7287fd",
+      lavender: "#b4befe",
+      sapphire: "#89dceb",
+      sky: "#89dceb",
+      red: "#ff8089",
+      maroon: "#ff9999",
+      peach: "#ffb4a1",
+      yellow: "#ffe5a0",
+      green: "#a6e3a1",
+      teal: "#94e2d5",
     },
   },
   rosePine: {
     name: "rosePine",
     label: "Rosé Pine",
     colors: {
-      base: "#191724", // Deep purple base
-      mantle: "#1f1d2e", // Slightly lighter purple
-      crust: "#26233a", // Even lighter purple
-      text: "#e0def4", // Soft white text
-      subtext0: "#908caa", // Muted purple text
-      subtext1: "#6e6a86", // Darker muted text
-      surface0: "#2a2837", // Surface purple
-      surface1: "#343145", // Lighter surface
-      surface2: "#3e3b54", // Even lighter surface
-      overlay0: "#524f67", // Overlay purple
-      overlay1: "#6e6a86", // Lighter overlay
-      blue: "#9ccfd8", // Soft blue
-      lavender: "#c4a7e7", // Soft lavender
-      sapphire: "#31748f", // Deep blue
-      sky: "#9ccfd8", // Light blue
-      red: "#eb6f92", // Soft pink
-      maroon: "#ebbcba", // Soft rose
-      peach: "#f6c177", // Soft peach
-      yellow: "#f6c177", // Gold
-      green: "#31748f", // Sage
-      teal: "#9ccfd8", // Soft teal
+      base: "#191724",
+      mantle: "#1f1d2e",
+      crust: "#26233a",
+      text: "#e0def4",
+      subtext0: "#908caa",
+      subtext1: "#6e6a86",
+      surface0: "#2a2837",
+      surface1: "#343145",
+      surface2: "#3e3b54",
+      overlay0: "#524f67",
+      overlay1: "#6e6a86",
+      blue: "#9ccfd8",
+      lavender: "#c4a7e7",
+      sapphire: "#31748f",
+      sky: "#9ccfd8",
+      red: "#eb6f92",
+      maroon: "#ebbcba",
+      peach: "#f6c177",
+      yellow: "#f6c177",
+      green: "#31748f",
+      teal: "#9ccfd8",
     },
   },
   cottonCandy: {
     name: "cottonCandy",
     label: "Cotton Candy",
     colors: {
-      base: "#f5d1eb", // Light pink
-      mantle: "#f7d7ee", // Slightly darker pink
-      crust: "#fae1f3", // Even darker pink
-      text: "#2d0c3a", // Deep purple text
-      subtext0: "#4a1259", // Medium purple text
-      subtext1: "#671878", // Light purple text
-      surface0: "#f9def1", // Surface pink
-      surface1: "#fde9f5", // Lighter surface
-      surface2: "#fff2fa", // Even lighter surface
-      overlay0: "#b87dd3", // Purple overlay
-      overlay1: "#9c5fb8", // Darker overlay
-      blue: "#79c7ff", // Baby blue
-      lavender: "#d5a6ff", // Soft purple
-      sapphire: "#7cb8ff", // Light blue
-      sky: "#89dcff", // Bright blue
-      red: "#ff9ed2", // Soft pink
-      maroon: "#ff8ac4", // Darker pink
-      peach: "#ffb2c7", // Peachy pink
-      yellow: "#ffffc2", // Pastel yellow
-      green: "#b6ffd7", // Mint green
-      teal: "#89ffea", // Turquoise
+      base: "#f5d1eb",
+      mantle: "#f7d7ee",
+      crust: "#fae1f3",
+      text: "#2d0c3a",
+      subtext0: "#4a1259",
+      subtext1: "#671878",
+      surface0: "#f9def1",
+      surface1: "#fde9f5",
+      surface2: "#fff2fa",
+      overlay0: "#b87dd3",
+      overlay1: "#9c5fb8",
+      blue: "#79c7ff",
+      lavender: "#d5a6ff",
+      sapphire: "#7cb8ff",
+      sky: "#89dcff",
+      red: "#ff9ed2",
+      maroon: "#ff8ac4",
+      peach: "#ffb2c7",
+      yellow: "#ffffc2",
+      green: "#b6ffd7",
+      teal: "#89ffea",
     },
   },
   synthwave: {
     name: "synthwave",
     label: "Synthwave",
     colors: {
-      base: "#2b213a", // Deep purple
-      mantle: "#2f2444", // Slightly lighter purple
-      crust: "#33274f", // Even lighter purple
-      text: "#ff7edb", // Neon pink text
-      subtext0: "#e58ee0", // Softer pink text
-      subtext1: "#cb9ee6", // Lavender text
-      surface0: "#392662", // Surface purple
-      surface1: "#443773", // Lighter surface
-      surface2: "#504785", // Even lighter surface
-      overlay0: "#625997", // Purple overlay
-      overlay1: "#7267aa", // Lighter overlay
-      blue: "#36f9f6", // Cyan
-      lavender: "#ff7edb", // Pink
-      sapphire: "#72f1b8", // Mint
-      sky: "#36f9f6", // Bright cyan
-      red: "#fe4450", // Hot red
-      maroon: "#ff558f", // Hot pink
-      peach: "#ff8b39", // Orange
-      yellow: "#fede5d", // Yellow
-      green: "#72f1b8", // Neon green
-      teal: "#36f9f6", // Bright teal
+      base: "#2b213a",
+      mantle: "#2f2444",
+      crust: "#33274f",
+      text: "#ff7edb",
+      subtext0: "#e58ee0",
+      subtext1: "#cb9ee6",
+      surface0: "#392662",
+      surface1: "#443773",
+      surface2: "#504785",
+      overlay0: "#625997",
+      overlay1: "#7267aa",
+      blue: "#36f9f6",
+      lavender: "#ff7edb",
+      sapphire: "#72f1b8",
+      sky: "#36f9f6",
+      red: "#fe4450",
+      maroon: "#ff558f",
+      peach: "#ff8b39",
+      yellow: "#fede5d",
+      green: "#72f1b8",
+      teal: "#36f9f6",
     },
   },
   candyfloss: {
     name: "candyfloss",
     label: "Candyfloss",
     colors: {
-      base: "#f8e2ff", // Light purple
-      mantle: "#ffe2f8", // Pink tint
-      crust: "#ffe9f3", // Lighter pink
-      text: "#5c1b99", // Deep purple text
-      subtext0: "#7a3aaf", // Medium purple text
-      subtext1: "#944bc6", // Light purple text
-      surface0: "#ffeaf8", // Surface pink
-      surface1: "#fff2fb", // Lighter surface
-      surface2: "#fff7fd", // Even lighter surface
-      overlay0: "#d59bff", // Purple overlay
-      overlay1: "#c77dff", // Darker overlay
-      blue: "#79baff", // Soft blue
-      lavender: "#cc8fff", // Light purple
-      sapphire: "#85a5ff", // Periwinkle
-      sky: "#8aceff", // Light blue
-      red: "#ff8fab", // Soft red
-      maroon: "#ff7fa6", // Pink
-      peach: "#ffb2c7", // Peach
-      yellow: "#fff3b2", // Soft yellow
-      green: "#b8ffda", // Mint
-      teal: "#8affef", // Aqua
+      base: "#f8e2ff",
+      mantle: "#ffe2f8",
+      crust: "#ffe9f3",
+      text: "#5c1b99",
+      subtext0: "#7a3aaf",
+      subtext1: "#944bc6",
+      surface0: "#ffeaf8",
+      surface1: "#fff2fb",
+      surface2: "#fff7fd",
+      overlay0: "#d59bff",
+      overlay1: "#c77dff",
+      blue: "#79baff",
+      lavender: "#cc8fff",
+      sapphire: "#85a5ff",
+      sky: "#8aceff",
+      red: "#ff8fab",
+      maroon: "#ff7fa6",
+      peach: "#ffb2c7",
+      yellow: "#fff3b2",
+      green: "#b8ffda",
+      teal: "#8affef",
     },
   },
   terminal: {
     name: "terminal",
     label: "Green Terminal",
     colors: {
-      base: "#0D1117", // Deep black background
-      mantle: "#161B22", // Slightly lighter black
-      crust: "#1B2127", // Terminal border color
-      text: "#00FF00", // Classic terminal green
-      subtext0: "#00D700", // Dimmer green
-      subtext1: "#00BB00", // Even dimmer green
-      surface0: "#1C2128", // Slightly lifted surface
-      surface1: "#21262D", // Terminal input area
-      surface2: "#282E35", // Selected area
-      overlay0: "#008800", // Darker green for overlays
-      overlay1: "#006600", // Even darker green
-      blue: "#00FF00", // Keep everything in green shades
-      lavender: "#00FF66", // Slight variation
-      sapphire: "#00DD88", // Another variation
-      sky: "#00FFBB", // Lighter green
-      red: "#FF0000", // Error red (keep for errors)
-      maroon: "#AA0000", // Darker error
-      peach: "#00FF99", // Another green variation
-      yellow: "#FFFF00", // Warning yellow (keep for warnings)
-      green: "#00FF00", // Main green
-      teal: "#00FFCC", // Cyan-ish green
+      base: "#0D1117",
+      mantle: "#161B22",
+      crust: "#1B2127",
+      text: "#00FF00",
+      subtext0: "#00D700",
+      subtext1: "#00BB00",
+      surface0: "#1C2128",
+      surface1: "#21262D",
+      surface2: "#282E35",
+      overlay0: "#008800",
+      overlay1: "#006600",
+      blue: "#00FF00",
+      lavender: "#00FF66",
+      sapphire: "#00DD88",
+      sky: "#00FFBB",
+      red: "#FF0000",
+      maroon: "#AA0000",
+      peach: "#00FF99",
+      yellow: "#FFFF00",
+      green: "#00FF00",
+      teal: "#00FFCC",
     },
   },
   amber: {
     name: "amber",
     label: "Amber Terminal",
     colors: {
-      base: "#0D0904", // Deep black with amber tint
-      mantle: "#160E06", // Slightly lighter black
-      crust: "#1B1109", // Terminal border color
-      text: "#FFB000", // Classic amber
-      subtext0: "#CC8800", // Dimmer amber
-      subtext1: "#995500", // Even dimmer amber
-      surface0: "#1C1409", // Slightly lifted surface
-      surface1: "#211909", // Terminal input area
-      surface2: "#281E0A", // Selected area
-      overlay0: "#663300", // Darker amber for overlays
-      overlay1: "#442200", // Even darker amber
-      blue: "#FFB000", // Keep everything in amber shades
-      lavender: "#FFAA00", // Slight variation
-      sapphire: "#FF9500", // Another variation
-      sky: "#FFB000", // Main amber
-      red: "#FF3300", // Error red (keep for errors)
-      maroon: "#CC3300", // Darker error
-      peach: "#FFAA55", // Lighter amber
-      yellow: "#FFDD00", // Warning yellow
-      green: "#FFB000", // Main amber
-      teal: "#FFC000", // Lighter amber
+      base: "#0D0904",
+      mantle: "#160E06",
+      crust: "#1B1109",
+      text: "#FFB000",
+      subtext0: "#CC8800",
+      subtext1: "#995500",
+      surface0: "#1C1409",
+      surface1: "#211909",
+      surface2: "#281E0A",
+      overlay0: "#663300",
+      overlay1: "#442200",
+      blue: "#FFB000",
+      lavender: "#FFAA00",
+      sapphire: "#FF9500",
+      sky: "#FFB000",
+      red: "#FF3300",
+      maroon: "#CC3300",
+      peach: "#FFAA55",
+      yellow: "#FFDD00",
+      green: "#FFB000",
+      teal: "#FFC000",
     },
   },
   ibmPC: {
     name: "ibmPC",
     label: "IBM PC",
     colors: {
-      base: "#000000", // Classic black background
-      mantle: "#0A0A0A", // Slightly lighter black
-      crust: "#141414", // Border color
-      text: "#AAAAAA", // Light gray text
-      subtext0: "#888888", // Dimmer text
-      subtext1: "#666666", // Even dimmer text
-      surface0: "#1C1C1C", // Slightly lifted surface
-      surface1: "#212121", // Input area
-      surface2: "#282828", // Selected area
-      overlay0: "#444444", // Overlay
-      overlay1: "#333333", // Darker overlay
-      blue: "#5555FF", // CGA blue
-      lavender: "#FF55FF", // CGA magenta
-      sapphire: "#5555FF", // Another blue
-      sky: "#55FFFF", // CGA cyan
-      red: "#FF5555", // CGA red
-      maroon: "#AA0000", // Darker red
-      peach: "#FF5555", // Another red shade
-      yellow: "#FFFF55", // CGA yellow
-      green: "#55FF55", // CGA green
-      teal: "#55FFFF", // Another cyan
+      base: "#000000",
+      mantle: "#0A0A0A",
+      crust: "#141414",
+      text: "#AAAAAA",
+      subtext0: "#888888",
+      subtext1: "#666666",
+      surface0: "#1C1C1C",
+      surface1: "#212121",
+      surface2: "#282828",
+      overlay0: "#444444",
+      overlay1: "#333333",
+      blue: "#5555FF",
+      lavender: "#FF55FF",
+      sapphire: "#5555FF",
+      sky: "#55FFFF",
+      red: "#FF5555",
+      maroon: "#AA0000",
+      peach: "#FF5555",
+      yellow: "#FFFF55",
+      green: "#55FF55",
+      teal: "#55FFFF",
     },
   },
   glassy: {

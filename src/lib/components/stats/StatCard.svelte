@@ -1,7 +1,4 @@
 <script lang="ts">
-  // Fob: the one layout every card in the process tab's stats row uses, so
-  // the rows line up across cards: header / value / middle (fixed height) /
-  // bottom band (fixed height, its caption on the card's last line).
   import type { Snippet } from "svelte";
   import * as Card from "$lib/components/ui/card/index.js";
   import { Badge } from "$lib/components/ui/badge/index.js";
@@ -67,8 +64,6 @@
     overflow: hidden;
     container-type: inline-size;
   }
-  /* Narrow cards (seven across a 1024 px window): the title keeps the room;
-     the icon and the count badge step aside. */
   @container (max-width: 150px) {
     .sc-head :global(.sc-icon),
     .sc-head :global(.sc-badge) {
@@ -98,10 +93,6 @@
     min-height: 0;
     overflow: hidden;
   }
-  /* The value block has one set of metrics in every card: a 32 px value
-     line and a 16 px caption line. Units inside the value (%, °C, GB) take
-     line-height 1 so their own line box can never make the line taller and
-     push the caption out of the row (it is clipped by overflow there). */
   .sc-value {
     display: grid;
     grid-template-rows: 32px 16px;
@@ -120,8 +111,6 @@
     flex-direction: column;
     gap: 4px;
   }
-  /* The band's content sits on the card's bottom edge, so every caption
-     shares one baseline. */
   .sc-band {
     display: flex;
     flex-direction: column;

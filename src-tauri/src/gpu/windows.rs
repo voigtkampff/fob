@@ -11,7 +11,6 @@ use windows::Win32::System::Performance::{
 
 pub fn collect(busy: &engine_counters::EngineSnapshot) -> Vec<GpuDevice> {
     let mut result = Vec::new();
-    // Enumeration only. DXGI capacity is not used as a utilization counter.
     unsafe {
         let Ok(factory) = CreateDXGIFactory1::<IDXGIFactory1>() else {
             return result;
@@ -35,7 +34,6 @@ pub fn collect(busy: &engine_counters::EngineSnapshot) -> Vec<GpuDevice> {
                 "luid:{:x}:{:x}",
                 desc.AdapterLuid.HighPart, desc.AdapterLuid.LowPart
             );
-            // winperf: utilization from PDH GPU engine counters (None if PDH failed).
             let utilization = busy_for(&busy.adapters, &id);
             let engines = busy.engines.get(&id).cloned().unwrap_or_default();
             result.push(GpuDevice {
@@ -121,8 +119,6 @@ impl Query {
                 PdhCloseQuery(query);
                 return None;
             }
-            // Same query, so memory and engine readings come from one
-            // collection; no extra process walk.
             let mut memory = PDH_HCOUNTER::default();
             let memory = (PdhAddEnglishCounterW(
                 query,
@@ -159,7 +155,6 @@ impl Query {
     }
 }
 
-/// Every instance of one counter with a valid value; None if PDH fails.
 unsafe fn counter_values(counter: PDH_HCOUNTER) -> Option<Vec<(String, f64)>> {
     let (mut size, mut count) = (0u32, 0u32);
     PdhGetFormattedCounterArrayW(counter, PDH_FMT_DOUBLE, &mut size, &mut count, None);
@@ -198,8 +193,6 @@ impl Drop for Query {
 }
 
 impl EngineCounters {
-    /// None on the first call and when PDH is unavailable; a failed query is
-    /// reopened on the next call.
     pub fn sample(&mut self) -> Option<engine_counters::EngineSnapshot> {
         if self.0.is_none() {
             self.0 = Query::open();

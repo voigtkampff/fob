@@ -22,9 +22,7 @@
   let settingsShortcut = "Ctrl+,";
   try {
     if (platform() === "macos") settingsShortcut = "⌘,";
-  } catch {
-    /* Browser preview. */
-  }
+  } catch {}
   async function command(name: string, args?: Record<string, unknown>) {
     try {
       await invoke(name, args);
@@ -65,9 +63,6 @@
       onclick={() => onPause(!isFrozen)}
       >{#if isFrozen}<Play />{:else}<Pause />{/if}</Button
     >
-    <!-- Fob 0.7.1: status bar on/off. behavior.overlayEnabled is the one
-         switch Settings, the tray item and the hotkey also flip, so every
-         change comes back here through preferences-change. -->
     <Button
       variant={overlayOn ? "secondary" : "ghost"}
       size="icon-sm"

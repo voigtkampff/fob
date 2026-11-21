@@ -1,8 +1,3 @@
-// Fob 0.7.12: one look for every history chart. The Processes page cards
-// (stats/ResourceTrend.svelte) are the source; the dashboard, its detail
-// view and the mini window (Dashboard compact) draw through Spark.svelte.
-
-/** Line colour per sample key, from the theme's chart tokens. */
 /** @type {Record<string, string>} */
 export const SERIES_COLOR = {
   cpu: "var(--chart-1)",
@@ -15,14 +10,12 @@ export const SERIES_COLOR = {
   disk_read: "var(--chart-4)",
   disk_write: "var(--chart-2)",
 };
-/** The outgoing line of a pair is dashed. */
 export const DASHED = new Set(["sent", "disk_write"]);
 export const STROKE_WIDTH = 1.5;
-/** Fill under the line: the colour fading from this opacity at the top. */
 export const FILL_TOP = 0.32;
 export const FILL_BOTTOM = 0.01;
 
-/** Close each run of a line path ("M…L…") down to the baseline.
+/**
  * @param {string} line
  * @param {number} height
  */

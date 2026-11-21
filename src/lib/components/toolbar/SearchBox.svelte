@@ -8,7 +8,6 @@
   export let searchTerm: string;
   let input: HTMLInputElement | null = null;
   let open = false;
-  // Example queries are literal search text, the same in every language.
   $: examples = [
     ["chrome, msedge", $t("search.exMulti")], // i18n-ignore
     ["host$", $t("search.exEnd")],

@@ -16,7 +16,6 @@ use std::{
 
 fn kind_of(node: &Value) -> Option<SensorKind> {
     let kind = node["Type"].as_str().map(str::to_owned).or_else(|| {
-        // "/lpc/example/0/fan/1" -> "fan"
         let id = node["SensorId"].as_str()?;
         let parts: Vec<&str> = id.trim_matches('/').split('/').collect();
         parts.len().checked_sub(2).map(|i| parts[i].to_owned())
@@ -85,10 +84,6 @@ fn walk(node: &Value, path: &mut Vec<String>, hardware: Option<&str>, out: &mut 
     path.pop();
 }
 
-/// Temperatures, fan RPMs, fan duty (%) and CPU voltages from a data.json
-/// document. Whole-board rails and power sensors for anything but the CPU
-/// package are dropped later, by the hub (sensors::is_cpu_voltage,
-/// sensors::is_cpu_power).
 pub fn parse_data_json(json: &str) -> Result<Vec<Sensor>, String> {
     let root: Value = serde_json::from_str(json).map_err(|e| e.to_string())?;
     if !root.is_object() || !root["Children"].is_array() {
@@ -225,7 +220,6 @@ mod tests {
         let gpu = find("GPU Core");
         assert_eq!(gpu.hardware, "NVIDIA Example GPU");
         assert_eq!(gpu.value, 48.5);
-        // Loads and clocks are neither; NaN and null are dropped.
         assert!(sensors
             .iter()
             .all(|s| s.name != "CPU Total" && s.name != "Bus Speed"));

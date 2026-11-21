@@ -21,23 +21,16 @@ const PROC_PATH: &str = "/proc";
 /// Directory holding the DRM device nodes
 const DRM_DEVICE_PATH: &str = "/dev/dri";
 
-/// Upper bound on threads used to walk `/proc`, so that a machine with many
-/// cores does not spawn far more workers than the scan can keep busy
 const MAX_SCAN_THREADS: usize = 8;
 
-/// Tracks how much GPU engine time each process is using
 #[derive(Debug)]
 pub struct GpuProcessMonitor {
-    /// Whether this machine exposes DRM devices at all
     supported: bool,
-    /// Cumulative engine nanoseconds per process at the previous sample
     previous: HashMap<(u32, u64), u64>,
-    /// When that sample was taken
     sampled_at: Instant,
 }
 
 impl GpuProcessMonitor {
-    /// Creates a monitor, noting whether per-process accounting is possible
     pub fn new() -> Self {
         Self {
             supported: cfg!(target_os = "linux") && Path::new(DRM_DEVICE_PATH).is_dir(),
@@ -46,18 +39,11 @@ impl GpuProcessMonitor {
         }
     }
 
-    /// Whether this machine can account GPU time per process
     pub fn reset(&mut self) {
         self.previous.clear();
         self.sampled_at = Instant::now();
     }
 
-    /// Samples every process and returns its GPU usage as a percentage
-    ///
-    /// The first call has no earlier sample to compare against and so reports
-    /// nothing; usage appears from the second refresh onwards. A process can
-    /// exceed 100% by keeping several engines busy at once, in the same way
-    /// CPU usage exceeds 100% across cores.
     pub fn collect(&mut self, processes: &[super::ProcessInfo]) -> HashMap<(u32, u64), f32> {
         if !self.supported {
             return HashMap::new();
@@ -72,7 +58,6 @@ impl GpuProcessMonitor {
         let now = Instant::now();
         let elapsed = now.duration_since(self.sampled_at).as_nanos();
 
-        // Two samples taken within the same instant carry no information
         let usage = if elapsed == 0 {
             HashMap::new()
         } else {
@@ -97,7 +82,6 @@ impl GpuProcessMonitor {
     }
 }
 
-/// Sums the GPU engine time every readable process has accumulated
 fn collect_engine_times() -> HashMap<u32, u64> {
     let Ok(entries) = fs::read_dir(PROC_PATH) else {
         return HashMap::new();
@@ -152,8 +136,6 @@ fn read_process_engine_time(pid: u32) -> Option<u64> {
     let mut seen_clients = HashSet::new();
 
     for entry in entries.flatten() {
-        // Checking where the descriptor points is far cheaper than reading
-        // every descriptor's fdinfo, and most of them are not GPU related
         let Ok(target) = fs::read_link(entry.path()) else {
             continue;
         };
@@ -170,8 +152,6 @@ fn read_process_engine_time(pid: u32) -> Option<u64> {
 
         if let Some((client, engine_time)) = parse_fdinfo(&info) {
             is_drm_client = true;
-            // Duplicated descriptors describe the same client and repeat its
-            // counters, so each client is only counted once
             let device = info
                 .lines()
                 .find_map(|line| line.strip_prefix("drm-pdev:"))
@@ -226,7 +206,6 @@ fn parse_fdinfo(info: &str) -> Option<(u64, u64)> {
 mod tests {
     use super::*;
 
-    /// A single fdinfo block is reduced to its client id and total engine time
     #[test]
     fn test_parse_fdinfo() {
         let info = "pos:\t0\n\
@@ -271,14 +250,12 @@ mod tests {
         );
     }
 
-    /// The first sample only establishes a baseline, so it reports nothing
     #[test]
     fn test_first_sample_has_no_baseline() {
         let mut monitor = GpuProcessMonitor::new();
         assert!(monitor.collect(&[]).is_empty());
     }
 
-    /// Percentages must stay non-negative and finite
     #[test]
     fn test_collected_usage_is_plausible() {
         let mut monitor = GpuProcessMonitor::new();

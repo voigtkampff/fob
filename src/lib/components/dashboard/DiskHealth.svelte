@@ -1,6 +1,4 @@
 <script lang="ts">
-  // Physical disk health in the Disk detail. Asks the backend when shown and
-  // every 5 minutes while shown; the backend caches for 5 minutes too.
   import { invoke } from "@tauri-apps/api/core";
   import type { DiskHealthReport, PhysicalDisk } from "$lib/types";
   import {
@@ -272,8 +270,6 @@
     margin: 4px 0 0;
     font-size: 12px;
   }
-  /* A subgrid row spans the column gap, so hovering the empty middle still
-     pairs the far-apart label and value. */
   .metric {
     display: grid;
     grid-column: 1 / -1;
@@ -295,7 +291,6 @@
     font-variant-numeric: tabular-nums;
     overflow-wrap: anywhere;
   }
-  /* The shadow pads the chip without moving text. */
   .metric:hover > :is(dt, dd) {
     color: var(--background);
     background: var(--foreground);
@@ -304,8 +299,6 @@
   .metric:hover > dd .bad {
     color: inherit;
   }
-  /* Peach fill fails contrast in some light palettes, so a warning value keeps
-     the contrast chip and shows its warning as a peach ring. */
   .metric:hover > dd:is(.bad, :has(.bad)) {
     box-shadow:
       0 0 0 2px var(--foreground),

@@ -2,7 +2,6 @@ import type { Column } from "$lib/types";
 import { formatMemorySize } from "$lib/utils";
 import { formatHms, formatRate } from "$lib/utils/dashboard.js";
 
-/** Bytes/s as "1.2 MB/s"; no reading is "—", never 0. */
 export const rate = (v: number | null) => {
   const { value, unit } = formatRate(v);
   return unit ? `${value} ${unit}` : value;
@@ -80,15 +79,13 @@ export let column_definitions: Column[] = [
     id: "start_time",
     label: "Start Time",
     visible: false,
-    format: (v) => new Date(v * 1000).toLocaleString(), // v is the time where the process was started (in seconds) from epoch
+    format: (v) => new Date(v * 1000).toLocaleString(),
   },
   {
     id: "run_time",
     label: "Run Time",
     visible: true,
     numeric: true,
-    // v: seconds the process has run. Both languages show "4h 18m 25s":
-    // shorter than 时分秒 and the same width, so one column width fits both.
     format: (v) => formatHms(v),
   },
 ];

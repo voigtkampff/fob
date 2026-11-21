@@ -1,8 +1,4 @@
 <script lang="ts">
-  // Fob status bar (overlay.rs): one row of readings in a thin always-on-top
-  // window. Colours come from the current theme (background, accent label,
-  // foreground value), no shadows; the opacity setting fades the whole bar,
-  // text and charts included (0.7.1).
   import { onDestroy, onMount, tick } from "svelte";
   import { invoke } from "@tauri-apps/api/core";
   import { listen, type UnlistenFn } from "@tauri-apps/api/event";
@@ -24,8 +20,6 @@
   import { t } from "$lib/i18n";
 
   let reading: Reading | null = $state(null);
-  // 0.8.13: the THR marker is MSR-derived. It stays up for a few seconds
-  // after the last sample whose hardware thermal/package bit was set.
   let throttle: "package" | "thermal" | null = $state(null);
   let throttleTimer: ReturnType<typeof setTimeout> | undefined;
   let interactive = $state(false);
@@ -45,8 +39,6 @@
       !!throttle,
     ),
   );
-  // Its own appearance or the main window's theme (theme-change keeps
-  // $themeStore current); only the bar's few colours come from it.
   const theme = $derived(
     overlayTheme($settingsStore.behavior.overlayTheme, $themeStore, themes),
   );
@@ -58,16 +50,11 @@
       .join(";"),
   );
   const history = $derived((reading as Reading | null)?.history ?? []);
-  // CJK labels get their own size (ideographs fill the em box, so at the
-  // Latin size they look as big as the values).
   const CJK = /[\u3000-\u9fff]/;
-  // ↓ / ↑ drawn as paths: the glyphs come from whichever font has them
-  // (Segoe UI Symbol on Windows), each with its own size and baseline.
   const ARROW: Record<string, string> = {
     "↓": "M4 0.5V8.5M1 5.5L4 8.5L7 5.5",
     "↑": "M4 9.5V1.5M1 4.5L4 1.5L7 4.5",
   };
-  // Chart size: matches --ob-chart-w / --ob-chart-h below.
   const CW = 32;
   const CH = 9;
   const stops: UnlistenFn[] = [];
@@ -82,7 +69,6 @@
     }
     const t = reading?.throttle;
     if (!t?.supported) {
-      // An old helper or an unreadable MSR has no throttle state at all.
       throttle = null;
     } else if (t.thermal || t.package) {
       throttle = t.thermal ? "thermal" : "package";
@@ -90,7 +76,6 @@
       throttleTimer = setTimeout(() => (throttle = null), 5000);
     }
   }
-  // Size the window to the row once it changes by a few pixels.
   $effect(() => {
     void shown;
     void tick().then(() => {
@@ -104,9 +89,6 @@
     });
   });
   let bar: HTMLDivElement | undefined = $state();
-  // Each script's ink centred on the bar's centre line, from the metrics of
-  // the font the WebView really picked (YaHei UI on Windows has far taller
-  // ascent/descent than Segoe UI, so a centred line box isn't centred ink).
   function centreInk() {
     const ctx = document.createElement("canvas").getContext("2d");
     if (!ctx || !bar) return;
@@ -139,7 +121,6 @@
     }).then(async (stop) => {
       if (destroyed) return stop();
       stops.push(stop);
-      // A change sent before this listener existed would be lost.
       interactive = await invoke<boolean>("overlay_interactive").catch(
         () => false,
       );
@@ -225,17 +206,6 @@
     overflow: hidden;
     margin: 0;
   }
-  /* Status bar layout standard (0.7.2), the one place its sizes live.
-     docs-fob/status-bar-layout.md explains the rules.
-     - Bar 26 px; every label, value and chart is a box of --ob-box height
-       centred on the bar's one centre line (13 px).
-     - Labels: regular weight, --ob-label-size, CJK and Latin alike;
-       values: bold tabular figures, --ob-value-size, units in the same
-       text so they share its baseline.
-     - Charts: --ob-chart-h (under the value's cap height), --ob-chart-w
-       wide, inside the same box, never past the text.
-     - Gaps: label→value, between the two values of a pair, between
-       metrics; nothing else adds space. */
   .bar {
     --ob-height: 26px;
     --ob-box: 14px;
@@ -251,8 +221,6 @@
     --ob-gap-chart: 6px;
     --ob-gap-metric: 14px;
     --ob-pad-x: 10px;
-    /* Ink centring per script, measured at run time from the fonts the
-       bar actually gets (inkShift in utils/overlay.js); 0 until then. */
     --ob-shift-value: 0px;
     --ob-shift-latin: 0px;
     --ob-shift-cjk: 0px;
@@ -275,7 +243,6 @@
     font-family: var(--ob-font-latin), var(--ob-font-cjk), sans-serif;
     line-height: 1;
   }
-  /* Ctrl held (not 锁定位置): a slightly brighter bar with a faint solid edge. */
   .bar.interactive {
     cursor: move;
     background: color-mix(in oklab, var(--ob-bg), var(--ob-fg) 8%);
@@ -311,8 +278,6 @@
     font-family: var(--ob-font-cjk), sans-serif;
     font-size: var(--ob-label-size-cjk);
   }
-  /* 0.8.13: a suspected limit, shown only while it lasts. Small, outline
-     only, in the label's accent colour so it reads as a marker. */
   .thr {
     display: inline-flex;
     align-items: center;
@@ -359,8 +324,6 @@
     justify-content: flex-start;
     gap: var(--ob-gap-pair);
     height: var(--ob-box);
-    /* Left-aligned: fixed widths keep the bar steady, and their slack goes
-       after the number, so label → value stays --ob-gap-label. */
     color: var(--ob-fg);
     font-size: var(--ob-value-size);
     font-weight: var(--ob-value-weight);
@@ -385,12 +348,6 @@
     stroke-width: 1.25;
     vector-effect: non-scaling-stroke;
   }
-  /* Fob 0.7.12: no reserved widths. Every metric is exactly as wide as
-     its text and chart, so the space between metrics is --ob-gap-metric
-     everywhere and the right inset equals --ob-pad-x on the left. Figures
-     are tabular, so a reading only changes width when its digit count
-     does. Within a metric: pair values --ob-gap-pair apart, the chart
-     --ob-gap-chart after the last value. */
   .vc {
     display: inline-flex;
     align-items: center;

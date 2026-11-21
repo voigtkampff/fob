@@ -1,37 +1,21 @@
-//! Application state management
-//!
-//! This module handles the global application state, including system monitoring
-//! and process tracking capabilities.
-
 use crate::monitoring::{ProcessMonitor, SystemMonitor};
 use std::sync::Mutex;
 use sysinfo::{Disks, Networks, RefreshKind, System};
 
-/// Per-process command-line override. It is initialized before Tauri starts and
-/// never participates in preference updates or persistence.
 #[derive(Clone, Copy, Debug, Default)]
 pub struct ShowAll(pub bool);
 
-/// Global application state
-///
-/// Maintains thread-safe access to system information and monitoring components
 #[derive(Debug)]
 pub struct AppState {
-    /// Icons are resolved separately from the sampling loop.
     pub icons: Mutex<crate::native_icons::IconCache>,
     pub hub: Mutex<crate::sampling::Hub>,
     pub gpu: Mutex<crate::gpu::GpuMonitor>,
     /// winperf: temperatures and fans (LibreHardwareMonitor, NVML).
     pub sensors: Mutex<crate::sensors::SensorHub>,
-    /// System information handler
     pub sys: Mutex<System>,
-    /// Networks information handler
     pub networks: Mutex<Networks>,
-    /// Networks information handler
     pub disks: Mutex<Disks>,
-    /// Process monitoring component
     pub process_monitor: Mutex<ProcessMonitor>,
-    /// System statistics monitoring component
     pub system_monitor: Mutex<SystemMonitor>,
 }
 
@@ -43,13 +27,6 @@ impl AppState {
         kind
     }
 
-    /// Creates a new instance of the application state
-    ///
-    /// Initializes system monitoring and process tracking components
-    ///
-    /// # Returns
-    ///
-    /// A new `AppState` instance with initialized monitors
     pub fn new() -> Self {
         let sys = System::new_with_specifics(Self::refresh_kind());
         let disks = Disks::new_with_refreshed_list();

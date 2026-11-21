@@ -1,7 +1,4 @@
 <script lang="ts">
-  // Fob: disk space map page of the main window. Nothing is scanned until a
-  // drive is opened without a saved result, or Scan / Rescan is pressed; a
-  // saved result shows at once with its time.
   import { onDestroy, onMount } from "svelte";
   import { invoke } from "@tauri-apps/api/core";
   import { Button } from "$lib/components/ui/button/index.js";
@@ -62,12 +59,10 @@
 
   let drives = $state<Drive[]>([]);
   let root = $state<string | null>(null);
-  // Raw: the tree can be 300k nodes and is never changed in place.
   let scan = $state.raw<Scan | null>(null);
   let status = $state<Status | null>(null);
   let path = $state<string[]>([]);
   let history = $state.raw(emptyHistory());
-  /** Opens a folder as a new visit (Back returns here). */
   function navigate(names: string[]) {
     history = visit(history, path, names);
     path = names;
@@ -78,12 +73,10 @@
     history = next.history;
     path = next.path;
   }
-  /** Drives with a size: share used, and nearly full (under 10 % free). */
   const usage = (d: Drive) => {
     const used = d.total ? 1 - d.free / d.total : 0;
     return { used, full: d.total > 0 && d.free / d.total < 0.1 };
   };
-  // The "other" block whose items are listed (names of its folder).
   let other = $state<{
     names: string[];
     parent: SpaceNode;
@@ -105,7 +98,6 @@
   );
 
   async function load(target: string) {
-    // Raw JSON bytes of the cache file; empty when the drive has none.
     const bytes = await invoke<ArrayBuffer>("space_result", { root: target });
     scan = bytes.byteLength
       ? (JSON.parse(new TextDecoder().decode(bytes)) as Scan)
@@ -154,7 +146,6 @@
     await invoke("space_stop");
     await poll();
   }
-  /** Opening a drive shows its saved result, or scans it when there is none. */
   async function choose(target: string, scanIfNew: boolean) {
     root = target;
     path = [];
@@ -178,7 +169,6 @@
       drives = await invoke<Drive[]>("space_drives");
       const saved = localStorage.getItem(LAST);
       const first = drives.find((d) => d.root === saved) ?? drives[0];
-      // A scan still running (the page was left) keeps reporting.
       await poll();
       if (status?.root) startPolling();
       if (first) await choose(first.root, false);
@@ -515,7 +505,6 @@
     color: var(--muted-foreground);
   }
   .error {
-    /* Takes the rest of the line and wraps there instead of being cut off. */
     flex: 1 1 0;
     min-width: 160px;
     margin-left: 8px;

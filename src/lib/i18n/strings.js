@@ -1,7 +1,3 @@
-// Fob UI strings: one key -> string table per locale, no i18n framework.
-// Keep both tables in the same key order; tests/i18n.mjs checks that every key
-// exists in both and that every key used in src/ exists.
-
 /** @type {Record<string, string>} */
 export const en = {
   "helper.title": "Sensor helper",
@@ -147,7 +143,7 @@ export const en = {
   "dh.temp": "Temperature",
   "dh.used": "Life used (drive estimate)",
   "dh.usedNote":
-    "The drive's own estimate of its rated endurance used. It can go past 100%",
+    "The drive's own estimate of its rated endurance used, which can go past 100%",
   "dh.spare": "Available spare",
   "dh.spareValue": "{v} (threshold {t})",
   "dh.written": "Data written",
@@ -164,7 +160,7 @@ export const en = {
   "dh.nvme.unsupported":
     "This disk or its controller doesn't answer the NVMe health query",
   "dh.nvme.denied":
-    "Windows denied the NVMe health query. Fob doesn't ask for administrator rights",
+    "Windows denied the NVMe health query; Fob doesn't ask for administrator rights",
   "dh.nvme.bad_reply": "The disk returned incomplete NVMe health data",
   "dh.nvme.error": "The NVMe health query failed (error {v})",
   "dh.ata.sleeping":
@@ -172,7 +168,7 @@ export const en = {
   "dh.ata.unsupported":
     "This disk or its driver doesn't provide standard statistics",
   "dh.ata.denied":
-    "Windows denied the statistics query. Fob doesn't ask for administrator rights",
+    "Windows denied the statistics query; Fob doesn't ask for administrator rights",
   "dh.ata.bad_reply": "The disk returned incomplete statistics",
   "dh.ata.error": "The statistics query failed (error {v})",
   "dh.ata.partial": "The disk didn't report the items not shown",
@@ -184,7 +180,7 @@ export const en = {
   "dh.warn.backup_failed": "Volatile memory backup failed",
   "dh.warn.pmr_read_only": "Persistent memory region is read-only",
   "dh.checked":
-    "Read at {v}. Refreshed at most every 5 minutes while this page is open",
+    "Read at {v}, refreshed at most every 5 minutes while this page is open",
   "detail.download": "Download",
   "detail.upload": "Upload",
   "detail.app": "App",
@@ -203,7 +199,7 @@ export const en = {
     "No temperature or fan readings on this PC; NVIDIA graphics cards report their own, other sensors need the sensor helper",
   "detail.source": "Source: {v}",
   "setup.missingFiles":
-    "Re-extract the whole Fob folder from the same zip and keep the matching <b>sensors</b> and <b>PawnIO</b> folders next to fob.exe. Do not mix in folders from an older package: the exe checks every file against the manifest it was built with",
+    "Re-extract the whole Fob folder from the same zip and keep the matching <b>sensors</b> and <b>PawnIO</b> folders next to fob.exe; do not mix in folders from an older package, since the exe checks every file against the manifest it was built with",
   "setup.willDo": "Fob will do the following:",
   "setup.uacNote":
     "Windows asks once; Fob keeps normal permissions; the helper reads sensors and network counters; programs in your Windows user session can query names, sizes and structure across whole fixed NTFS Disks, including folders you cannot open; no file contents or writes, and no fan speed changes; Disable removes it",
@@ -798,7 +794,7 @@ export const en = {
   "space.reveal": "Show in File Explorer",
   "space.closeMenu": "Close menu",
   "space.revealGone":
-    "This item no longer exists. The scan may be out of date, press Rescan",
+    "This item no longer exists; the scan may be out of date, so press Rescan",
   "space.revealDenied":
     "Access to this item is denied, so it can't be shown in File Explorer",
   "space.revealFailed":
@@ -1582,7 +1578,7 @@ export function resolveLocale(pref, system) {
   return /^zh\b/i.test(system ?? "") ? "zh" : "en";
 }
 
-/** Look up `key` and fill "{name}" placeholders; falls back to English, then the key.
+/**
  * @param {"en" | "zh"} locale
  * @param {string} key
  * @param {Record<string, string | number>} [vars]
@@ -1596,7 +1592,7 @@ export function translate(locale, key, vars) {
     : text;
 }
 
-/** English translator, the default for helpers called without one.
+/**
  * @param {string} key
  * @param {Record<string, string | number>} [vars]
  */

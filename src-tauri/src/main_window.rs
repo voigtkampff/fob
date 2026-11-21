@@ -40,8 +40,6 @@ pub fn plugin<R: tauri::Runtime>() -> tauri::plugin::TauriPlugin<R> {
         .build()
 }
 
-/// Runs `save` once, after pokes have stopped for `after` (a drag or a
-/// resize is many events).
 pub struct Settle {
     last: Mutex<Option<Instant>>,
     waiting: AtomicBool,
@@ -84,7 +82,6 @@ impl Settle {
 
 static SAVE: Settle = Settle::new(SETTLE);
 
-/// The main window was resized or moved.
 pub fn changed(app: &AppHandle) {
     let app = app.clone();
     SAVE.poke(move || {
@@ -98,16 +95,13 @@ pub fn changed(app: &AppHandle) {
     });
 }
 
-/// Why the page is being fitted to the window.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Fit {
     /// Windows moved the window to another DPI.
     ScaleChanged,
-    /// The window is being brought back; fit only if the DPI moved meanwhile.
     Shown,
 }
 
-/// The DPI the main page was last fitted at (0: never).
 #[cfg_attr(not(target_os = "windows"), allow(dead_code))]
 static FITTED_DPI: AtomicU32 = AtomicU32::new(0);
 
@@ -116,8 +110,6 @@ fn needs_fit(fitted: u32, dpi: u32, why: Fit) -> bool {
     dpi != 0 && (why == Fit::ScaleChanged || fitted != dpi)
 }
 
-/// Queues the fit on the main thread, after the scale change has finished
-/// resizing the window.
 pub fn fit_webview(window: &WebviewWindow, why: Fit) {
     #[cfg(target_os = "windows")]
     if let Ok(hwnd) = window.hwnd() {
@@ -156,7 +148,7 @@ unsafe fn fit(
     }
     let (width, height) = (client.right - client.left, client.bottom - client.top);
     if width <= 1 || height <= 1 {
-        return; // minimized: fitted when shown again
+        return;
     }
     if let Ok(scaled) = controller.cast::<ICoreWebView2Controller3>() {
         let _ = scaled.SetRasterizationScale(f64::from(dpi) / 96.0);
@@ -197,7 +189,6 @@ mod tests {
     fn size_position_and_maximized_are_kept_but_not_visibility() {
         let f = flags();
         assert!(f.contains(StateFlags::SIZE | StateFlags::POSITION | StateFlags::MAXIMIZED));
-        // Start in tray decides whether the window shows; the title bar is ours.
         assert!(
             !f.intersects(StateFlags::VISIBLE | StateFlags::DECORATIONS | StateFlags::FULLSCREEN)
         );
@@ -259,7 +250,6 @@ mod tests {
         }
         assert_eq!(SAVES.load(Ordering::SeqCst), 1);
         assert!(start.elapsed() >= Duration::from_millis(19 * 20 + 400));
-        // A later resize is saved again.
         S.poke(|| {
             SAVES.fetch_add(1, Ordering::SeqCst);
         });

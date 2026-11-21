@@ -1,8 +1,3 @@
-//! winperf: temperatures, fan speeds and CPU voltage. Each source sits behind
-//! `SensorSource` so it can be swapped without touching the sampler or the UI.
-//! Board sources are tried in order and the first that answers wins: winperf's
-//! own helper pipe, then LibreHardwareMonitor's web server. NVIDIA NVML is
-//! always merged.
 use crate::gpu::GpuDevice;
 use serde::Serialize;
 use std::fmt::Debug;
@@ -16,15 +11,10 @@ mod task;
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "lowercase")]
 pub enum SensorKind {
-    /// °C
     Temperature,
-    /// RPM
     Fan,
-    /// Fan duty, %
     Control,
-    /// V, CPU only: see `is_cpu_voltage`
     Voltage,
-    /// W, CPU package only: see `is_cpu_power`
     Power,
 }
 
@@ -63,9 +53,7 @@ pub struct ThrottleReport {
 #[derive(Clone, Debug, Default, Serialize)]
 pub struct SensorReport {
     pub sensors: Vec<Sensor>,
-    /// Names of the sources that answered this round.
     pub sources: Vec<String>,
-    /// MSR throttle state (helper); None when the source has no such data.
     pub throttle: Option<ThrottleReport>,
     /// Per-process network bytes from the helper's ETW session (not sent to
     /// the UI as is; `sampling` turns it into named per-app rates).
@@ -73,15 +61,12 @@ pub struct SensorReport {
     pub net: Option<pipe::NetSample>,
 }
 
-/// A place sensor readings come from. `None` = source not available right now.
 pub trait SensorSource: Send + Debug {
     fn name(&self) -> &'static str;
     fn read(&mut self) -> Option<Vec<Sensor>>;
-    /// Per-process network bytes that came with the last `read`, if any.
     fn net(&mut self) -> Option<pipe::NetSample> {
         None
     }
-    /// MSR throttle state that came with the last `read`, if any.
     fn throttle(&mut self) -> Option<ThrottleReport> {
         None
     }
@@ -135,9 +120,6 @@ pub fn device(s: &Sensor) -> Device {
     }
 }
 
-/// Rails a board or a CPU reports next to the core supply but that do not
-/// measure it: the termination rail, the memory/IO/PLL supplies and an
-/// APU's SoC rail. They never reach the UI (0.8.13).
 fn is_non_core_rail(name: &str) -> bool {
     [
         "termination",
@@ -225,8 +207,6 @@ impl Default for SensorHub {
         if let Some(fake) = pipe::FakeReplay::from_env() {
             sources.push(Box::new(fake));
         }
-        // Both board sources are Windows-only; don't probe pipes or localhost
-        // ports elsewhere.
         #[cfg(target_os = "windows")]
         {
             sources.push(Box::new(pipe::HelperPipe::default()));
@@ -254,7 +234,6 @@ impl SensorHub {
                 break;
             }
         }
-        // NVML only for GPUs the board source didn't already cover.
         let covered = |name: &str| {
             report
                 .sensors
@@ -320,7 +299,6 @@ mod tests {
             source: "test".into(),
         };
         assert!(is_cpu_voltage(&s("/lpc/nct6798d/0/voltage/0", "Vcore")));
-        // Not a core-supply rail: it must not reach the UI or the headline.
         assert!(!is_cpu_voltage(&s(
             "/lpc/nct6798d/0/voltage/9",
             "CPU Termination"

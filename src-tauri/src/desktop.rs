@@ -1,6 +1,3 @@
-//! Settings and About windows. winperf has no native menu bar: settings,
-//! about, collapse to tray and quit live in the app's own title bar menu and
-//! the tray menu.
 use std::sync::Mutex;
 use tauri::{AppHandle, Emitter, Manager};
 #[derive(Default)]

@@ -18,12 +18,8 @@ export function helperView(status, feedback) {
     status.pawnio_installed
   )
     kind = status.running ? "current" : "stopped";
-  // A missing install is always actionable, even when the bundle is also
-  // broken: the click reports the exact file instead of leaving a dead card.
   else if (!status.installed && status.task === "missing") kind = "install";
   else if (!status.bundled) kind = "missing-files";
-  // The task runs a helper from an older folder: rebuild it, don't confuse it
-  // with a corrupt bundled helper.
   else if (status.installed && status.task === "mismatch") kind = "retask";
   else if (
     status.installed &&
@@ -161,7 +157,6 @@ export function createSensorSetupController(io) {
     } catch (error) {
       feedback = failure(error);
     }
-    // The pre-operation read is invalidated, never joined as the final refresh.
     if (reading) await reading;
     await refresh();
     for (

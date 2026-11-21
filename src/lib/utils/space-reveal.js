@@ -1,6 +1,3 @@
-// Words for a failed Open in File Explorer on the space map. The backend
-// sends `{ kind, code? }` (space.rs RevealError); anything else is shown as is.
-
 /**
  * @param {unknown} error what `invoke("space_reveal")` rejected with
  * @param {(key: string, vars?: Record<string, string | number>) => string} t

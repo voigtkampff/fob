@@ -48,7 +48,7 @@ function modifiers(m) {
   ].filter(Boolean);
 }
 
-/** A keydown while recording.
+/**
  * @param {{ code: string, ctrlKey: boolean, altKey: boolean, shiftKey: boolean, metaKey: boolean }} e
  * @returns {{ combo: string | null, held: string }} combo: the full combo
  *   once a non-modifier key is pressed (null while only modifiers are held,
@@ -67,8 +67,7 @@ export function fromKeydown(e) {
   return { combo: key ? [...mods, key].join("+") : null, held };
 }
 
-/** null when `combo` is acceptable, else the reason ("invalid" |
- * "needsModifier"), as hotkey.rs `parse` decides.
+/**
  * @param {string} combo
  */
 export function validate(combo) {

@@ -1,6 +1,4 @@
 <script lang="ts">
-  // Fob: the Temp & fan card of the process tab (same sensor source as the
-  // dashboard card); its arrow opens the Temp & fan side panel.
   import StatCard from "./StatCard.svelte";
   import StatItem from "./StatItem.svelte";
   import ResourceTrend from "./ResourceTrend.svelte";

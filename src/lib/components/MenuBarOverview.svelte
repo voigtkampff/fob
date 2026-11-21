@@ -35,8 +35,6 @@
   let poll: ReturnType<typeof setTimeout>;
   let ticker: ReturnType<typeof setInterval>;
   const listeners: UnlistenFn[] = [];
-  // The window has one fixed size for every view (utils/mini-layout.js);
-  // switching views only resets the scroll position.
   let panel: HTMLDivElement;
   let detail: DetailKind | null = null;
   const toTop = (_view: DetailKind | null) => panel?.scrollTo(0, 0);
@@ -84,7 +82,7 @@
   async function visibility(value: boolean) {
     visible = value;
     if (!visible) {
-      detail = null; // reopen on the cards
+      detail = null;
     }
     clearTimeout(poll);
     clearInterval(ticker);
@@ -96,8 +94,6 @@
       schedule();
     }
   }
-  // Pinned: clicking another window does not hide the mini window
-  // (saved as behavior.miniPinned; the backend owns the state).
   let pinned = false;
   async function togglePin() {
     try {
@@ -108,13 +104,6 @@
       error = String(e);
     }
   }
-  // Fob: the window moves by dragging its title bar, pinned or not (0.7.12:
-  // pinning only keeps it open and on top). Not its
-  // buttons); the backend saves where it settles. Double-click: back to
-  // the tray position.
-  // The OS move loop starts only once the pointer moves with the button
-  // held: started on the press, it swallows the release, and a double-click
-  // never arrives.
   let press: { x: number; y: number } | null = null;
   const onBar = (event: MouseEvent) =>
     event.button === 0 &&
@@ -135,12 +124,9 @@
     if (!onBar(event)) return;
     void invoke("reset_mini_position").catch((e) => (error = String(e)));
   }
-  // Fob: only backgrounds fade (app.css, --mini-alpha); text stays opaque.
   $: alpha = miniOpacity($settingsStore.behavior.miniOpacity) / 100;
   $: if (typeof document !== "undefined")
     document.documentElement.style.setProperty("--mini-alpha", String(alpha));
-  // Fob: text keeps contrast against the acrylic + faded panel (mini-ink.js).
-  // Set on <body>, which holds the view and every popup portal.
   $: if (typeof document !== "undefined") {
     const theme = $themeStore;
     const ink = miniInk(
@@ -191,7 +177,6 @@
         else listeners.push(stop);
       }
       pinned = await invoke<boolean>("get_companion_pinned").catch(() => false);
-      // Listen before reading visibility, so a popup opened during startup is not lost.
       const isVisible = await getCurrentWindow().isVisible();
       if (!destroyed) void visibility(isVisible);
     })();
@@ -207,7 +192,6 @@
 <svelte:window
   on:keydown={(event) => {
     if (event.key !== "Escape") return;
-    // winperf: Esc closes an open detail view first, then hides the window.
     if (detail) detail = null;
     else void invoke("hide_companion");
   }}
@@ -323,15 +307,11 @@
 </div>
 
 <style>
-  /* winperf mini window: the panel is the whole (opaque) window. Corners and
-     shadow come from Windows 11 (DWM), so there is no CSS radius, border or
-     shadow here; see companion::native_frame. */
   .mini-shell {
     height: 100vh;
   }
   .mini {
     height: 100vh;
-    /* Fob: the window is transparent; this panel is its (fading) surface. */
     background: color-mix(
         in oklab,
         var(--background) calc(var(--mini-alpha, 1) * 100%),
@@ -344,7 +324,6 @@
       inset 0 0 32px var(--glass-glow);
     box-sizing: border-box;
     overflow-y: auto;
-    /* Only long detail lists scroll; keep the bar thin and trackless. */
     scrollbar-width: thin;
     scrollbar-color: color-mix(
         in oklab,

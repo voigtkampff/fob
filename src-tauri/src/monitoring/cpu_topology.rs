@@ -34,21 +34,15 @@ pub enum CoreKind {
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 pub struct CoreGroup {
     pub kind: CoreKind,
-    /// Physical cores; less than `threads.len()` when the cores run two threads.
     pub cores: usize,
-    /// Indexes into `SystemStats::cpu_usage`, ascending.
     pub threads: Vec<usize>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 #[serde(tag = "state", rename_all = "snake_case")]
 pub enum CpuTopology {
-    /// Not read (not Windows, the call failed, or it did not match the
-    /// per-thread readings). The UI shows no split.
     Unknown,
-    /// Every core has the same efficiency class. The UI shows no split.
     Uniform,
-    /// Performance group first, then efficiency.
     Hybrid {
         vendor: CpuVendor,
         groups: Vec<CoreGroup>,
@@ -173,7 +167,6 @@ pub fn read_cpu_sets() -> Option<Vec<CpuSet>> {
     Some(sets)
 }
 
-/// Fob reads the core layout on Windows only; elsewhere the UI shows no split.
 #[cfg(not(target_os = "windows"))]
 pub fn read_cpu_sets() -> Option<Vec<CpuSet>> {
     None
@@ -192,7 +185,6 @@ mod tests {
         }
     }
 
-    /// An Intel hybrid CPU with 8 P-cores (two threads each, 0-15) and 8 E-cores (16-23).
     fn intel_hybrid_8p8e() -> Vec<CpuSet> {
         let p = (0..16).map(|i| set(i, i / 2 * 2, 1));
         let e = (16..24).map(|i| set(i, i, 0));
@@ -230,8 +222,6 @@ mod tests {
 
     #[test]
     fn amd_dense_cores_split_the_same_way_and_keep_their_vendor() {
-        // Ryzen AI 9 HX 370: 4 Zen 5 + 8 Zen 5c, two threads on every core,
-        // listed out of order to show the order Windows uses does not matter.
         let mut sets: Vec<CpuSet> = (0..24)
             .map(|i| set(i, i / 2 * 2, if i < 8 { 1 } else { 0 }))
             .collect();
@@ -266,7 +256,6 @@ mod tests {
 
     #[test]
     fn a_third_lower_class_joins_the_efficiency_group() {
-        // Low-power E-cores below the E-cores: still two groups.
         let sets: Vec<CpuSet> = (0..4)
             .map(|i| set(i, i, 2))
             .chain((4..8).map(|i| set(i, i, 1)))
@@ -288,7 +277,6 @@ mod tests {
             classify(&intel_hybrid_8p8e(), 0, CpuVendor::Intel),
             CpuTopology::Unknown
         );
-        // Fewer readings than CPU sets (or the reverse).
         assert_eq!(
             classify(&intel_hybrid_8p8e(), 20, CpuVendor::Intel),
             CpuTopology::Unknown

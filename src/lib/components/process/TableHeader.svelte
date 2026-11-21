@@ -10,29 +10,21 @@
   export let sortConfig: { field: keyof Process; direction: "asc" | "desc" };
   export let onToggleSort: (field: keyof Process) => void;
   export let treeView = false;
-  /** Each visible column's width (columnWidths). */
   export let widths: Record<string, number>;
   export let onMoveColumn: (id: string, target: string, after: boolean) => void;
   export let onPreviewColumn: (
     move: { id: string; target: string; after: boolean } | null,
   ) => void;
-  /** Empty room before the actions column (columnLayout). */
   export let filler = 0;
-  /** A column edge drag in progress (null when it ends or is cancelled). */
   export let onResizePreview: (
     resize: { id: string; width: number } | null,
   ) => void = () => {};
-  /** Release saves the column's new width once. */
   export let onResizeColumn: (id: string, width: number) => void = () => {};
-  /** A double click on the edge gives the column back its own width. */
   export let onResetColumn: (id: string) => void = () => {};
   $: shown = columns.filter((c) => c.visible);
   let row: HTMLTableRowElement | undefined;
   let resizing = "";
 
-  /** Drag a column's right edge: the width follows the pointer, release
-   * saves it, Escape puts it back. The edge is outside the title, so it never
-   * sorts or reorders. */
   function resize(e: PointerEvent, id: string) {
     if (e.button !== 0) return;
     e.preventDefault();
@@ -73,8 +65,7 @@
   }
 </script>
 
-<Table.Header
-  ><!-- The name column stays first; the actions cell is not a column of data. -->
+<Table.Header>
   <tr
     data-slot="table-row"
     class="border-b"

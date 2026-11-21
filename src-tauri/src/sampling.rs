@@ -1,4 +1,3 @@
-//! Both windows read one interval-gated capture and one bounded in-memory history.
 use crate::{
     gpu::GpuDevice,
     monitoring::{ProcessInfo, SystemStats},
@@ -33,7 +32,6 @@ pub struct Frame {
     pub processes: Vec<ProcessInfo>,
     pub stats: SystemStats,
     pub gpus: Vec<GpuDevice>,
-    /// winperf additions (sensors, commit charge).
     pub extra: Extra,
 }
 #[derive(Clone, Debug, Default, Serialize)]
@@ -41,8 +39,6 @@ pub struct Extra {
     pub sensors: crate::sensors::SensorReport,
     /// Windows commit charge (used, limit) in bytes.
     pub commit: Option<(u64, u64)>,
-    /// winperf: Unix seconds and kind ("cold" | "fast" | "hibernate") of the
-    /// last power-on; `None` = only the kernel uptime is known.
     pub started: Option<(u64, &'static str)>,
     /// winperf: per-process network rates from the sensor helper (ETW);
     /// `None` when the helper isn't running.
@@ -67,10 +63,6 @@ fn commit_charge() -> Option<(u64, u64)> {
 fn commit_charge() -> Option<(u64, u64)> {
     None
 }
-/// Where the status bar's CPU voltage came from (0.8.13): the board's own
-/// Vcore rail, or the voltage the CPU asks for (its VID). There is no third
-/// fallback: a per-core VID or a non-core rail never stands in for the CPU's
-/// supply.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "lowercase")]
 pub enum VoltageSource {
@@ -93,8 +85,6 @@ pub struct Sample {
     /// frontend's sensorSummary (CPU package first, then any CPU sensor).
     pub cpu_temp: Option<f64>,
     pub gpu_temp: Option<f64>,
-    /// Fob: CPU voltage (V) and where it came from; the status bar writes
-    /// "Vcore" for a measured rail and "VID" for the CPU's own request.
     pub cpu_voltage: Option<f64>,
     pub cpu_voltage_source: Option<VoltageSource>,
     /// Fob: CPU package power from the helper's LHM reading, W.
@@ -102,7 +92,6 @@ pub struct Sample {
     /// Fob: effective CPU frequency, MHz (PDH `% Processor Performance`
     /// over the nominal frequency Windows reports for this machine).
     pub cpu_clock: Option<f64>,
-    /// Fob: storage read / write, bytes/s.
     pub disk_read: Option<u64>,
     pub disk_write: Option<u64>,
 }
@@ -173,8 +162,6 @@ fn headline_temps(sensors: &[Sensor]) -> (Option<f64>, Option<f64>) {
     )
 }
 
-/// The CPU voltage every view shows: the board's Vcore rail first, then the
-/// CPU's own "CPU Core" request. `None` when the machine reports neither.
 fn headline_voltage(sensors: &[Sensor]) -> Option<(f64, VoltageSource)> {
     let mut pick: Option<(&Sensor, VoltageSource)> = None;
     for s in sensors {
@@ -419,7 +406,6 @@ impl Hub {
         }
         self.paused = paused;
         self.append_history(Sample::gap(now_ms(), self.interval));
-        // Preserve the CPU minimum refresh window when resuming immediately.
         if !paused
             && self
                 .last_attempt
@@ -469,8 +455,6 @@ impl Hub {
                 .process_monitor
                 .lock()
                 .map_err(|e| e.to_string())?
-                // Same gap rule as the history charts: a longer wait (paused,
-                // stalled) is not reported as a current disk speed.
                 .collect_processes(&sys, Duration::from_millis(self.interval * 5 / 2))?;
             let stats = state
                 .system_monitor
@@ -546,7 +530,6 @@ impl BusyProcess {
         }
     }
 }
-/// winperf: top `n` processes by a key (descending), ties by pid.
 fn top_by<K: PartialOrd>(
     processes: &[ProcessInfo],
     n: usize,
@@ -573,7 +556,6 @@ pub struct Overview {
     pub gpus: Vec<GpuDevice>,
     pub history: Vec<Sample>,
     pub processes: Vec<BusyProcess>,
-    /// winperf detail views.
     pub top_cpu: Vec<BusyProcess>,
     pub top_gpu: Vec<BusyProcess>,
     pub top_memory: Vec<BusyProcess>,
@@ -585,7 +567,6 @@ pub struct Overview {
 impl From<Snapshot> for Overview {
     fn from(s: Snapshot) -> Self {
         let all = &s.frame.processes;
-        // winperf: the mini window lists the top processes by memory.
         let top_memory = top_by(all, 10, |p| Some(p.memory_usage));
         Self {
             captured_at: s.frame.captured_at,
@@ -609,8 +590,6 @@ impl From<Snapshot> for Overview {
 #[tauri::command]
 pub async fn get_overview(app: tauri::AppHandle) -> Result<Overview, String> {
     let overview: Overview = read(app).await?.into();
-    // Debug builds only: WINPERF_DUMP_OVERVIEW=path writes the last reading
-    // (screenshots of the mini page rendered outside the app).
     #[cfg(debug_assertions)]
     if let Some(path) = std::env::var_os("WINPERF_DUMP_OVERVIEW") {
         let _ = std::fs::write(path, serde_json::to_vec(&overview).unwrap_or_default());
@@ -627,11 +606,6 @@ pub async fn read(app: tauri::AppHandle) -> Result<Snapshot, String> {
     .await
     .map_err(|e| e.to_string())?
 }
-/// Fob: sample from app start, not only while a window is reading, so the
-/// 120 s history charts are full when the user first opens a view. Before
-/// this, a tray-only Fob took no readings until a window asked, and every
-/// chart started mid-way. `Hub::read` is interval-gated (and idle while
-/// paused), so polling it here adds no extra captures when windows read too.
 pub fn sample_in_background(app: tauri::AppHandle) {
     std::thread::Builder::new()
         .name("fob-sampler".into())
@@ -715,7 +689,6 @@ mod tests {
         );
         assert!(!update.reset);
         assert!(update.samples.is_empty());
-        // A second consumer starts with the full buffer, not the first one's cursor.
         let mut independent = Vec::new();
         let mut independent_cursor = None;
         assert!(assert_main_history(
@@ -732,7 +705,6 @@ mod tests {
             &mut independent,
             &mut independent_cursor
         ));
-        // Replacement and backward wall clock invalidate cursors even if timestamps match.
         hub.append_history(Sample::gap(hub.history.back().unwrap().timestamp, 3000));
         assert!(assert_main_history(&hub, &mut current, &mut cursor));
         hub.append_history(Sample::gap(5000, 3000));
@@ -740,7 +712,6 @@ mod tests {
         let mut restarted = Hub::default();
         restarted.append_history(Sample::gap(5000, 3000));
         assert!(assert_main_history(&restarted, &mut current, &mut cursor));
-        // Pause and failed/late captures can add history without a new frame sequence.
         restarted.append_history(Sample::gap(20000, 3000));
         assert!(!assert_main_history(&restarted, &mut current, &mut cursor));
     }
@@ -808,13 +779,10 @@ mod tests {
             headline_voltage(&[p1.clone(), core]),
             Some((1.448608, VoltageSource::Requested))
         );
-        // Neither rail: a single core's VID is not the CPU's supply.
         assert_eq!(headline_voltage(&[p1.clone()]), None);
         assert_eq!(headline_voltage(&[]), None);
         let dead = s("/lpc/example/0/voltage/0", "Vcore", f64::NAN);
         assert_eq!(headline_voltage(&[dead]), None);
-        // A rail that does not measure the core supply never becomes the
-        // headline, with or without a per-core reading next to it.
         let term = s("/lpc/example/0/voltage/9", "CPU Termination", 0.54);
         assert_eq!(headline_voltage(&[term, p1]), None);
         // AMD's SVI2 telemetry is the CPU's own measurement of its core rail.
@@ -842,7 +810,6 @@ mod tests {
             headline_power(&[s("GPU Package", "/gpu-nvidia/0/power/0", 200.0)]),
             None
         );
-        // A milliwatt value or a glitch is rejected, not shown as watts.
         assert_eq!(
             headline_power(&[s("CPU Package", "/intelcpu/0/power/0", 85_300.0)]),
             None
@@ -870,7 +837,6 @@ mod tests {
                     source: "fixture".into(),
                 })
                 .collect();
-            // Expected: a sensor id, or the value when the case has no ids.
             let want = |key: &str| match &case[key] {
                 serde_json::Value::Null => None,
                 serde_json::Value::Number(n) => n.as_f64(),
@@ -925,9 +891,7 @@ mod tests {
         assert_eq!(hub.history.len(), 1);
         hub.pause(false);
         assert!(!hub.paused);
-        // Capture readiness is interval-gated using monotonic time, not wall-clock.
         hub.last_attempt = Some(Instant::now());
-        // A frame is required before the cache may suppress the first capture.
         assert!(hub.due());
     }
     #[test]

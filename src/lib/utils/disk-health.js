@@ -43,7 +43,7 @@ const WARNINGS = /** @type {const} */ ([
   "pmr_read_only",
 ]);
 
-/** The drive's own Critical Warning flags that are set.
+/**
  * @param {PhysicalDisk} disk
  * @returns {(typeof WARNINGS)[number][]} */
 export function driveWarnings(disk) {
@@ -97,7 +97,7 @@ export function queryNote(disk) {
  * @param {import("$lib/types").DiskOperational} op */
 export const operationalBad = (op) => op.kind !== "ok" && op.kind !== "other";
 
-/** True only when the drive or Windows reported a problem.
+/**
  * @param {PhysicalDisk} disk */
 export function diskAlert(disk) {
   if (driveWarnings(disk).length) return true;
@@ -114,9 +114,7 @@ export const PENDING_RETRY_MS = 10 * 1000;
 
 /** @typedef {{ kind: "loading" } | { kind: "failed", message: string } | import("$lib/types").DiskHealthReport} DiskHealthView */
 
-/** Asks for the disk health report now, every 5 minutes, and once more 10 s
- * after a pending reply, until the returned stop function runs. One request
- * at a time; the backend's 5 minute cache serves every open view.
+/**
  * @param {() => Promise<import("$lib/types").DiskHealthReport>} request
  * @param {(view: DiskHealthView, pending: boolean) => void} onChange
  * @returns {() => void} stop */

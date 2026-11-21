@@ -1,6 +1,7 @@
-//! Read-only, driver-reported GPU observations. Missing counters stay missing.
 use serde::Serialize;
 
+#[cfg_attr(not(target_os = "windows"), allow(dead_code))]
+mod engine_counters;
 #[cfg(target_os = "linux")]
 mod linux;
 #[cfg(all(test, target_os = "macos"))]
@@ -12,9 +13,6 @@ mod macos;
 mod nvidia;
 #[cfg(target_os = "windows")]
 mod windows;
-// winperf: PDH GPU engine counter parsing (used on Windows, tested everywhere).
-#[cfg_attr(not(target_os = "windows"), allow(dead_code))]
-mod engine_counters;
 pub use engine_counters::ProcessGpu;
 
 #[derive(Clone, Debug, Serialize)]
@@ -47,9 +45,6 @@ pub const SOURCE_NVML_SHARED_NAME: &str = "nvml-shared-name";
 pub const SOURCE_NVML_UNMATCHED: &str = "nvml-unmatched";
 pub const SOURCE_DXGI_PDH: &str = "dxgi-pdh";
 pub const SOURCE_DXGI: &str = "dxgi";
-/// Read by `linux.rs` on Linux, and by the tests everywhere (macOS reads the
-/// same file as `linux_fixtures`), so gating on `test` keeps them compiled
-/// without ever shipping an unused constant on Windows.
 #[cfg(any(target_os = "linux", target_os = "macos", test))]
 pub const SOURCE_LINUX_AMDGPU: &str = "linux-amdgpu";
 #[cfg(any(target_os = "linux", target_os = "macos", test))]
@@ -72,8 +67,6 @@ pub struct GpuMonitor {
     nvidia: nvidia::Nvidia,
     #[cfg(target_os = "windows")]
     engines: windows::EngineCounters,
-    /// Per-process GPU % and dedicated memory from the last sample (Windows
-    /// PDH only). None: no reading this sample, so every process is unknown.
     pub process_usage: Option<ProcessGpu>,
 }
 
@@ -156,8 +149,6 @@ fn pair_nvidia(nvml: Vec<GpuDevice>, mut dxgi: Vec<GpuDevice>) -> Vec<GpuDevice>
     cards
 }
 
-/// Debug builds only (screenshots on a machine without a GPU):
-/// `WINPERF_FAKE_GPU=1` adds one adapter with a slowly varying load.
 #[cfg(debug_assertions)]
 fn fake_gpu() -> Option<GpuDevice> {
     std::env::var_os("WINPERF_FAKE_GPU")?;

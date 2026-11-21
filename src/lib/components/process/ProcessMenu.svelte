@@ -37,8 +37,6 @@
     ({ left, top } = menuPlacement(anchor, size, viewport));
   }
 
-  // The list sits in a scrolling container, so the box has to hang off body:
-  // otherwise the table's scroll offset would drag it along.
   function portal(node: HTMLElement) {
     document.body.appendChild(node);
     el = node as HTMLDivElement;
@@ -88,7 +86,6 @@
       event.preventDefault();
       list[list.length - 1]?.focus();
     } else if (event.key === "Tab") {
-      // Tab walks the items and then leaves the menu instead of wrapping.
       const next = at + (event.shiftKey ? -1 : 1);
       if (next < 0 || next >= list.length) return;
       event.preventDefault();
@@ -97,7 +94,6 @@
       event.preventDefault();
       back();
     }
-    // Enter and Space are the buttons' own activation.
   }
 
   $: if (el && anchor) place();
@@ -106,7 +102,6 @@
     const outside = (event: PointerEvent) => {
       if (el && !el.contains(event.target as Node)) onClose();
     };
-    // A field's scroll is the table's; the box would keep a stale position.
     const scrolled = (event: Event) => {
       const target = event.target as Node | null;
       if (target instanceof Element && target.closest(".process-table-region"))
@@ -143,8 +138,6 @@
       class:danger={item.danger}
       disabled={item.disabled}
       onclick={() => {
-        // A reveal can fail after the click: the menu then stays open, its
-        // item showing why.
         const run = item.run(process, ctx);
         if (run instanceof Promise)
           void run.then((keep) => keep !== false && onClose());

@@ -1,8 +1,3 @@
-//! Process monitoring functionality
-//!
-//! This module handles monitoring and managing system processes, including
-//! collecting process information and managing process lifecycle.
-
 use super::accounts::AccountNames;
 use super::io_rates::{IoRates, IoTotals};
 use super::{ProcessData, ProcessInfo, ProcessStaticInfo};
@@ -18,14 +13,12 @@ fn os_string_vec_to_string_vec(v: &[OsString]) -> Vec<String> {
         .collect::<Vec<_>>()
 }
 
-/// Monitors and manages system processes
 #[derive(Debug)]
 pub struct ProcessMonitor {
     /// Static details of the live processes, keyed by (pid, start time) so a
     /// reused pid never shows the old process's name or command. Entries for
     /// processes that are gone are dropped every collection.
     process_cache: HashMap<(u32, u64), ProcessStaticInfo>,
-    /// Previous I/O counters, for disk speed per process.
     io: IoRates,
     /// Owner names by SID, looked up once per owner.
     accounts: AccountNames,
@@ -34,7 +27,6 @@ pub struct ProcessMonitor {
 }
 
 impl ProcessMonitor {
-    /// Creates a new process monitor instance
     pub fn new() -> Self {
         Self {
             process_cache: HashMap::new(),
@@ -45,18 +37,7 @@ impl ProcessMonitor {
         }
     }
 
-    /// Collects information about all running processes
     ///
-    /// # Arguments
-    ///
-    /// * `sys` - System information provider
-    ///
-    /// # Returns
-    ///
-    /// A vector of process information, or an error string if collection failed
-    ///
-    /// Call right after refreshing `sys`. Disk speeds cover the time since the
-    /// previous call; a gap longer than `max_window` reports no speed.
     pub fn collect_processes(
         &mut self,
         sys: &sysinfo::System,
@@ -67,23 +48,12 @@ impl ProcessMonitor {
         Ok(self.build_process_info(processes_data, Instant::now(), max_window))
     }
 
-    /// Attempts to kill a process
-    ///
-    /// # Arguments
-    ///
-    /// * `sys` - System information provider
-    /// * `pid` - Process ID to kill
-    ///
-    /// # Returns
-    ///
-    /// Boolean indicating whether the process was successfully killed
     pub fn kill_process(sys: &sysinfo::System, pid: u32) -> bool {
         sys.process(sysinfo::Pid::from(pid as usize))
             .map(|process| process.kill())
             .unwrap_or(false)
     }
 
-    /// Gets the current system time in seconds since UNIX epoch
     fn get_current_time() -> Result<u64, String> {
         SystemTime::now()
             .duration_since(UNIX_EPOCH)
@@ -91,7 +61,6 @@ impl ProcessMonitor {
             .map_err(|e| format!("Failed to get system time: {}", e))
     }
 
-    /// Collects raw process data from the system
     fn collect_process_data(
         &mut self,
         sys: &sysinfo::System,
@@ -155,7 +124,6 @@ impl ProcessMonitor {
             .collect()
     }
 
-    /// Builds process information from raw process data
     fn build_process_info(
         &mut self,
         processes: Vec<ProcessData>,
@@ -210,8 +178,6 @@ impl ProcessMonitor {
                     cpu_usage: data.cpu_usage,
                     memory_usage: data.memory,
                     status: Self::format_status(data.status),
-                    // The account name once its background lookup is done;
-                    // the SID until then.
                     user: if cached.user == "-" {
                         cached.user.clone()
                     } else {
@@ -236,7 +202,6 @@ impl ProcessMonitor {
         infos
     }
 
-    /// Formats process status into a human-readable string
     pub fn format_status(status: ProcessStatus) -> String {
         match status {
             ProcessStatus::Run => "Running",
@@ -248,7 +213,6 @@ impl ProcessMonitor {
     }
 }
 
-/// Logical processors the CPU percentages are shared across.
 #[cfg(not(target_os = "windows"))]
 fn logical_processors(sys: &sysinfo::System) -> usize {
     match sys.cpus().len() {
@@ -340,7 +304,6 @@ mod tests {
     fn later_frames_keep_command_and_environment_without_copying() {
         let mut monitor = ProcessMonitor::new();
         let first = build(&mut monitor, vec![data(5, 1, "a", Some(&["a", "--b"]))]);
-        // Cached: the collector skips cmd/environ (None).
         let second = build(&mut monitor, vec![data(5, 1, "a", None)]);
         assert_eq!(second[0].command, "a --b");
         assert_eq!(&*second[0].environ, &["A=1".to_string(), "B=2".to_string()]);
@@ -362,7 +325,6 @@ mod tests {
         assert_eq!(later[0].command, "a -v");
     }
 
-    /// Tests creation of a new process monitor
     #[test]
     fn an_empty_reading_keeps_no_stale_process() {
         let mut monitor = ProcessMonitor::new();
@@ -398,7 +360,6 @@ mod tests {
             p
         };
         let gone = "S-1-5-21-1000000001-1000000002-1000000003-1999";
-        // The first refresh does not wait: it shows the SIDs.
         let started = Instant::now();
         let first = build(&mut monitor, vec![owned(1, "S-1-5-18"), owned(2, gone)]);
         assert!(started.elapsed() < Duration::from_millis(150));
@@ -406,8 +367,6 @@ mod tests {
             [first[0].user.as_str(), first[1].user.as_str()],
             ["S-1-5-18", gone]
         );
-        // Processes come and go; once the names are in, the same owners show
-        // them and are not looked up again.
         let until = Instant::now() + Duration::from_secs(5);
         let mut pid = 3;
         let later = loop {
@@ -457,7 +416,6 @@ mod tests {
         let p = |r, w| with_io(data(4, 1, "copy.exe", Some(&["copy.exe"])), r, w);
         let first = monitor.build_process_info(vec![p(50_000_000, 0)], t0, WINDOW);
         let json = serde_json::to_value(&first[0]).unwrap();
-        // A lifetime total is never shown as the current speed.
         assert!(json["disk_read"].is_null() && json["disk_write"].is_null());
         let busy = monitor.build_process_info(
             vec![p(50_000_000 + 6_000_000, 30_000)],
@@ -505,9 +463,7 @@ mod tests {
 
     #[test]
     fn cpu_is_a_share_of_the_whole_machine() {
-        // node at 115.8 % of one core on a 24-thread Intel hybrid CPU
         assert!((normalize_cpu(115.8, 24) - 4.825).abs() < 1e-4);
-        // every thread busy is 100 %, never more
         assert_eq!(normalize_cpu(2400.0, 24), 100.0);
         assert_eq!(normalize_cpu(3000.0, 24), 100.0);
         assert_eq!(normalize_cpu(50.0, 1), 50.0);
@@ -522,7 +478,6 @@ mod tests {
         assert!(monitor.process_cache.is_empty());
     }
 
-    /// Tests process collection functionality
     #[test]
     fn test_process_collection() {
         let mut monitor = ProcessMonitor::new();

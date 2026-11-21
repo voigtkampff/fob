@@ -162,7 +162,6 @@
     font-size: 12px;
     color: var(--red, #f87171);
   }
-  /* Buttons wrap instead of overflowing the narrow mini window. */
   .buttons {
     display: flex;
     flex-wrap: wrap;

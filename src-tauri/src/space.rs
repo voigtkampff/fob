@@ -1,18 +1,3 @@
-//! Fob: disk space map.
-//!
-//! On Windows NTFS, prefers the installed elevated helper, then direct MFT
-//! when the volume can be opened. Otherwise uses the read-only directory walk.
-//!
-//! A scan runs only when asked (`space_scan`), on its own thread at
-//! background CPU and I/O priority, so the UI and the sampler never wait on
-//! it. Junctions, symlinks and other directory reparse points are not
-//! followed (no loops, no double counting); unreadable folders are skipped
-//! and counted. Small items are folded into their folder's `other` total so
-//! the tree stays small enough to cache and to send to the page in one piece.
-//!
-//! Fob keeps no tree in memory: a finished scan is written to its cache file
-//! and dropped, and `space_result` hands the page that file's bytes as they
-//! are (a big C:\\ tree is ~90 MB as Rust nodes, ~25 MB as JSON).
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::fs;
@@ -22,11 +7,8 @@ use std::sync::{Arc, Mutex};
 use std::time::{Instant, SystemTime, UNIX_EPOCH};
 use tauri::{AppHandle, Manager};
 
-/// Items a folder keeps individually beyond those that are at least
-/// 1/KEEP_SHARE of it; the rest go into its `other` total.
 const KEEP_MAX: usize = 200;
 const KEEP_SHARE: u64 = 2000;
-/// Items smaller than this go into `other`.
 const KEEP_MIN_BYTES: u64 = 256 * 1024;
 
 fn is_zero(v: &u64) -> bool {
@@ -36,34 +18,26 @@ fn is_false(v: &bool) -> bool {
     !*v
 }
 
-/// A folder or file. Short field names keep the cache and the IPC payload small.
 #[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq)]
 pub struct Node {
     #[serde(rename = "n")]
     pub name: String,
-    /// Allocated bytes, this item and everything under it.
     #[serde(rename = "s")]
     pub size: u64,
-    /// Files under it (1 for a file).
     #[serde(rename = "f")]
     pub files: u64,
     #[serde(rename = "d", default, skip_serializing_if = "is_false")]
     pub dir: bool,
-    /// Kept items, largest first.
     #[serde(rename = "c", default, skip_serializing_if = "Vec::is_empty")]
     pub children: Vec<Node>,
-    /// Bytes of the items folded away (too small or too many).
     #[serde(rename = "o", default, skip_serializing_if = "is_zero")]
     pub other: u64,
-    /// How many items were folded away.
     #[serde(rename = "oc", default, skip_serializing_if = "is_zero")]
     pub other_count: u64,
-    /// The folder could not be read (access denied, or vanished).
     #[serde(rename = "x", default, skip_serializing_if = "is_false")]
     pub denied: bool,
 }
 
-/// Live counters of a running scan, shared with `space_status`.
 #[derive(Default)]
 pub struct Progress {
     pub files: AtomicU64,
@@ -71,16 +45,11 @@ pub struct Progress {
     pub skipped: AtomicU64,
     pub cancel: AtomicBool,
     pub current: Mutex<String>,
-    /// Folders listed, and time spent listing them and folding them, summed
-    /// over all threads.
     pub dirs: AtomicU64,
     pub list_ns: AtomicU64,
     pub fold_ns: AtomicU64,
 }
 
-/// Keeps the largest items of a folder and folds the rest into `other`:
-/// items under KEEP_MIN_BYTES, and past the first KEEP_MAX those under
-/// 1/KEEP_SHARE of the folder (so many big files are never hidden).
 pub(crate) fn fold(node: &mut Node, mut kids: Vec<Node>) {
     kids.sort_by(|a, b| b.size.cmp(&a.size).then_with(|| a.name.cmp(&b.name)));
     let total: u64 = kids.iter().map(|k| k.size).sum();
@@ -96,11 +65,9 @@ pub(crate) fn fold(node: &mut Node, mut kids: Vec<Node>) {
     node.children.shrink_to_fit();
 }
 
-/// One directory entry as listed (links already dropped).
 struct Entry {
     name: String,
     dir: bool,
-    /// Allocated bytes (files).
     size: u64,
 }
 
@@ -109,9 +76,7 @@ struct Walker<'a> {
     /// Allocation unit; file sizes round up to it (Windows).
     #[cfg_attr(not(windows), allow(dead_code))]
     cluster: u64,
-    /// Subfolders are walked on the current rayon pool (one per thread).
     parallel: bool,
-    /// The scanned volume; other file systems mounted inside are not entered.
     #[cfg(unix)]
     device: u64,
     /// Hard-linked files already counted (device, inode).
@@ -227,7 +192,6 @@ impl Walker<'_> {
         Ok(out)
     }
 
-    /// Bytes the file takes on disk.
     #[cfg(windows)]
     fn allocated(&self, folder: &Path, name: &str, attrs: u32, len: u64) -> u64 {
         // Compressed, sparse and cloud placeholder files: ask the file
@@ -245,12 +209,10 @@ impl Walker<'_> {
         }
     }
 
-    /// Walks one folder; `None` once the scan is cancelled.
     fn folder(&self, path: &Path, name: String) -> Option<Node> {
         if self.cancelled() {
             return None;
         }
-        // try_lock: threads never queue on a label only the UI reads.
         if let Ok(mut current) = self.progress.current.try_lock() {
             current.clear();
             current.push_str(&path.to_string_lossy());
@@ -291,7 +253,6 @@ impl Walker<'_> {
                 });
             }
         }
-        // Once per folder, not per file: the counters are shared by all threads.
         p.files.fetch_add(files, Ordering::Relaxed);
         p.bytes.fetch_add(bytes, Ordering::Relaxed);
         let sub = |name: &String| self.folder(&path.join(name), name.clone());
@@ -305,8 +266,6 @@ impl Walker<'_> {
         let folding = Instant::now();
         node.size = kids.iter().map(|k| k.size).sum();
         node.files = kids.iter().map(|k| k.files).sum();
-        // fold sorts by size, then name: the result does not depend on the
-        // order folders finished in.
         fold(&mut node, kids);
         p.fold_ns
             .fetch_add(folding.elapsed().as_nanos() as u64, Ordering::Relaxed);
@@ -328,13 +287,10 @@ fn find_pattern(path: &Path) -> PathBuf {
     PathBuf::from(base).join("*")
 }
 
-/// Walks `root` on the calling thread; `None` if `progress.cancel` was set
-/// before it finished.
 pub fn walk(root: &Path, progress: &Progress) -> Option<Node> {
     walk_with(root, progress, false)
 }
 
-/// Walks `root`; with `parallel`, subfolders go to the current rayon pool.
 fn walk_with(root: &Path, progress: &Progress, parallel: bool) -> Option<Node> {
     let meta = fs::metadata(root).ok()?;
     let walker = Walker {
@@ -353,12 +309,10 @@ fn walk_with(root: &Path, progress: &Progress, parallel: bool) -> Option<Node> {
     walker.folder(root, root.to_string_lossy().into_owned())
 }
 
-/// What the volume is, for how many threads walk it.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum DriveKind {
     Ssd,
     Hdd,
-    /// Removable, network, or the seek-penalty query gave no answer.
     Unknown,
 }
 
@@ -475,8 +429,6 @@ pub fn scan_root(
     (tree, threads, "walk")
 }
 
-/// Walks `root` on a pool sized for its drive; every worker runs at
-/// background priority. Returns the tree and the thread count used.
 pub fn walk_drive(root: &Path, progress: &Progress, kind: DriveKind) -> (Option<Node>, usize) {
     let threads = std::env::var("WINPERF_SPACE_THREADS")
         .ok()
@@ -492,7 +444,7 @@ pub fn walk_drive(root: &Path, progress: &Progress, kind: DriveKind) -> (Option<
     let pool = rayon::ThreadPoolBuilder::new()
         .num_threads(threads)
         .thread_name(|i| format!("fob-space-{i}"))
-        .stack_size(16 << 20) // deep folder trees recurse
+        .stack_size(16 << 20)
         .start_handler(|_| background_priority())
         .build();
     match pool {
@@ -556,14 +508,11 @@ fn background_priority() {
     }
 }
 
-/// A finished scan, as shown and cached.
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct Scan {
     pub root: String,
-    /// Path separator for building full paths on the page.
     pub sep: String,
-    /// Unix seconds.
     pub scanned_at: u64,
     pub elapsed_ms: u64,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -573,7 +522,6 @@ pub struct Scan {
     pub tree: Node,
 }
 
-/// A drive the page offers.
 #[derive(Clone, Debug, Serialize, PartialEq)]
 pub struct Drive {
     pub root: String,
@@ -581,8 +529,6 @@ pub struct Drive {
     pub free: u64,
 }
 
-/// Fixed drives (Windows). Elsewhere (development) the folders listed in
-/// WINPERF_SPACE_ROOTS, separated by ':', or the home folder.
 pub fn drives() -> Vec<Drive> {
     #[cfg(windows)]
     {
@@ -615,7 +561,6 @@ pub fn drives() -> Vec<Drive> {
             .ok()
             .or_else(|| std::env::var("HOME").ok())
             .unwrap_or_else(|| "/".into());
-        // Size of the file system each root sits on (longest mount prefix).
         let disks = sysinfo::Disks::new_with_refreshed_list();
         roots
             .split(':')
@@ -642,7 +587,6 @@ fn cache_file(dir: &Path, root: &str) -> PathBuf {
         .collect();
     dir.join(format!("space-{}.json", key.trim_matches('_')))
 }
-/// Streams the scan to its cache file (no second copy in memory).
 pub fn write_cache(dir: &Path, scan: &Scan) -> std::io::Result<()> {
     use std::io::Write;
     fs::create_dir_all(dir)?;
@@ -654,7 +598,6 @@ pub fn write_cache(dir: &Path, scan: &Scan) -> std::io::Result<()> {
     drop(out);
     fs::rename(temp, path)
 }
-/// The cached scan of `root` as JSON bytes, checked but not turned into nodes.
 pub fn read_cache(dir: &Path, root: &str) -> Option<Vec<u8>> {
     #[derive(Deserialize)]
     struct Head {
@@ -664,7 +607,6 @@ pub fn read_cache(dir: &Path, root: &str) -> Option<Vec<u8>> {
     let head: Head = serde_json::from_slice(&bytes).ok()?;
     (head.root == root).then_some(bytes)
 }
-/// Gives freed scan memory back to the system.
 fn release_memory() {
     #[cfg(windows)]
     unsafe {
@@ -690,11 +632,8 @@ struct Running {
 #[derive(Default)]
 pub struct SpaceState {
     running: Mutex<Option<Running>>,
-    /// Scans whose cache file could not be written, as JSON (rare).
     unsaved: Mutex<HashMap<String, Arc<Vec<u8>>>>,
-    /// The last scan that ended: (root, stopped before it finished).
     ended: Mutex<Option<(String, bool)>>,
-    /// The last "other" listing (folder path, items), for its later pages.
     folded: Mutex<Option<(String, Arc<Vec<Folded>>)>>,
 }
 
@@ -707,7 +646,6 @@ pub struct Status {
     pub skipped: u64,
     pub current: String,
     pub elapsed_ms: u64,
-    /// The last scan that ended and whether it was stopped.
     pub ended: Option<(String, bool)>,
 }
 
@@ -715,7 +653,6 @@ fn cache_dir(app: &AppHandle) -> Result<PathBuf, String> {
     app.path().app_data_dir().map_err(|e| e.to_string())
 }
 
-/// Starts a scan of one of `drives()` (stopping any scan already running).
 pub fn start(app: AppHandle, root: String) -> Result<(), String> {
     if !drives().iter().any(|d| d.root == root) {
         return Err("Not a drive Fob can scan".into());
@@ -736,7 +673,7 @@ pub fn start(app: AppHandle, root: String) -> Result<(), String> {
     let dir = cache_dir(&app)?;
     std::thread::Builder::new()
         .name("fob-space".into())
-        .stack_size(16 << 20) // deep folder trees recurse
+        .stack_size(16 << 20)
         .spawn(move || {
             background_priority();
             let started = Instant::now();
@@ -835,8 +772,6 @@ pub async fn space_status(app: AppHandle) -> Status {
     };
     status
 }
-/// The last scan of `root` as `Scan` JSON bytes (empty: none yet), read
-/// from its cache file each time so no tree stays in Fob's memory.
 #[tauri::command]
 pub async fn space_result(app: AppHandle, root: String) -> Result<tauri::ipc::Response, String> {
     let unsaved = app
@@ -852,7 +787,6 @@ pub async fn space_result(app: AppHandle, root: String) -> Result<tauri::ipc::Re
     };
     Ok(tauri::ipc::Response::new(bytes))
 }
-/// An item of a folder's "other" block, as the page lists it.
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 pub struct Folded {
     pub n: String,
@@ -860,8 +794,6 @@ pub struct Folded {
     pub f: u64,
     #[serde(default)]
     pub d: bool,
-    /// In the scan's tree (a folder here can open in the map); false: the
-    /// scan folded it away and its size was read now from the disk.
     #[serde(default)]
     pub t: bool,
 }
@@ -872,9 +804,6 @@ pub struct FoldedPage {
     pub items: Vec<Folded>,
 }
 
-/// Everything in `path` except the `shown` map blocks: the `known` items
-/// (merged on the page, sizes from the scan) as they are, the rest (folded
-/// by the scan, names not cached) listed and measured now. Largest first.
 pub fn folded_items(path: &Path, shown: &[String], known: Vec<Folded>) -> Vec<Folded> {
     use std::collections::{HashMap, HashSet};
     let shown: HashSet<&str> = shown.iter().map(String::as_str).collect();
@@ -924,14 +853,11 @@ pub fn folded_items(path: &Path, shown: &[String], known: Vec<Folded>) -> Vec<Fo
             });
         }
     }
-    // Known items that vanished since the scan are still shown as scanned.
     out.extend(known.into_values().map(|k| Folded { t: true, ..k }));
     out.sort_by(|a, b| b.s.cmp(&a.s).then_with(|| a.n.cmp(&b.n)));
     out
 }
 
-/// One page of `folded_items`. Offset 0 lists the folder again; later pages
-/// come from that listing (one folder at a time is kept).
 #[tauri::command]
 pub async fn space_folded(
     app: AppHandle,
@@ -976,7 +902,6 @@ pub async fn space_folded(
     })
 }
 
-/// Why Open in File Explorer did not happen; the page words it.
 #[derive(Clone, Debug, Serialize, PartialEq, Eq)]
 #[serde(tag = "kind", rename_all = "camelCase")]
 pub enum RevealError {
@@ -984,17 +909,14 @@ pub enum RevealError {
     Gone,
     /// Windows refused access (error 5).
     Denied,
-    /// Any other failure checking the item; `code` is the OS error, if any.
     Failed {
         #[serde(skip_serializing_if = "Option::is_none")]
         code: Option<i32>,
     },
-    /// The item exists but File Explorer did not start.
     Explorer,
 }
 
 impl RevealError {
-    /// The answer for a failed check of an item listed by the scan.
     #[allow(clippy::let_and_return)]
     fn from_io(e: &std::io::Error) -> Self {
         #[cfg(windows)]
@@ -1180,7 +1102,6 @@ mod tests {
             files: 1,
             ..Node::default()
         });
-        // One huge item: the others are now under 1/KEEP_SHARE of the folder.
         kids.push(Node {
             name: "huge".into(),
             size: 10 << 30,
@@ -1208,8 +1129,6 @@ mod tests {
         file(&root.join("big/inner/a.bin"), 600_000);
         file(&root.join("big/b.bin"), 400_000);
         file(&root.join("small.txt"), 100);
-        // A loop back to the root, a link to the big folder, a file link,
-        // and a hard link (counted once).
         std::os::unix::fs::symlink(&root, root.join("big/loop")).unwrap();
         std::os::unix::fs::symlink(root.join("big"), root.join("big-again")).unwrap();
         std::os::unix::fs::symlink(root.join("big/b.bin"), root.join("b-link")).unwrap();
@@ -1225,7 +1144,6 @@ mod tests {
             .iter()
             .all(|c| c.name != "big-again" && c.name != "b-link"));
         assert!(big.children.iter().all(|c| c.name != "loop"));
-        // a.bin, b.bin, small.txt and the hard link entry (0 extra bytes).
         assert_eq!(tree.files, 4);
         assert_eq!(progress.files.load(Ordering::Relaxed), 4);
         // Which of the two hard links carries the bytes depends on listing
@@ -1279,7 +1197,6 @@ mod tests {
         stopped.cancel.store(true, Ordering::Relaxed);
         assert!(walk(&root, &stopped).is_none());
         assert_eq!(stopped.files.load(Ordering::Relaxed), 0);
-        // Stopped part-way: from another thread once files are counted.
         let progress = Arc::new(Progress::default());
         let p = progress.clone();
         let r = root.clone();
@@ -1292,7 +1209,6 @@ mod tests {
         let counted = progress.files.load(Ordering::Relaxed);
         assert!(result.is_none(), "the walk ignored the stop");
         assert!(counted < 4000, "stopped only after {counted} files");
-        // Unstopped, the same tree is complete.
         let full = Progress::default();
         assert_eq!(walk(&root, &full).unwrap().files, 4000);
         let _ = fs::remove_dir_all(root);
@@ -1308,8 +1224,6 @@ mod tests {
             seed ^= seed << 17;
             seed % n
         };
-        // ~60 folders up to 4 deep, 0-30 files each, sizes 0..2 MB, some
-        // folders far over KEEP_MAX so folding is exercised.
         let mut dirs = vec![root.clone()];
         for i in 0..60 {
             let parent = dirs[rnd(dirs.len() as u64) as usize].clone();
@@ -1416,7 +1330,6 @@ mod tests {
 
     #[test]
     fn the_scan_thread_runs_at_background_priority() {
-        // Windows checkouts can turn line endings into CRLF.
         let src = include_str!("space.rs").replace("\r\n", "\n");
         let start = src.find("pub fn start(").unwrap();
         let body = &src[start..src[start..].find("\n}\n").unwrap() + start];
@@ -1428,8 +1341,6 @@ mod tests {
     }
 }
 
-/// Scan speed on a real folder: WINPERF_SPACE_BENCH=/path cargo test --release
-/// space_speed -- --ignored --nocapture
 #[cfg(test)]
 #[test]
 #[ignore]
@@ -1456,8 +1367,6 @@ fn space_speed() {
     );
 }
 
-/// Memory of a scan: WINPERF_SPACE_BENCH=/path cargo test --release
-/// space_memory -- --ignored --nocapture
 #[cfg(all(test, target_os = "linux"))]
 #[test]
 #[ignore]
@@ -1486,8 +1395,6 @@ fn space_memory() {
     println!("start: {}", rss());
     let progress = Progress::default();
     let tree = if root == "synthetic" {
-        // A C:\-like tree built through `fold` without touching the disk:
-        // 1.69M files in ~340k folders, sizes log-normal around 8 KB.
         let mut seed = 0x2545_f491_4f6c_dd1du64;
         let mut rnd = move || {
             seed ^= seed << 13;
@@ -1558,7 +1465,6 @@ fn space_memory() {
         std::mem::size_of::<Node>(),
         rss()
     );
-    // What `start` does with a finished tree.
     let dir = std::env::temp_dir().join(format!("fob-space-memory-{}", std::process::id()));
     let scan = Scan {
         root: root.clone(),

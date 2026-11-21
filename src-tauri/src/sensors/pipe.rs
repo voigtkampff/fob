@@ -8,7 +8,6 @@
 //! package sensor in W; GPU power comes from NVML, not from here.
 //! The line format is produced by sensors-helper/src/Wire.cs; both sides are
 //! tested against tests/fixtures/sensors-pipe.jsonl.
-// Most of this is only reachable on Windows.
 #![cfg_attr(not(target_os = "windows"), allow(dead_code))]
 use super::{Sensor, SensorKind, SensorSource, ThrottleReport};
 use serde_json::Value;
@@ -18,7 +17,6 @@ use std::time::{SystemTime, UNIX_EPOCH};
 pub const PIPE_PATH: &str = r"\\.\pipe\fob-sensors";
 pub const SOURCE: &str = "Fob sensor helper";
 
-/// Unix ms of the last line received from the helper (0 = never).
 static LAST_LINE: AtomicU64 = AtomicU64::new(0);
 
 pub fn now_ms() -> u64 {
@@ -28,7 +26,6 @@ pub fn now_ms() -> u64 {
         .unwrap_or_default()
 }
 
-/// Whether the helper answered within the last few seconds.
 pub fn helper_live() -> bool {
     now_ms().saturating_sub(LAST_LINE.load(Ordering::Relaxed)) < 5_000
 }
@@ -59,7 +56,6 @@ pub struct NetSample {
     pub procs: Vec<NetProc>,
 }
 
-/// What the UI gets: per-process rates in bytes per second.
 #[derive(Clone, Debug, PartialEq, serde::Serialize)]
 pub struct NetApp {
     pub pid: u32,
@@ -68,8 +64,6 @@ pub struct NetApp {
     pub tx: f64,
 }
 
-/// Bytes per interval -> bytes/s, named with winperf's own process names
-/// (same as the process table) and the helper's guess as fallback.
 pub fn app_rates(sample: &NetSample, name_of: impl Fn(u32) -> Option<String>) -> Vec<NetApp> {
     let per_second = 1000.0 / sample.ms as f64;
     sample
@@ -86,14 +80,12 @@ pub fn app_rates(sample: &NetSample, name_of: impl Fn(u32) -> Option<String>) ->
         .collect()
 }
 
-/// One helper line.
 #[derive(Clone, Debug, PartialEq)]
 pub struct HelperLine {
     pub ts: u64,
     pub sensors: Vec<Sensor>,
     /// Present while the helper's ETW network session runs.
     pub net: Option<NetSample>,
-    /// MSR throttle state; None from helpers older than 0.8.5.
     pub throttle: Option<ThrottleReport>,
 }
 
@@ -133,8 +125,6 @@ fn parse_throttle(value: &Value) -> Option<ThrottleReport> {
     })
 }
 
-/// One pipe line. Sensors without a finite value or of another type are
-/// dropped; anything that isn't a helper line is `None`.
 pub fn parse_line(line: &str) -> Option<HelperLine> {
     let root: Value = serde_json::from_str(line.trim()).ok()?;
     let ts = root["ts"].as_u64()?;
@@ -174,8 +164,6 @@ mod client {
 
     type Latest = Arc<Mutex<Option<(u64, HelperLine)>>>;
 
-    /// Reads the pipe on its own thread so a slow or absent helper never
-    /// blocks sampling; `read` hands out the newest line if it is fresh.
     #[derive(Debug, Default)]
     pub struct HelperPipe {
         latest: Latest,
@@ -184,8 +172,6 @@ mod client {
 
     fn pump(latest: Latest) {
         let mut last_kick = 0u64;
-        // Back off: 1 min, 2, 4, ... up to 30 min while the helper stays away;
-        // reset once it connects. Normally the logon trigger starts it.
         let mut wait = 60_000u64;
         loop {
             match std::fs::OpenOptions::new().read(true).open(PIPE_PATH) {
@@ -250,9 +236,6 @@ mod client {
     }
 }
 
-/// Debug builds only: replay a pipe fixture (`WINPERF_FAKE_SENSORS=<file.jsonl>`)
-/// through the same parser, one line per read. Used for Linux screenshots; it
-/// does not exist in release builds.
 #[cfg(debug_assertions)]
 #[derive(Debug)]
 pub struct FakeReplay {
@@ -306,7 +289,6 @@ mod tests {
             ts, sensors, net, ..
         } = parse_line(lines[0]).unwrap();
         assert_eq!(ts, 1_793_612_400_000);
-        // 21 written, Load is never written; null/NaN/Infinity values dropped.
         assert_eq!(sensors.len(), 18);
         let package = sensors.iter().find(|s| s.name == "CPU Package").unwrap();
         assert_eq!(package.hardware, "Example Hybrid CPU");
@@ -319,14 +301,13 @@ mod tests {
             .iter()
             .filter(|s| s.kind == SensorKind::Fan)
             .collect();
-        assert_eq!(fans.len(), 4); // Fan #1, #2, #3 (0 RPM) and GPU Fan 1; Fan #7 was NaN
+        assert_eq!(fans.len(), 4);
         assert!(sensors.iter().all(|s| s.source == SOURCE));
         let duty = sensors
             .iter()
             .find(|s| s.kind == SensorKind::Control)
             .unwrap();
         assert_eq!(duty.value, 42.35);
-        // CPU voltage: the CPU's own channels and the board's VCore rail only.
         let volts: Vec<_> = sensors
             .iter()
             .filter(|s| s.kind == SensorKind::Voltage)
@@ -365,7 +346,6 @@ mod tests {
             json["distanceToTjMax"], 20,
             "the UI reads distanceToTjMax, not distanceToTjmax"
         );
-        // An old helper has no throttle field at all.
         assert_eq!(
             parse_line(r#"{"ts":1,"sensors":[]}"#).unwrap().throttle,
             None
@@ -424,12 +404,10 @@ mod tests {
                {"hw":"A","id":"x","name":"V","type":"Voltage","value":1.2}]}"#,
         )
         .unwrap();
-        // Parsing keeps what the helper sent; the CPU-only voltage rule is the
-        // helper's and the hub's (sensors::is_cpu_voltage).
         assert_eq!(s.len(), 2);
         assert_eq!((s[0].name.as_str(), s[0].id.as_str()), ("T", ""));
         assert_eq!((s[1].kind, s[1].value), (SensorKind::Voltage, 1.2));
-        assert!(net.is_none()); // a helper without ETW sends no "net"
+        assert!(net.is_none());
         let bad = parse_line(
             r#"{"ts":1,"sensors":[],"net":{"ms":500,"procs":[{"pid":-1},{"pid":7,"rx":10}]}}"#,
         )

@@ -1,7 +1,3 @@
-/** Process row context menu: the items, where the box lands, and which row a
- * pointer target belongs to. Kept free of Svelte so `node --test` can run it
- * directly; the icon names are looked up by the component. */
-
 /** @typedef {import('../types').Process} Process */
 
 /** @typedef {{
@@ -16,8 +12,6 @@
  * }} ProcMenuItem */
 
 /**
- * Where the executable lookup for the row stands: the reason the reveal item
- * is greyed out when it is not `ready`.
  * @typedef {{
  *   kind: "checking" | "ready" | "gone" | "unreadable" | "failed",
  * }} ProcMenuLocation
@@ -45,9 +39,7 @@
 /** @param {unknown} value */
 const present = (value) => value != null && value !== "";
 
-/** Why the reveal item cannot be used, as an i18n key the component resolves.
- * `checking` is the fallback for a state this build does not know, so a greyed
- * reveal always says something.
+/**
  * @type {Record<string, string>}
  */
 const locationHints = {
@@ -58,8 +50,6 @@ const locationHints = {
 };
 
 /**
- * The six row actions, in display order. An action whose data is missing is
- * marked disabled instead of dropped, so the menu keeps a stable shape.
  * @param {Process | null | undefined} process
  * @param {{pinned?: boolean, location?: ProcMenuLocation}} [opts] `location`
  * defaults to `checking`, so an unresolved lookup never enables the reveal.
@@ -132,9 +122,6 @@ export function procMenuItems(process, opts = {}) {
 }
 
 /**
- * What a lookup's reply does to the open menu: the path once it is known, or
- * the reason the reveal stays greyed out. A reply this build does not know
- * reads as unreadable instead of enabling the item on a guess.
  * @param {ProcLocationReply | null | undefined} reply
  * @returns {{location: ProcMenuLocation, path: string}}
  */
@@ -148,8 +135,6 @@ export function locateOutcome(reply) {
 }
 
 /**
- * Whether a lookup's reply arrived too late: its menu was closed or replaced by
- * another row's, so the answer must not be written back.
  * @param {number} requestId the ticket the lookup was issued with
  * @param {number} current the ticket of the menu that is open now
  * @returns {boolean}
@@ -159,8 +144,6 @@ export function staleResponse(requestId, current) {
 }
 
 /**
- * The reveal after the click. No path never asks Explorer, and a refusal keeps
- * the menu open (`keepOpen`) so its item can say why instead of vanishing.
  * @param {{path?: string} | null | undefined} menu
  * @param {(path: string) => Promise<unknown>} reveal
  * @returns {Promise<{keepOpen: boolean, location?: ProcMenuLocation}>}
@@ -177,8 +160,6 @@ export async function revealLocation(menu, reveal) {
 }
 
 /**
- * Place a menu box so it opens down-right of the pointer, flips to stay inside
- * the viewport on overflow, and never leaves it. Pure: sizes are arguments.
  * @param {{x: number, y: number}} anchor
  * @param {{width: number, height: number}} size
  * @param {{width: number, height: number}} viewport
@@ -201,7 +182,6 @@ export function menuPlacement(anchor, size, viewport) {
 }
 
 /**
- * The process row a markup target sits in, for `closest` on any node kind.
  * @param {EventTarget | null | undefined} target
  * @returns {Element | null}
  */

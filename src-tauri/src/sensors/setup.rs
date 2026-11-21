@@ -13,7 +13,6 @@
 //!
 //! Because the task points at the Program Files copy, moving winperf.exe does
 //! not break it; a changed bundled helper shows up as `update_available`.
-// Most of this is only reachable on Windows.
 #![cfg_attr(not(target_os = "windows"), allow(dead_code))]
 use serde::Serialize;
 use sha2::{Digest, Sha256};
@@ -34,31 +33,21 @@ pub enum TaskState {
     #[default]
     Missing,
     Ok,
-    /// The task runs something other than the installed helper.
     Mismatch,
-    /// Couldn't query (e.g. access denied).
     Unknown,
 }
 
 #[derive(Serialize, Clone, Debug, Default, PartialEq)]
 pub struct SetupStatus {
-    /// Windows build that carries a helper manifest.
     pub supported: bool,
-    /// sensors\ and PawnIO\ folders are next to fob.exe and match the
-    /// manifest embedded in this exe.
     pub bundled: bool,
-    /// When `bundled` is false: the first missing file or hash mismatch, so
-    /// the UI can name it instead of only saying "files are missing".
     pub bundle_error: Option<String>,
     pub pawnio_installed: bool,
     /// Helper copied to %ProgramFiles%\Fob\sensors.
     pub installed: bool,
     pub task: TaskState,
-    /// The bundled helper differs from the installed copy.
     pub update_available: bool,
-    /// The helper answered on the pipe within the last seconds.
     pub running: bool,
-    /// Debug-only simulated status (screenshots).
     pub fake: bool,
     pub installed_version: Option<String>,
     pub bundled_version: Option<String>,
@@ -124,8 +113,6 @@ pub fn sha256_file(path: &Path) -> std::io::Result<String> {
         .collect())
 }
 
-/// Check every manifest entry under `prefix` (e.g. "sensors/") inside `root`,
-/// where `root` holds the files with `prefix` stripped.
 pub fn verify(root: &Path, manifest: &str, prefix: &str) -> Result<usize, String> {
     let entries: Vec<_> = manifest_entries(manifest)
         .into_iter()
@@ -225,7 +212,6 @@ pub fn task_xml(user: &str, command: &Path) -> String {
     )
 }
 
-/// Exit codes of the elevated `--sensors-setup` / `--sensors-remove` run.
 pub fn exit_message(code: i32) -> String {
     match code {
         0 => "Done.".into(),
@@ -245,7 +231,6 @@ fn exe_dir() -> PathBuf {
         .unwrap_or_default()
 }
 
-/// sensors\ next to winperf.exe.
 pub fn bundled_dir() -> PathBuf {
     exe_dir().join("sensors")
 }
@@ -450,7 +435,6 @@ mod win {
         }
     }
 
-    /// `winperf.exe --sensors-setup|--sensors-remove`: the elevated half.
     pub fn handle_cli() -> Option<i32> {
         let arg = std::env::args().nth(1)?;
         match arg.as_str() {
@@ -541,7 +525,7 @@ mod win {
             std::thread::sleep(std::time::Duration::from_secs(1));
         }
         if let Some(base) = target.parent() {
-            let _ = std::fs::remove_dir(base); // only if empty
+            let _ = std::fs::remove_dir(base);
         }
         let gone = query_task() == Err(true);
         if deleted.is_ok() || gone {

@@ -1,14 +1,10 @@
 <script lang="ts">
-  // Fob: Settings → mini window hotkey. Click the field, press a combo; Fob
-  // registers it (RegisterHotKey on Windows) and only then saves it.
   import { onMount } from "svelte";
   import { invoke } from "@tauri-apps/api/core";
   import { Button } from "$lib/components/ui/button/index.js";
   import { Keyboard, X } from "@lucide/svelte";
   import { fromKeydown, validate } from "$lib/utils/hotkey.js";
   import { t } from "$lib/i18n";
-  /** Which hotkey it records (hotkey.rs Target): the mini window or the
-   * status bar. */
   let {
     target = "mini",
     id = "mini-hotkey",
@@ -18,19 +14,16 @@
     target?: "mini" | "overlay" | "main";
     id?: string;
     describedby?: string;
-    /** Accessible name; the mini window's by default. */
     label?: string;
   } = $props();
   let combo = $state("");
   let recording = $state(false);
   let held = $state("");
-  // What went wrong, kept as a code so the text follows the UI language.
   let fault = $state<{ code: string; value?: string; launch?: boolean } | null>(
     null,
   );
   let busy = $state(false);
   let field = $state<HTMLButtonElement | null>(null);
-  // Literal keys so the i18n check can see every one.
   const message = (code: string, value = "") =>
     ({
       taken: $t("hotkey.taken", { v: value }),
@@ -53,8 +46,6 @@
         fault = { code: status.error, value: status.failed, launch: true };
     });
   });
-  // `resume`: give the current combo back now (not when a new one is about
-  // to be set; that resumes after set_hotkey has answered).
   function record(on: boolean, resume = true) {
     if (recording === on) return;
     recording = on;
@@ -68,7 +59,6 @@
       combo = await invoke<string>("set_hotkey", { target, combo: next });
       fault = null;
     } catch (e) {
-      // The previous combo stays registered and saved.
       fault = { code: String(e), value: next };
     } finally {
       busy = false;
@@ -103,9 +93,6 @@
   }
 </script>
 
-<!-- One fixed width for the whole field: box (w-44), gap, clear slot. The
-  error wraps inside it, under the box, so a long message can't widen the
-  column and push the box left of the other rows -->
 <div class="w-[13.5rem]">
   <div class="flex items-center gap-2">
     <button
@@ -134,8 +121,7 @@
         title={$t("hotkey.clear")}
         disabled={busy}
         onclick={() => void apply("")}><X /></Button
-      >{:else}<!-- Same slot as the clear button, so every field has one width
-      and the boxes line up whether or not a combo is set -->
+      >{:else}
       <span class="size-8 shrink-0" aria-hidden="true"></span>{/if}
   </div>
   {#if error}<p

@@ -76,12 +76,10 @@ fn ours() -> std::sync::MutexGuard<'static, Owned> {
     static OWNED: std::sync::Mutex<Owned> = std::sync::Mutex::new(Owned(Vec::new()));
     OWNED.lock().unwrap_or_else(|e| e.into_inner())
 }
-/// Icons this module created: (window, ICON_BIG/SMALL, HICON).
 #[cfg(target_os = "windows")]
 struct Owned(Vec<(isize, u32, isize)>);
 #[cfg(target_os = "windows")]
 impl Owned {
-    /// Was `icon` (the one just replaced on `hwnd`) created here?
     fn replace(&mut self, hwnd: isize, kind: u32, icon: isize) -> bool {
         let before = self.0.len();
         self.0.retain(|e| *e != (hwnd, kind, icon));

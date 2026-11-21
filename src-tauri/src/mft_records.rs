@@ -1,4 +1,3 @@
-//! Shared read-only NTFS records for direct and elevated scans.
 #![cfg_attr(not(windows), allow(dead_code))]
 
 /// One name of a file or folder, as the MFT lists it.
@@ -15,7 +14,6 @@ pub struct MftLink {
     pub size: u64,
 }
 
-/// Round a logical size up to whole clusters (walk does the same for ordinary files).
 pub fn allocated(logical: u64, cluster: u64) -> u64 {
     if cluster <= 1 {
         return logical;
@@ -60,12 +58,9 @@ pub fn read_volume(
     let device = volume_path(root).ok_or_else(|| std::io::Error::other("root"))?;
     let volume = match Volume::new(&device) {
         Ok(v) => v,
-        Err(e) => return Err(std::io::Error::other(e.to_string())), // AccessDenied without admin, or not a volume
+        Err(e) => return Err(std::io::Error::other(e.to_string())),
     };
-    let cluster = {
-        // Use the same cluster geometry as the directory walk.
-        cluster_size(root).max(1)
-    };
+    let cluster = { cluster_size(root).max(1) };
     let mut scan = match MftScan::new(volume) {
         Ok(s) => s,
         Err(e) => return Err(std::io::Error::other(e.to_string())),
@@ -81,8 +76,6 @@ pub fn read_volume(
         };
         for file in chunk.files() {
             if file.is_directory() {
-                // Directory reparse points (junctions, mount points): the walk
-                // skips them; children live under the real target on this volume.
                 let reparse = file
                     .standard_information()
                     .map(|s| s.file_attributes() & 0x400 != 0)

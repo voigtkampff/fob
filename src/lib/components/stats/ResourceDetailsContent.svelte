@@ -1,6 +1,4 @@
 <script lang="ts">
-  // Fob: what each side panel shows, all laid out by DetailLayout (same
-  // order, spacing and card style for every card of the stats row).
   import { onMount } from "svelte";
   import { Checkbox } from "$lib/components/ui/checkbox/index.js";
   import { Label } from "$lib/components/ui/label/index.js";
@@ -66,7 +64,6 @@
     history: ResourceSample[];
     isFrozen: boolean;
     unavailable: boolean;
-    /** [Unix seconds, kind] of the last power-on (Extra.started). */
     started?: [number, string] | null;
     gpus?: GpuDevice[];
     gpuId?: string;
@@ -75,7 +72,6 @@
     throttle?: ThrottleReport | null;
     sources?: string[];
     onSpace?: () => void;
-    /** Opens the full Disk detail (the storage panel's health link). */
     onDiskHealth?: () => void;
   } = $props();
   const details = $derived(stats.details);
@@ -89,7 +85,6 @@
     value == null ? na : formatBytes(value);
   const share = (part: number, total: number) =>
     total > 0 ? Math.min(100, Math.max(0, (part / total) * 100)) : 0;
-  /** "Yes (12%)" / "No" for one MSR-derived throttle signal. */
   function throttleText(on: boolean, percent: number, notThermal = false) {
     if (!on) return $t("throttle.no");
     const label = notThermal
@@ -122,32 +117,26 @@
     ];
   });
 
-  // CPU
   const cpu = $derived(
     stats.cpu_usage.length
       ? stats.cpu_usage.reduce((a, b) => a + b, 0) / stats.cpu_usage.length
       : null,
   );
   const coreGroups = $derived(cpuGroups(stats.cpu_topology, stats.cpu_usage));
-  // Memory
   const memory = $derived(
     stats.memory_total > 0
       ? Math.min(100, (stats.memory_used / stats.memory_total) * 100)
       : null,
   );
-  // System
   const since = $derived(
     uptimeInfo(stats.uptime, started?.[0], Date.now() / 1000),
   );
-  // GPU
   const device = $derived(
     gpus.find((g) => g.id === gpuId) ??
       gpus.find((g) => g.utilization !== null) ??
       gpus[0],
   );
-  // Storage
   const volumes = $derived(
-    // Pseudo mounts with no capacity (Linux) aren't drives.
     details.volumes
       .filter((v) => v.total > 0)
       .sort((a, b) => a.mount.localeCompare(b.mount)),
@@ -155,12 +144,9 @@
   const storageUsed = $derived(
     share(stats.disk_used_bytes, stats.disk_total_bytes),
   );
-  // Temp & fan
   const summary = $derived(sensorSummary(sensors));
   const fans = $derived(fanGroups(sensors));
   const sensorGroups = $derived(
-    // Voltages have their own panel on the CPU card; Temp & fan stays temps,
-    // fans and duty.
     groupByHardware(
       sensors.filter((s) => s.kind !== "fan" && s.kind !== "voltage"),
     ),
@@ -169,7 +155,6 @@
   const setup = $derived(setupState($sensorSetup));
   const head = $derived(summary.cpuTemp ?? summary.gpuTemp);
   const voltageGroups = $derived(groupByHardware(voltageReadings(sensors)));
-  // Literal keys so the i18n check can see every one.
   const helperText = $derived(
     {
       none: $t("rd.temp.helperNone"),
@@ -181,7 +166,6 @@
       "missing-files": $t("rd.temp.helperMissing"),
     }[setup] ?? setup,
   );
-  // Network: busiest first on open, then rows stay put while reading.
   let interfaceSearch = $state("");
   let includeUnused = $state(false);
   let interfaceOrder = $state<string[]>([]);
@@ -219,7 +203,6 @@
           a.name.localeCompare(b.name),
       ),
   );
-  // The identity line names the busiest real adapter (not the loopback).
   const busiest = $derived(
     [...details.interfaces]
       .filter((i) => !/^lo$|loopback/i.test(i.name))
