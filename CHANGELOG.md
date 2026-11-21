@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.8.20
+
+- CI 接上 clippy：`build-check.yml` 新增 `Rust lints` job（`windows-2022`，只跑 clippy，不跑测试，PR、push main、手动都能触发），本地用 `npm run lint:rust` 跑的是同一条命令 `cargo clippy -- -D warnings`。0.8.19 修的 15 条问题当初就是在 main 上静默存活了很久，只因为这条检查只在本机跑
+- 放在 Windows 上，没往已有的 ubuntu `Source checks` 里加：那 15 条里有几条是只在 Windows 上才出现的死代码，Linux 编译根本看不见。反过来加了也白加 —— 同一份 main 在 GitHub Actions 的 `ubuntu-22.04` runner 上跑（本 PR 首次 CI，run 44881247806 的 `Source checks`）报了 60 条：`disk_health/parse.rs` 33、`disk_health/mod.rs` 17、`gpu/mod.rs` 3、`autostart.rs` 3、`monitoring/cpu_clock.rs` 2、`space.rs` 1、`monitoring/accounts.rs` 1，全部是只被 `cfg(windows)` 调用的函数、常量、枚举变体被判 `never used`，另加一条 `window-vibrancy` 未使用依赖的 warning。这些不是缺陷，是 Windows-only 应用保留 Linux 可编译外壳的结果，要清掉得把几十个条目改成 `cfg(windows)` 或删 Linux 分支，属于另一个 PR。本机没有 Linux 环境（WSL 没装发行版、没有 Docker），所以这个数是 CI 日志里的，不是本机实测
+- `Source checks` job 这次一行没改：`cargo fmt --check` 本来就在 `format:check` 里，格式早有 CI 盖住；clippy 是 `-D warnings`，没有降级成 warn，也没有加 `#[allow]`，main 上零输出
+- clippy 步骤前面必须有 `npm run build`：`generate_context!` 在 check 阶段也会读 `frontendDist`（`../build`），缺这个目录直接 proc macro panic，本机实测过
+- 实测首次跑（缓存未命中）整轮 3 分 33 秒：`npm ci` 11 秒、`npm run build` 34 秒、clippy 1 分 59 秒。远低于 10 分钟，所以单独开 job，没有并进只在手动和发版时跑的 `windows-tests` —— 并进去等于 PR 上永远不跑这条检查
+- 版本号 0.8.19 → 0.8.20，除 CI、`package.json` 的 `lint:rust`、README 测试表一行和本 CHANGELOG 之外没有别的改动，应用代码一行没动
+- 已知遗留，本次不动：本地 rustc 是 1.100.0，CI 用 `dtolnay/rust-toolchain@stable`，两者会漂移，新 stable 带来的新 lint 可能让 CI 突然变红。没用 `rust-toolchain.toml` 钉版本，因为 `package` job 靠 cargo-xwin 交叉编译到 windows-msvc，钉住版本会一起改那条链
+- 内置传感器助手 unchanged at 0.8.6
+
 ## 0.8.19
 
 - 本机 `cargo clippy -- -D warnings` 的 15 条报错全部修掉，这条检查重新有意义（此前长期红着，等于没有检查）。一条 `#[allow]` 都没加，全部改代码本身

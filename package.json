@@ -1,6 +1,6 @@
 {
   "name": "neohtop",
-  "version": "0.8.19",
+  "version": "0.8.20",
   "description": "",
   "type": "module",
   "scripts": {
@@ -19,6 +19,7 @@
     "tauri": "tauri",
     "format": "prettier --write ./src ./scripts ./docs ./site .github/workflows && cargo fmt --manifest-path src-tauri/Cargo.toml",
     "format:check": "prettier --check ./src ./scripts ./docs ./site .github/workflows && cargo fmt --manifest-path src-tauri/Cargo.toml -- --check",
+    "lint:rust": "cargo clippy --manifest-path src-tauri/Cargo.toml -- -D warnings",
     "release:check": "node scripts/release.mjs check-version",
     "test:release": "node --test scripts/*.test.mjs && npm run test:metrics",
     "prepare": "husky install",
