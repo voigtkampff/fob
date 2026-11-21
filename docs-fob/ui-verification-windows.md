@@ -5,7 +5,7 @@
 ## 前提
 
 1. WebView2 必须以无障碍模式启动。脚本会为新进程设置 `WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS=--force-renderer-accessibility`。缺少该参数时，UIA 通常只能看到空白 Pane。
-2. 主窗口必须可见。脚本启动后最多等待 30 秒查找窗口；找不到时会发送一次主窗口热键 `Ctrl+Shift+\``，再等 10 秒。设置 `behavior.startInTray = true` 时应用可能先停在托盘，热键会尝试显示主窗口。
+2. 脚本用 `--show-all` 启动 Fob，因此主窗口与状态栏都会显示，不依赖 `behavior.startInTray` 或 `behavior.overlayEnabled`。`--show-all` 只对本次进程生效，不写入配置。
 
 ## 检查内容
 
@@ -17,16 +17,16 @@ UIA 能读取 WebView 中的 `Document`、`Group`、`Button`、`Text` 和 `DataI
 
 - Fob 使用单实例锁。默认检测到已有 `fob` 进程时拒绝运行，避免影响现有窗口状态。只有显式传入 `-Force` 并在确认提示输入 `KILL` 后才会结束现有实例；输出会列出被结束的 PID。
 - 页签虽暴露为 `Button`，但当前不支持 Invoke 模式。脚本按 Invoke、Toggle、SelectionItem 的顺序尝试，不会静默假定 Invoke 一定可用。
-- `behavior.startInTray = true` 会隐藏主窗口。脚本会尝试热键唤出，但若窗口仍不可见，检查会失败并说明原因。
+- 脚本使用 `--show-all` 覆盖本次进程的启动显示状态。如果主窗口或状态栏仍不可见，检查会失败并说明原因。
 
 ## 使用
 
 ```powershell
 npm run verify:ui
 # 或指定一个 Windows 可执行文件
-powershell -ExecutionPolicy Bypass -File scripts/verify-ui.ps1 -Exe .\dist\fob-v0.8.24\fob.exe
+powershell -ExecutionPolicy Bypass -File scripts/verify-ui.ps1 -Exe .\dist\fob-v0.8.25\fob.exe
 # 调试时保留脚本启动的进程
-powershell -ExecutionPolicy Bypass -File scripts/verify-ui.ps1 -Exe .\dist\fob-v0.8.24\fob.exe -KeepOpen
+powershell -ExecutionPolicy Bypass -File scripts/verify-ui.ps1 -Exe .\dist\fob-v0.8.25\fob.exe -KeepOpen
 ```
 
 不传 `-Exe` 时脚本会从 `dist/` 中选择最后修改的 `fob.exe`。退出码：0 为检查通过，1 为检查失败或因已有实例/未确认而停止，2 为参数或可执行文件错误，3 为非 Windows、缺少 UI Automation 或缺少 WebView2 Runtime。

@@ -155,10 +155,10 @@ pub struct Config {
     pub locked: bool,
 }
 impl Config {
-    pub fn from_prefs(config: &Value) -> Self {
+    pub fn from_prefs_with_override(config: &Value, show_all: bool) -> Self {
         let b = &config["behavior"];
         Self {
-            enabled: b["overlayEnabled"].as_bool().unwrap_or(false),
+            enabled: show_all || b["overlayEnabled"].as_bool().unwrap_or(false),
             dock: serde_json::from_value(b["overlayDock"].clone()).unwrap_or_default(),
             locked: b["overlayLocked"].as_bool().unwrap_or(false),
         }
@@ -384,7 +384,7 @@ pub fn sync(app: &AppHandle, prefs: &Value) {
     // finish before an on looks for the window. Callers run sync on their
     // own threads, never on the event loop that carries the destroy out.
     let _turn = SYNC.lock();
-    let config = Config::from_prefs(prefs);
+    let config = Config::from_prefs_with_override(prefs, app.state::<crate::state::ShowAll>().0);
     if let Ok(mut s) = app.state::<Shared>().lock() {
         s.config = config;
     }
@@ -788,11 +788,17 @@ mod tests {
 
     #[test]
     fn settings_read_with_safe_defaults() {
-        let c = Config::from_prefs(&serde_json::json!({ "behavior": {} }));
+        let empty = serde_json::json!({ "behavior": {} });
+        let c = Config::from_prefs_with_override(&empty, false);
         assert_eq!(c, Config::default());
         assert!(!c.enabled);
-        let c = Config::from_prefs(&serde_json::json!({ "behavior": {
-            "overlayEnabled": true, "overlayDock": "bottom", "overlayLocked": true } }));
+        assert!(!Config::from_prefs_with_override(&empty, false).enabled);
+        assert!(Config::from_prefs_with_override(&empty, true).enabled);
+        let c = Config::from_prefs_with_override(
+            &serde_json::json!({ "behavior": {
+            "overlayEnabled": true, "overlayDock": "bottom", "overlayLocked": true } }),
+            false,
+        );
         assert_eq!(
             c,
             Config {
@@ -802,9 +808,15 @@ mod tests {
             }
         );
         // 0.7.5 migration: the old unlock flag is ignored; everyone unlocked.
-        let c = Config::from_prefs(&serde_json::json!({ "behavior": { "overlayUnlocked": true } }));
+        let c = Config::from_prefs_with_override(
+            &serde_json::json!({ "behavior": { "overlayUnlocked": true } }),
+            false,
+        );
         assert!(!c.locked);
-        let c = Config::from_prefs(&serde_json::json!({ "behavior": { "overlayDock": "left" } }));
+        let c = Config::from_prefs_with_override(
+            &serde_json::json!({ "behavior": { "overlayDock": "left" } }),
+            false,
+        );
         assert_eq!(c.dock, Dock::Top);
     }
 }

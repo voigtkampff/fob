@@ -41,6 +41,8 @@ use tauri::Manager;
 /// - Failed to apply window effects
 /// - Failed to initialize the application state
 fn main() {
+    // Parse this process-only display override before building the Tauri app.
+    let show_all = std::env::args().any(|arg| arg == "--show-all");
     // winperf: elevated one-shot sensor setup/removal (relaunched via UAC).
     if let Some(code) = sensors::setup::handle_cli() {
         std::process::exit(code);
@@ -76,6 +78,7 @@ fn main() {
         .plugin(main_window::plugin())
         .plugin(hotkey::plugin())
         .manage(hotkey::HotkeyState::default())
+        .manage(state::ShowAll(show_all))
         .manage(AppState::new())
         .manage(space::SpaceState::default())
         .manage(disk_health::DiskHealthState::default())
