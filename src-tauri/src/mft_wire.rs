@@ -2,16 +2,21 @@
 #![cfg_attr(not(windows), allow(dead_code))]
 use crate::mft_records::MftLink;
 use std::collections::{HashMap, HashSet};
-#[cfg(test)]
-use std::io::Write;
-use std::io::{self, Read};
+use std::io::{self, Read, Write};
 
 pub const MAGIC: &[u8; 4] = b"FM01";
 pub const MAX_FRAME: usize = 4096;
 pub const MAX_LINKS: usize = 4_000_000;
 pub const MAX_NAMES: usize = 128 * 1024 * 1024;
+// The receive half of this file is winperf's: `sensors-helper/mft-worker`
+// includes the file with `#[path]` for `request`/`frame` only, so everything
+// from here down to `receive` is dead there. Allowed one item at a time, never
+// at module level, so a genuinely dead item still shows up.
+#[allow(dead_code)]
 pub const MAX_STREAM: usize = 768 * 1024 * 1024;
+#[allow(dead_code)]
 pub const IDLE_SECS: u64 = 15;
+#[allow(dead_code)]
 pub const TOTAL_SECS: u64 = 180;
 
 fn invalid() -> io::Error {
@@ -26,9 +31,13 @@ pub fn request(root: &str) -> Option<[u8; 8]> {
     Some([b'F', b'M', b'0', b'1', b[0], 0, 0, 0])
 }
 
-/// Writes one response frame. Test-only: the elevated worker is the only side
-/// that frames replies in production, so this exists to build fixtures.
-#[cfg(test)]
+/// Writes one response frame. The elevated worker is the only side that frames
+/// replies, so production callers of this live in `sensors-helper/mft-worker`:
+/// that crate includes this file with `#[path]` and calls `frame` on its
+/// production path. The tests here use it to build fixtures too.
+// Only this binary's view is caller-free: `winperf` never frames a reply, it
+// reads them. Do not gate `frame` behind `cfg(test)` — that breaks fob-mft.
+#[allow(dead_code)]
 pub fn frame(out: &mut impl Write, kind: u8, data: &[u8]) -> io::Result<()> {
     if data.len() > MAX_FRAME {
         return Err(invalid());
@@ -38,6 +47,7 @@ pub fn frame(out: &mut impl Write, kind: u8, data: &[u8]) -> io::Result<()> {
     out.write_all(data)
 }
 
+#[allow(dead_code)] // receive half: see MAX_STREAM
 #[derive(Default)]
 pub struct Links {
     links: Vec<MftLink>,
@@ -46,6 +56,7 @@ pub struct Links {
     dirs: HashMap<u64, u64>,
     bytes: u64,
 }
+#[allow(dead_code)] // receive half: see MAX_STREAM
 impl Links {
     pub fn push(&mut self, mut link: MftLink) -> io::Result<()> {
         self.names = self
@@ -111,6 +122,7 @@ impl Links {
     }
 }
 
+#[allow(dead_code)] // receive half: see MAX_STREAM
 pub fn receive(
     input: &mut impl Read,
     mut pulse: impl FnMut(usize) -> io::Result<()>,
