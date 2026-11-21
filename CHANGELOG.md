@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.8.24
+
+- 新增 Windows 界面自检脚本与文档：`npm run verify:ui` 使用 UI Automation 检查主窗口、页签、进程表和状态栏。
+- 版本号 0.8.23 → 0.8.24，六处同步（`package.json`、`package-lock.json` 两处、`tauri.conf.json`、`Cargo.toml`、`Cargo.lock`）。
+- 内置传感器助手 unchanged at 0.8.6
+
 ## 0.8.23
 
 - 仓库新增 agent 说明文件 `AGENTS.md`，记录项目交付与验证规则。
