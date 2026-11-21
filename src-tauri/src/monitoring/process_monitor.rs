@@ -37,7 +37,6 @@ impl ProcessMonitor {
         }
     }
 
-    ///
     pub fn collect_processes(
         &mut self,
         sys: &sysinfo::System,
