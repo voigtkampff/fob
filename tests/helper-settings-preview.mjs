@@ -104,7 +104,9 @@ try {
   assert.doesNotMatch(fixture, /import [^;]*app\.css/);
   const component = await (
     await get(
-      `/@fs${fileURLToPath(new URL("src/lib/components/SettingsWindow.svelte", root))}`,
+      `/@fs/${fileURLToPath(
+        new URL("src/lib/components/SettingsWindow.svelte", root),
+      ).replaceAll("\\", "/")}`,
     )
   ).text();
   assert.match(component, /flex h-screen flex-col bg-background/);
@@ -144,5 +146,10 @@ try {
     `helper Settings preview passes. ${links.length} production CSS files are byte-identical, ${utilities.length} utility declaration checks pass, real component and isolated panel return HTTP 200`,
   );
 } finally {
-  await server.close();
+  // vite 6 can hang in environment.close() waiting on a never-settling pending
+  // request (seen on Node 26); bound the shutdown so the test always exits.
+  await Promise.race([
+    server.close(),
+    new Promise((resolve) => setTimeout(resolve, 1500)),
+  ]);
 }
