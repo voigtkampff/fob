@@ -90,7 +90,7 @@ fn build_dir(
 pub fn try_scan(root: &std::path::Path, progress: &Progress) -> Option<Node> {
     #[cfg(windows)]
     {
-        return read_volume(root, progress);
+        read_volume(root, progress)
     }
     #[cfg(not(windows))]
     {

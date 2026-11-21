@@ -441,7 +441,7 @@ fn poll(app: AppHandle) {
                 }
                 set_interactive(&app, &w, !config.locked && ctrl_down());
                 tick += 1;
-                if tick % 40 == 0 {
+                if tick.is_multiple_of(40) {
                     // Every 2 s: above a topmost game again, and off every
                     // monitor (one was unplugged)? Re-place.
                     raise(&w);
@@ -780,7 +780,7 @@ mod tests {
         let after = &sync[sync.find("w.show();").unwrap() + "w.show();".len()..];
         assert!(after.trim_start().starts_with("raise(&w);"), "{after}");
         let poll = &src[src.find("fn poll(").unwrap()..src.find("fn ctrl_down(").unwrap()];
-        let every = &poll[poll.find("tick % 40 == 0").unwrap()..];
+        let every = &poll[poll.find("tick.is_multiple_of(40)").unwrap()..];
         assert!(every[..200].contains("raise(&w);"), "{every}");
         let raise = &src[src.find("fn raise(").unwrap()..src.find("fn place(").unwrap()];
         assert!(raise.contains("HWND_TOPMOST") && raise.contains("SWP_NOACTIVATE"));

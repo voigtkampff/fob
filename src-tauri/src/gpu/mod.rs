@@ -47,8 +47,14 @@ pub const SOURCE_NVML_SHARED_NAME: &str = "nvml-shared-name";
 pub const SOURCE_NVML_UNMATCHED: &str = "nvml-unmatched";
 pub const SOURCE_DXGI_PDH: &str = "dxgi-pdh";
 pub const SOURCE_DXGI: &str = "dxgi";
+/// Read by `linux.rs` on Linux, and by the tests everywhere (macOS reads the
+/// same file as `linux_fixtures`), so gating on `test` keeps them compiled
+/// without ever shipping an unused constant on Windows.
+#[cfg(any(target_os = "linux", target_os = "macos", test))]
 pub const SOURCE_LINUX_AMDGPU: &str = "linux-amdgpu";
+#[cfg(any(target_os = "linux", target_os = "macos", test))]
 pub const SOURCE_LINUX_DRM: &str = "linux-drm";
+#[cfg(any(target_os = "linux", target_os = "macos", test))]
 pub const SOURCE_MACOS_IOREG: &str = "macos-ioreg";
 pub const SOURCE_FAKE: &str = "fake";
 

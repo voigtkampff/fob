@@ -2,7 +2,9 @@
 #![cfg_attr(not(windows), allow(dead_code))]
 use crate::mft_records::MftLink;
 use std::collections::{HashMap, HashSet};
-use std::io::{self, Read, Write};
+#[cfg(test)]
+use std::io::Write;
+use std::io::{self, Read};
 
 pub const MAGIC: &[u8; 4] = b"FM01";
 pub const MAX_FRAME: usize = 4096;
@@ -24,6 +26,9 @@ pub fn request(root: &str) -> Option<[u8; 8]> {
     Some([b'F', b'M', b'0', b'1', b[0], 0, 0, 0])
 }
 
+/// Writes one response frame. Test-only: the elevated worker is the only side
+/// that frames replies in production, so this exists to build fixtures.
+#[cfg(test)]
 pub fn frame(out: &mut impl Write, kind: u8, data: &[u8]) -> io::Result<()> {
     if data.len() > MAX_FRAME {
         return Err(invalid());

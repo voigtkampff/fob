@@ -254,10 +254,13 @@ impl Target {
     }
 }
 
-/// Per target: the registered combo ("" = none) and the saved combo that
-/// failed to register at launch, with why.
+/// One target's slot: the registered combo ("" = none), and the saved combo
+/// that failed to register at launch with why.
+type Slot = (String, Option<(&'static str, String)>);
+
+/// Per target: the registered combo and the combo that failed to register.
 #[derive(Default)]
-pub struct HotkeyState(Mutex<[(String, Option<(&'static str, String)>); 3]>);
+pub struct HotkeyState(Mutex<[Slot; 3]>);
 
 /// Which target owns `shortcut` right now.
 fn owner(app: &AppHandle, shortcut: &Shortcut) -> Option<Target> {

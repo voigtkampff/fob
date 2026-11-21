@@ -12,6 +12,7 @@
 //!   so only the cold-boot event below matched and the chip kept showing the
 //!   kernel uptime.)
 //! - Microsoft-Windows-Kernel-General 12: the OS started (cold boot).
+//!
 //! We take the newest of those that isn't before the kernel boot. When
 //! nothing is found the chip shows the kernel uptime, labelled as such.
 
@@ -130,7 +131,7 @@ fn latest_start_event() -> Result<(u64, StartKind), String> {
             None,
             w!("System"),
             w!("*[System[(Provider[@Name='Microsoft-Windows-Kernel-Boot'] and EventID=27) or (Provider[@Name='Microsoft-Windows-Kernel-General'] and EventID=12)]]"),
-            (EvtQueryChannelPath.0 | EvtQueryReverseDirection.0) as u32,
+            EvtQueryChannelPath.0 | EvtQueryReverseDirection.0,
         )
         .map_err(|e| format!("EvtQuery(System): {e}"))?;
         let mut result =
@@ -154,7 +155,7 @@ fn latest_start_event() -> Result<(u64, StartKind), String> {
                 let rendered = EvtRender(
                     None,
                     event,
-                    EvtRenderEventXml.0 as u32,
+                    EvtRenderEventXml.0,
                     (buffer.len() * 2) as u32,
                     Some(buffer.as_mut_ptr().cast()),
                     &mut used,
