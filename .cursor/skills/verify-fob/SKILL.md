@@ -10,6 +10,12 @@ debug build on the box. Everything below drives that build on the X display
 `:55` (Xvfb plus xfwm4, already running). What it cannot show is listed under
 Gotchas; say so in any report.
 
+This harness needs X11 and `xdotool`; it is not usable on every platform. Where
+they are missing (Windows, a headless box) the script prints
+`unsupported on this platform: the verification harness needs X11 and xdotool`
+and exits 3, so a missing desktop can never be mistaken for a dead app. Exit
+codes: 0 pass, 1 contract failure, 2 bad invocation, 3 unsupported platform.
+
 All commands go through `bin/fob-verify.sh <command> <name>`. `<name>` is an
 isolated run: its own HOME at `/workspace/scratch/verify/<name>`, so several
 runs never share settings. Evidence goes to `/workspace/scratch/verify/evidence/`
@@ -40,6 +46,9 @@ $V relaunch drag WINPERF_SHOW_MINI=1     # restart with the same HOME (saved sta
 `$V doctor <name>` prints whether our pid is alive, each visible window with
 title and geometry, and the files in the config and log folders. Run it first
 when anything looks off. `pgrep -af winperf-app` shows which binary runs.
+The `alive pid N (<evidence>)` line names what proved liveness: `kill` when the
+shell could signal the pid, `launcher-confirmed` when it could not and `launch`
+or `relaunch` had recorded the pid it saw alive in `$H/alive`.
 
 ## Drive
 
