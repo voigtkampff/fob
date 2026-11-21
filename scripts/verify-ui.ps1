@@ -123,6 +123,31 @@ try {
 
     if (-not $window) { throw 'Could not find the launched Fob main window within 30 seconds despite --show-all. Check the app startup logs and WebView2 runtime.' }
 
+    $uiPollMilliseconds = 250
+    $treeWait = [Diagnostics.Stopwatch]::StartNew()
+    $elements = @()
+    $hasDocument = $false
+    while ($treeWait.Elapsed.TotalSeconds -lt 60) {
+        try {
+            $descendants = $window.FindAll(
+                [System.Windows.Automation.TreeScope]::Descendants,
+                [System.Windows.Automation.Condition]::TrueCondition
+            )
+            $elements = @($descendants)
+            $hasDocument = @($elements | Where-Object {
+                $_.Current.ControlType -eq [System.Windows.Automation.ControlType]::Document
+            }).Count -gt 0
+            if ($hasDocument -and $elements.Count -gt 100) { break }
+        } catch { }
+        Start-Sleep -Milliseconds $uiPollMilliseconds
+    }
+    $treeWait.Stop()
+    if (-not $hasDocument -or $elements.Count -le 100) {
+        throw "UI Automation tree not ready after $([math]::Round($treeWait.Elapsed.TotalSeconds, 1)) seconds (Document=$hasDocument, elements=$($elements.Count))."
+    }
+    Write-Output "UI Automation tree ready after $([math]::Round($treeWait.Elapsed.TotalSeconds, 1)) seconds ($($elements.Count) elements)."
+    $checks['Accessibility tree has more than 100 elements'] = $elements.Count -gt 100
+
     $statusBar = $null
     $deadline = [DateTime]::UtcNow.AddSeconds(30)
     while ([DateTime]::UtcNow -lt $deadline) {
@@ -142,13 +167,6 @@ try {
         Start-Sleep -Milliseconds 500
     }
     $checks['Fob status bar window exists'] = $null -ne $statusBar
-
-    $descendants = $window.FindAll(
-        [System.Windows.Automation.TreeScope]::Descendants,
-        [System.Windows.Automation.Condition]::TrueCondition
-    )
-    $elements = @($descendants)
-    $checks['Accessibility tree has more than 100 elements'] = $elements.Count -gt 100
 
     $tabs = @('仪表盘', '进程', '空间分布')
     $tabElements = @{}
