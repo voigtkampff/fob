@@ -39,6 +39,14 @@ cargo clippy --manifest-path src-tauri/Cargo.toml -- -D warnings
 
 开 PR 时按 `.github/pull_request_template.md` 的四段写全：Description / Type of change / How Has This Been Tested / Checklist。`## Why` 开头写清要解决的问题。
 
+## 发版
+
+发版 = 改版本号 + 打 `v*` tag，推 tag 触发 `.github/workflows/release.yml` 生成 draft release。改版本号、动 `release.yml` 先问仓库所有者。
+
+- 发版说明写进 `CHANGELOG.md`，格式是 `## x.y.z` 加 bullet，与 `scripts/release.mjs` 的 `check-version` 要求一致。
+- **说明要对比上一版「已发布」的 release**（不是 draft、不是 tag），把中间几版没发出去的变动**累计**写进这一版：中间每次升版本号但没发时，改动不要丢，一直累到下一次真正发版一起写。写的时候按实际落地到 main 的 diff 写，而不是照抄某一次升版本号时的临时条目。
+- 发了版之后，把中间那些没发出去的旧 draft release 和对应 tag 删掉，避免留下「已删 tag 却还有 draft」的残留。
+
 ## 验证的真实边界
 
 `.cursor/skills/verify-fob/` 是上游 pstack 生成的真机验证技能，但它需要一台 Linux 机器（X display `:55`、`/workspace/scratch/`、`xdotool`）。本机是 Windows，没有 SSH 主机配到那台机器。
