@@ -681,14 +681,6 @@ pub fn start(app: AppHandle, root: String) -> Result<(), String> {
             let (tree, _threads, via) = scan_root(Path::new(&root), &progress, kind);
             let tree = tree.filter(|_| !progress.cancel.load(Ordering::Relaxed));
             let state = app.state::<SpaceState>();
-            if let Ok(mut running) = state.running.lock() {
-                if running
-                    .as_ref()
-                    .is_some_and(|r| Arc::ptr_eq(&r.progress, &progress))
-                {
-                    *running = None;
-                }
-            }
             let stopped = tree.is_none();
             if let Some(tree) = tree {
                 let scan = Scan {
@@ -718,6 +710,14 @@ pub fn start(app: AppHandle, root: String) -> Result<(), String> {
             }
             if let Ok(mut ended) = state.ended.lock() {
                 *ended = Some((root, stopped));
+            };
+            if let Ok(mut running) = state.running.lock() {
+                if running
+                    .as_ref()
+                    .is_some_and(|r| Arc::ptr_eq(&r.progress, &progress))
+                {
+                    *running = None;
+                }
             };
         })
         .map(|_| ())
