@@ -513,6 +513,9 @@ impl Hub {
 pub struct BusyProcess {
     pub pid: u32,
     pub start_time: u64,
+    #[cfg(target_os = "windows")]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub environment_id: Option<String>,
     pub name: String,
     pub cpu_usage: Option<f32>,
     pub memory_usage: u64,
@@ -523,6 +526,8 @@ impl BusyProcess {
         Self {
             pid: p.pid,
             start_time: p.start_time,
+            #[cfg(target_os = "windows")]
+            environment_id: p.environment_id.clone(),
             name: p.name.clone(),
             cpu_usage: p.cpu_usage,
             memory_usage: p.memory_usage,

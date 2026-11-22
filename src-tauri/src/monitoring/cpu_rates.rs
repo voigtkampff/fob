@@ -15,6 +15,11 @@ pub(super) struct CpuRates {
     processes: HashMap<Identity, CpuCounter>,
 }
 impl CpuRates {
+    #[cfg(target_os = "windows")]
+    pub fn created(&self, identity: Identity) -> Option<u64> {
+        self.processes.get(&identity).map(|counter| counter.created)
+    }
+
     pub fn advance(
         &mut self,
         now: Instant,
@@ -31,21 +36,19 @@ impl CpuRates {
         });
         let mut next = HashMap::new();
         let mut rates = HashMap::new();
-        if system.is_some() {
-            for (id, counter) in readings {
-                let Some(counter) = counter else { continue };
-                if let (Some(total), Some(old)) = (elapsed, self.processes.get(&id)) {
-                    if counter.created == old.created {
-                        if let Some(delta) = counter.ticks.checked_sub(old.ticks) {
-                            rates.insert(
-                                id,
-                                (100.0 * delta as f64 / total as f64).clamp(0.0, 100.0) as f32,
-                            );
-                        }
+        for (id, counter) in readings {
+            let Some(counter) = counter else { continue };
+            if let (Some(total), Some(old)) = (elapsed, self.processes.get(&id)) {
+                if counter.created == old.created {
+                    if let Some(delta) = counter.ticks.checked_sub(old.ticks) {
+                        rates.insert(
+                            id,
+                            (100.0 * delta as f64 / total as f64).clamp(0.0, 100.0) as f32,
+                        );
                     }
                 }
-                next.insert(id, counter);
             }
+            next.insert(id, counter);
         }
         self.processes = next;
         self.previous = system.map(|total| (now, total));
@@ -56,8 +59,9 @@ impl CpuRates {
 #[cfg(target_os = "windows")]
 mod native {
     use super::CpuCounter;
+    use windows::core::Owned;
     use windows::Win32::{
-        Foundation::{CloseHandle, FILETIME},
+        Foundation::{FILETIME, HANDLE},
         System::Threading::{
             GetProcessTimes, GetSystemTimes, OpenProcess, PROCESS_QUERY_LIMITED_INFORMATION,
         },
@@ -74,8 +78,16 @@ mod native {
         unsafe { GetSystemTimes(Some(&mut idle), Some(&mut kernel), Some(&mut user)) }.ok()?;
         ticks(kernel).checked_add(ticks(user))
     }
-    pub fn process(pid: u32) -> Option<CpuCounter> {
+    pub fn open_process(pid: u32) -> Option<Owned<HANDLE>> {
         let handle = unsafe { OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, false, pid) }.ok()?;
+        Some(unsafe { Owned::new(handle) })
+    }
+
+    pub fn process(pid: u32) -> Option<CpuCounter> {
+        process_times(*open_process(pid)?)
+    }
+
+    pub fn process_times(handle: HANDLE) -> Option<CpuCounter> {
         let (mut created, mut exited, mut kernel, mut user) = (
             FILETIME::default(),
             FILETIME::default(),
@@ -84,7 +96,6 @@ mod native {
         );
         let result =
             unsafe { GetProcessTimes(handle, &mut created, &mut exited, &mut kernel, &mut user) };
-        let _ = unsafe { CloseHandle(handle) };
         result.ok()?;
         // A process may exit between sysinfo enumeration and this read.
         if ticks(exited) != 0 {
@@ -97,7 +108,7 @@ mod native {
     }
 }
 #[cfg(target_os = "windows")]
-pub(super) use native::{process, system};
+pub(super) use native::{open_process, process, process_times, system};
 
 #[cfg(test)]
 mod tests {

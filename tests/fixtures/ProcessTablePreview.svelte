@@ -22,7 +22,6 @@
     status: "Running",
     user: "S-1-5-21",
     threads: 0,
-    environ: [],
     root: "",
     session_id: 1,
     ports: [],

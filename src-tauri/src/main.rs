@@ -77,6 +77,7 @@ fn main() {
             desktop::settings_pane,
             desktop::open_about,
             commands::get_processes,
+            commands::process_environment,
             commands::get_process_icons,
             commands::process_location,
             commands::kill_process,

@@ -1207,6 +1207,9 @@ pub async fn hide_companion(app: AppHandle) {
 pub struct ProcessTarget {
     pid: u32,
     start_time: u64,
+    #[cfg(target_os = "windows")]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    environment_id: Option<String>,
 }
 #[tauri::command]
 pub async fn open_main_window(
@@ -1229,11 +1232,13 @@ pub async fn open_main_window(
             .frame
             .clone()
             .ok_or("No process readings yet")?;
-        if !frame
-            .processes
-            .iter()
-            .any(|p| p.pid == target.pid && p.start_time == target.start_time)
-        {
+        if !frame.processes.iter().any(|p| {
+            #[cfg(target_os = "windows")]
+            if p.environment_id != target.environment_id {
+                return false;
+            }
+            p.pid == target.pid && p.start_time == target.start_time
+        }) {
             return Err("This process is no longer available".into());
         }
         open_main(&app)?;

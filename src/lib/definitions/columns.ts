@@ -73,7 +73,6 @@ export let column_definitions: Column[] = [
   { id: "ppid", label: "Parent PID", visible: false },
   { id: "root", label: "Root", visible: false },
   { id: "command", label: "Command", visible: false },
-  { id: "environ", label: "Environment Variables", visible: false },
   { id: "session_id", label: "Session ID", visible: false },
   {
     id: "start_time",

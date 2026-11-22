@@ -53,6 +53,58 @@ impl ProcessMonitor {
             .unwrap_or(false)
     }
 
+    pub fn read_environment(
+        pid: u32,
+        start_time: u64,
+        environment_id: Option<&str>,
+    ) -> Option<Vec<String>> {
+        use sysinfo::{Pid, ProcessRefreshKind, ProcessesToUpdate, System, UpdateKind};
+
+        #[cfg(target_os = "windows")]
+        let (expected, handle) = {
+            use super::cpu_rates::{open_process, process_times};
+            let expected = environment_id?.parse::<u64>().ok()?;
+            let handle = open_process(pid)?;
+            if process_times(*handle)?.created != expected {
+                return None;
+            }
+            (expected, handle)
+        };
+        #[cfg(not(target_os = "windows"))]
+        let _ = environment_id;
+
+        let mut sys = System::new();
+        let pid = Pid::from_u32(pid);
+        let target = [pid];
+        sys.refresh_processes_specifics(
+            ProcessesToUpdate::Some(&target),
+            true,
+            ProcessRefreshKind::nothing()
+                .without_tasks()
+                .with_environ(UpdateKind::Always),
+        );
+        let process = sys
+            .process(pid)
+            .filter(|p| p.start_time() == start_time && start_time != 0)?;
+        let variables = os_string_vec_to_string_vec(process.environ());
+
+        #[cfg(target_os = "windows")]
+        if super::cpu_rates::process_times(*handle)?.created != expected {
+            return None;
+        }
+        #[cfg(not(target_os = "windows"))]
+        {
+            sys.refresh_processes_specifics(
+                ProcessesToUpdate::Some(&target),
+                true,
+                ProcessRefreshKind::nothing().without_tasks(),
+            );
+            sys.process(pid).filter(|p| p.start_time() == start_time)?;
+        }
+
+        Some(variables)
+    }
+
     fn get_current_time() -> Result<u64, String> {
         SystemTime::now()
             .duration_since(UNIX_EPOCH)
@@ -84,11 +136,9 @@ impl ProcessMonitor {
             .iter()
             .map(|(pid, process)| {
                 let start_time = process.start_time();
-                // sysinfo fills cmd and environ once per process; copy them
-                // only until the cache holds a non-empty value.
+                // Copy the command only until the cache holds a non-empty value.
                 let cached = self.process_cache.get(&(pid.as_u32(), start_time));
                 let need_cmd = cached.is_none_or(|c| c.command.is_empty());
-                let need_environ = cached.is_none_or(|c| c.environ.is_empty());
                 ProcessData {
                     pid: pid.as_u32(),
                     name: process.name().to_string_lossy().into_owned(),
@@ -104,7 +154,8 @@ impl ProcessMonitor {
                     memory: process.memory(),
                     status: process.status(),
                     ppid: process.parent().map(|p| p.as_u32()),
-                    environ: need_environ.then(|| os_string_vec_to_string_vec(process.environ())),
+                    #[cfg(target_os = "windows")]
+                    environment_id: self.cpu.created((pid.as_u32(), start_time)),
                     root: process
                         .root()
                         .map(|p| p.to_string_lossy().into_owned())
@@ -153,16 +204,10 @@ impl ProcessMonitor {
                         // The owner seen first is kept for the process; one
                         // whose token cannot be read shows a dash.
                         user: data.user_id.clone().unwrap_or_else(|| "-".to_string()),
-                        environ: Vec::new().into(),
                     });
                 if let Some(cmd) = data.cmd.filter(|c| !c.is_empty()) {
                     if cached.command.is_empty() {
                         cached.command = cmd.join(" ");
-                    }
-                }
-                if let Some(environ) = data.environ.filter(|e| !e.is_empty()) {
-                    if cached.environ.is_empty() {
-                        cached.environ = environ.into();
                     }
                 }
 
@@ -184,7 +229,8 @@ impl ProcessMonitor {
                     },
                     command: cached.command.clone(),
                     threads: None,
-                    environ: cached.environ.clone(),
+                    #[cfg(target_os = "windows")]
+                    environment_id: data.environment_id.map(|created| created.to_string()),
                     root: data.root,
                     virtual_memory: data.virtual_memory,
                     start_time: data.start_time,
@@ -262,7 +308,8 @@ mod tests {
             memory: 10,
             status: ProcessStatus::Run,
             ppid: None,
-            environ: cmd.map(|_| strings(&["A=1", "B=2"])),
+            #[cfg(target_os = "windows")]
+            environment_id: None,
             root: String::new(),
             virtual_memory: 0,
             start_time,
@@ -300,16 +347,11 @@ mod tests {
     }
 
     #[test]
-    fn later_frames_keep_command_and_environment_without_copying() {
+    fn later_frames_keep_the_command() {
         let mut monitor = ProcessMonitor::new();
         let first = build(&mut monitor, vec![data(5, 1, "a", Some(&["a", "--b"]))]);
         let second = build(&mut monitor, vec![data(5, 1, "a", None)]);
         assert_eq!(second[0].command, "a --b");
-        assert_eq!(&*second[0].environ, &["A=1".to_string(), "B=2".to_string()]);
-        assert!(std::sync::Arc::ptr_eq(
-            &first[0].environ,
-            &second[0].environ
-        ));
         assert_eq!(
             serde_json::to_value(&first[0]).unwrap(),
             serde_json::to_value(&second[0]).unwrap()
@@ -336,7 +378,6 @@ mod tests {
         let back = build(&mut monitor, vec![data(9, 1, "next.exe", None)]);
         assert_eq!(back[0].name, "next.exe");
         assert_eq!(back[0].command, "");
-        assert!(back[0].environ.is_empty());
     }
 
     #[test]
@@ -398,12 +439,53 @@ mod tests {
         assert_eq!(later[0].user, "-");
     }
 
+    #[cfg(target_os = "windows")]
     #[test]
-    fn shared_environment_serialises_like_a_list() {
+    fn environment_reads_only_the_live_process_with_the_matching_creation_time() {
+        use std::os::windows::process::CommandExt;
+        use std::process::{Command, Stdio};
+        use sysinfo::{Pid, ProcessRefreshKind, ProcessesToUpdate, System};
+
+        let mut child = Command::new("ping.exe")
+            .args(["-t", "127.0.0.1"])
+            .env("FOB_TEST_PROCESS_ENV", "fixture")
+            .creation_flags(0x08000000)
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .spawn()
+            .unwrap();
+        let pid = child.id();
+        let created = super::super::cpu_rates::process(pid).map(|c| c.created);
+        let mut sys = System::new();
+        let target = Pid::from_u32(pid);
+        sys.refresh_processes_specifics(
+            ProcessesToUpdate::Some(&[target]),
+            true,
+            ProcessRefreshKind::nothing(),
+        );
+        let start_time = sys.process(target).map_or(0, |p| p.start_time());
+        let environment_id = created.map(|created| created.to_string());
+        let replacement_id = created.map(|created| (created ^ 1).to_string());
+        let matching = ProcessMonitor::read_environment(pid, start_time, environment_id.as_deref())
+            .is_some_and(|vars| vars.iter().any(|var| var == "FOB_TEST_PROCESS_ENV=fixture"));
+        let replacement =
+            ProcessMonitor::read_environment(pid, start_time, replacement_id.as_deref());
+        drop(sys);
+        let stopped = child.kill().and_then(|_| child.wait());
+        assert!(stopped.is_ok());
+        assert!(matching);
+        assert!(replacement.is_none());
+        assert!(
+            ProcessMonitor::read_environment(pid, start_time, environment_id.as_deref()).is_none()
+        );
+    }
+
+    #[test]
+    fn process_snapshot_omits_the_environment() {
         let mut monitor = ProcessMonitor::new();
         let info = build(&mut monitor, vec![data(5, 1, "a", Some(&["a"]))]);
         let json = serde_json::to_value(&info[0]).unwrap();
-        assert_eq!(json["environ"], serde_json::json!(["A=1", "B=2"]));
+        assert!(json.get("environ").is_none());
         assert_eq!(json["command"], "a");
         assert_eq!(json["user"], "1000");
     }

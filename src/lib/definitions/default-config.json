@@ -13,7 +13,6 @@
       "ppid": false,
       "root": false,
       "command": false,
-      "environ": false,
       "session_id": false,
       "start_time": false,
       "run_time": true,

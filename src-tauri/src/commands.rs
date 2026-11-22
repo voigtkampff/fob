@@ -37,6 +37,20 @@ pub async fn get_processes(
     .map_err(|e| e.to_string())?
 }
 
+#[tauri::command]
+pub async fn process_environment(
+    pid: u32,
+    start_time: u64,
+    environment_id: Option<String>,
+) -> Result<Vec<String>, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        ProcessMonitor::read_environment(pid, start_time, environment_id.as_deref())
+            .unwrap_or_default()
+    })
+    .await
+    .map_err(|e| e.to_string())
+}
+
 /// Attempts to kill a process with the specified PID
 ///
 /// # Arguments

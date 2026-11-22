@@ -21,10 +21,10 @@ pub struct AppState {
 
 impl AppState {
     pub fn refresh_kind() -> RefreshKind {
-        let kind = RefreshKind::everything();
+        let processes = sysinfo::ProcessRefreshKind::everything().without_environ();
         #[cfg(target_os = "windows")]
-        let kind = kind.with_processes(sysinfo::ProcessRefreshKind::everything().without_cpu());
-        kind
+        let processes = processes.without_cpu();
+        RefreshKind::everything().with_processes(processes)
     }
 
     pub fn new() -> Self {
@@ -51,12 +51,14 @@ mod tests {
     use super::*;
 
     #[test]
-    fn refresh_policy_changes_only_windows_process_cpu() {
+    fn refresh_policy_skips_environment_and_uses_independent_windows_cpu() {
         let kind = AppState::refresh_kind();
         let processes = kind.processes().unwrap();
         assert_eq!(processes.cpu(), !cfg!(target_os = "windows"));
         assert_eq!(
-            processes.with_cpu(),
+            processes
+                .with_cpu()
+                .with_environ(sysinfo::UpdateKind::OnlyIfNotSet),
             sysinfo::ProcessRefreshKind::everything()
         );
         assert_eq!(
@@ -78,6 +80,7 @@ mod tests {
             let process = sys.process(pid).unwrap();
             assert!(!process.name().is_empty());
             assert!(!process.cmd().is_empty());
+            assert!(process.environ().is_empty());
             assert!(process.memory() > 0);
             assert!(process.start_time() > 0);
             assert_eq!(process.accumulated_cpu_time(), 0);
