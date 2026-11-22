@@ -2,12 +2,12 @@
 
 ## 0.8.27
 
-- 清理 Rust 后端与前端共 117 个文件的冗余叙述性注释（约 1800 行），只删注释、不改代码，类型注解与平台/协议说明保留。
-- 修复两个孤儿测试 `tests/copy.mjs` 与 `tests/helper-settings-preview.mjs`：英文文案不再用句号分隔句子；helper 预览测试在 Windows 与新 Node 上可正常关闭 dev server。
-- 透明度滑块改为拖动时本地预览、松手才落盘，不再每拖一格就重写 settings.json 并重排状态栏。
-- 修复磁盘扫描结果竞态：先写结果再清 running 标记，避免前端在「清标记后、写结果前」的窗口轮询时漏掉新结果。
-- 修复 `package-smoke` 冒烟脚本：探测 `pwsh` 并退回 `powershell`，磁盘加载检测改为语言无关的 DOM 判断。
-- 删除删注释留下的一个空文档注释。
+- 清理 Rust 后端与前端共 117 个文件的冗余叙述性注释（约 1800 行），只删注释、不改代码，类型注解与平台/协议说明保留。Removed ~1,800 lines of redundant narrative comments across 117 files in the Rust backend and frontend; no code changed, type annotations and platform/protocol notes kept.
+- 修复两个孤儿测试 `tests/copy.mjs` 与 `tests/helper-settings-preview.mjs`：英文文案不再用句号分隔句子；helper 预览测试在 Windows 与新 Node 上可正常关闭 dev server。Fixed two orphan tests `tests/copy.mjs` and `tests/helper-settings-preview.mjs`: English copy no longer splits sentences with periods; the helper preview test now shuts down its dev server cleanly on Windows and newer Node.
+- 透明度滑块改为拖动时本地预览、松手才落盘，不再每拖一格就重写 settings.json 并重排状态栏。The opacity slider now previews locally while dragging and writes settings only on release, instead of rewriting settings.json and re-laying the status bar on every step.
+- 修复磁盘扫描结果竞态：先写结果再清 running 标记，避免前端在「清标记后、写结果前」的窗口轮询时漏掉新结果。Fixed a disk-scan result race: the result is now published before the running flag is cleared, so the frontend can no longer miss a fresh result when polling in that window.
+- 修复 `package-smoke` 冒烟脚本：探测 `pwsh` 并退回 `powershell`，磁盘加载检测改为语言无关的 DOM 判断。Fixed the `package-smoke` script: probe for `pwsh` and fall back to `powershell`, and detect disk detail by DOM instead of the English loading string.
+- 删除删注释留下的一个空文档注释。Removed an empty doc comment left over from the comment cleanup.
 
 ## 0.8.25
 
