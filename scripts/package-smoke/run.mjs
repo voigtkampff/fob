@@ -257,9 +257,9 @@ async function openDiskDetail(tag, page) {
     () =>
       page.evaluate(`(() => {
       const p = document.querySelector('.panel.health');
-      if (!p || (p.innerText.includes('Reading disk health') && !p.querySelector('.disk'))) return null;
+      if (!p) return null;
       const disks = [...p.querySelectorAll('.disk')];
-      if (!disks.length && !p.querySelector('.note')) return null;
+      if (!disks.length) return null;
       return { heading: document.querySelector('main .head h2')?.textContent.trim(), disks: disks.map((d) => d.innerText.replace(/\\s+/g, ' ').trim()), notes: [...p.querySelectorAll(':scope > .note')].map((n) => n.textContent.trim()), text: p.innerText };
     })()`),
     90000,
