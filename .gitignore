@@ -22,3 +22,6 @@ vite.config.ts.timestamp-*
 # winperf build outputs
 /dist/
 /target/
+
+# Local agent rules, kept out of the shared repo
+AGENTS.md
