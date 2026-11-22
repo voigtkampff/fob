@@ -24,7 +24,7 @@
   import { themeStore } from "$lib/stores/theme";
   import { t } from "$lib/i18n";
   import { miniStyle } from "$lib/utils/mini-layout.js";
-  import type { OverviewSnapshot } from "$lib/types";
+  import type { OverviewSnapshot, ProcessIdentity } from "$lib/types";
   let data: OverviewSnapshot | null = null;
   let error = "";
   let visible = false;
@@ -146,7 +146,7 @@
       error = String(e);
     }
   }
-  async function open(process?: { pid: number; start_time: number }) {
+  async function open(process?: ProcessIdentity) {
     try {
       await invoke("open_main_window", { process: process ?? null });
     } catch (e) {

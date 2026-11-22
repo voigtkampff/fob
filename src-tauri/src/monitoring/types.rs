@@ -12,7 +12,8 @@ pub(crate) struct ProcessData {
     pub memory: u64,
     pub status: ProcessStatus,
     pub ppid: Option<u32>,
-    pub environ: Option<Vec<String>>,
+    #[cfg(target_os = "windows")]
+    pub environment_id: Option<u64>,
     pub root: String,
     pub virtual_memory: u64,
     pub start_time: u64,
@@ -26,7 +27,6 @@ pub struct ProcessStaticInfo {
     pub name: String,
     pub command: String,
     pub user: String,
-    pub environ: std::sync::Arc<[String]>,
 }
 
 #[derive(Clone, Serialize, Debug)]
@@ -47,7 +47,9 @@ pub struct ProcessInfo {
     pub user: String,
     pub command: String,
     pub threads: Option<u32>,
-    pub environ: std::sync::Arc<[String]>,
+    #[cfg(target_os = "windows")]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub environment_id: Option<String>,
     pub root: String,
     pub virtual_memory: u64,
     pub start_time: u64,

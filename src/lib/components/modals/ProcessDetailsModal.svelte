@@ -1,5 +1,6 @@
 <script lang="ts">
-  import { tick } from "svelte";
+  import { onDestroy, tick } from "svelte";
+  import { invoke } from "@tauri-apps/api/core";
   import type { Process } from "$lib/types";
   import { formatBytes, formatDate } from "$lib/utils";
   import { rate } from "$lib/definitions/columns";
@@ -33,15 +34,37 @@
     : undefined;
   let detail: HTMLDivElement | null = null;
   let inspectedIdentity = "";
-  $: if (process && show) {
-    const identity = `${process.pid}:${process.start_time}`;
-    if (identity !== inspectedIdentity) {
-      inspectedIdentity = identity;
-      void tick().then(() => {
-        detail?.scrollTo({ top: 0 });
-        detail?.querySelector<HTMLElement>("[data-slot=sheet-title]")?.focus();
-      });
-    }
+  let environment: string[] | null = null;
+  let environmentRequest: Promise<string[]> | null = null;
+
+  $: inspect(show ? process : null);
+  onDestroy(() => (environmentRequest = null));
+
+  function inspect(target: Process | null) {
+    const identity = target
+      ? `${target.pid}:${target.start_time}:${target.environment_id ?? ""}`
+      : "";
+    if (identity === inspectedIdentity) return;
+    inspectedIdentity = identity;
+    environment = null;
+    environmentRequest = null;
+    if (!target) return;
+
+    void tick().then(() => {
+      if (inspectedIdentity !== identity) return;
+      detail?.scrollTo({ top: 0 });
+      detail?.querySelector<HTMLElement>("[data-slot=sheet-title]")?.focus();
+    });
+
+    const request = invoke<string[]>("process_environment", {
+      pid: target.pid,
+      startTime: target.start_time,
+      environmentId: target.environment_id,
+    }).catch(() => []);
+    environmentRequest = request;
+    void request.then((variables) => {
+      if (environmentRequest === request) environment = variables;
+    });
   }
 </script>
 
@@ -207,7 +230,9 @@
       ><Collapsible.Root
         ><Collapsible.Trigger
           class="flex w-full items-center justify-between gap-3 rounded-md border border-border bg-card p-4 text-sm font-medium focus-visible:outline-2 focus-visible:outline-ring"
-          >{$t("pd.env", { n: process.environ.length })}<ChevronDown
+          >{environment === null
+            ? $t("pd.envTitle")
+            : $t("pd.env", { n: environment.length })}<ChevronDown
             class="size-4"
           /></Collapsible.Trigger
         ><Collapsible.Content class="pt-3"
@@ -218,13 +243,19 @@
             class="max-h-72 overflow-auto rounded-md border border-border bg-card p-4"
             data-selectable
           >
-            {#each process.environ as env}<p
-                class="mb-2 whitespace-pre-wrap break-all font-mono text-xs last:mb-0"
-              >
-                {env}
-              </p>{:else}<p class="text-sm text-muted-foreground">
-                {$t("pd.noEnv")}
-              </p>{/each}
+            {#if environment === null}
+              <p class="text-sm text-muted-foreground" role="status">
+                {$t("pd.envLoading")}
+              </p>
+            {:else}
+              {#each environment as env}<p
+                  class="mb-2 whitespace-pre-wrap break-all font-mono text-xs last:mb-0"
+                >
+                  {env}
+                </p>{:else}<p class="text-sm text-muted-foreground">
+                  {$t("pd.noEnv")}
+                </p>{/each}
+            {/if}
           </div></Collapsible.Content
         ></Collapsible.Root
       >

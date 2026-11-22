@@ -25,7 +25,6 @@ const elastic = {
   name: [180, 460],
   command: [200, 520],
   root: [200, 420],
-  environ: [200, 420],
 };
 /**
  * @type {[number, number]} */

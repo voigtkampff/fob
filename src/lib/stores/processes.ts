@@ -97,7 +97,8 @@ function createProcessStore() {
           ? (result.frame.processes.find(
               (p) =>
                 p.pid === state.selectedProcess?.pid &&
-                p.start_time === state.selectedProcess?.start_time,
+                p.start_time === state.selectedProcess?.start_time &&
+                p.environment_id === state.selectedProcess?.environment_id,
             ) ?? null)
           : null,
       }));

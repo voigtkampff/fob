@@ -9,7 +9,7 @@ export interface Process {
   user: string;
   command: string;
   threads?: number;
-  environ: string[];
+  environment_id?: string;
   root: string;
   virtual_memory: number;
   start_time: number;
@@ -331,10 +331,13 @@ export interface OverviewSnapshot {
   error: string | null;
 }
 
-export type BusyProcess = Pick<
+export type ProcessIdentity = Pick<
   Process,
-  "pid" | "start_time" | "name" | "cpu_usage" | "memory_usage" | "gpu_usage"
+  "pid" | "start_time" | "environment_id"
 >;
+
+export type BusyProcess = ProcessIdentity &
+  Pick<Process, "name" | "cpu_usage" | "memory_usage" | "gpu_usage">;
 
 /** commands::disk_health. Mirrors src-tauri/src/disk_health/mod.rs. */
 export type DiskBus =

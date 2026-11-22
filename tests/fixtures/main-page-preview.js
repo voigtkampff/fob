@@ -33,7 +33,6 @@ const proc = (pid, ppid, name, cpu, mem, user = "sample-user") => ({
   status: "Running",
   user,
   command: name,
-  environ: [],
   root: "",
   virtual_memory: mem * 3 * MB,
   start_time: now - 3600,
@@ -172,6 +171,7 @@ mockIPC(async (command, args) => {
     return { config, revision: ++revision, ready: true };
   }
   if (command === "plugin:event|listen") return 1;
+  if (command === "process_environment") return [];
   if (command === "get_processes") {
     const result = live ? liveSnapshot() : snapshot;
     return {

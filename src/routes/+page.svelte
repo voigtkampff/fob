@@ -44,7 +44,7 @@
     normalizeOrder,
   } from "$lib/utils/layout-order.js";
   import { manualWidths } from "$lib/utils/table-layout.js";
-  import type { Process } from "$lib/types";
+  import type { Process, ProcessIdentity } from "$lib/types";
   import {
     buildProcessTree,
     paginateProcessTree,
@@ -321,12 +321,15 @@
           tab = payload;
         }
       });
-      const stopOpen = await listen<{ pid: number; start_time: number }>(
+      const stopOpen = await listen<ProcessIdentity>(
         "open-process",
         async ({ payload }) => {
           await processStore.refreshControl();
           const process = $processStore.processes.find(
-            (p) => p.pid === payload.pid && p.start_time === payload.start_time,
+            (p) =>
+              p.pid === payload.pid &&
+              p.start_time === payload.start_time &&
+              p.environment_id === payload.environment_id,
           );
           if (process) processStore.showProcessDetails(process);
           else
