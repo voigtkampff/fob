@@ -1,9 +1,13 @@
 # Changelog
 
-## 0.8.26
+## 0.8.27
 
 - 清理 Rust 后端与前端共 117 个文件的冗余叙述性注释（约 1800 行），只删注释、不改代码，类型注解与平台/协议说明保留。
 - 修复两个孤儿测试 `tests/copy.mjs` 与 `tests/helper-settings-preview.mjs`：英文文案不再用句号分隔句子；helper 预览测试在 Windows 与新 Node 上可正常关闭 dev server。
+- 透明度滑块改为拖动时本地预览、松手才落盘，不再每拖一格就重写 settings.json 并重排状态栏。
+- 修复磁盘扫描结果竞态：先写结果再清 running 标记，避免前端在「清标记后、写结果前」的窗口轮询时漏掉新结果。
+- 修复 `package-smoke` 冒烟脚本：探测 `pwsh` 并退回 `powershell`，磁盘加载检测改为语言无关的 DOM 判断。
+- 删除删注释留下的一个空文档注释。
 
 ## 0.8.25
 
