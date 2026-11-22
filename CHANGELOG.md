@@ -1,5 +1,27 @@
 # Changelog
 
+## 0.8.28
+
+### 中文
+
+- 降低整盘目录遍历的峰值内存。扫描时直接把小文件计入「其他」，保留文件数和大小统计。
+- 打开进程详情时按需读取环境变量。环境变量现在集中在进程详情，进程表不再提供这一列。Windows 上会校验进程创建时间，避免 PID 被复用后读到另一个进程的环境变量。
+- 后台采样直接记录新读数，省去每轮复制整份历史快照的开销。
+- 磁盘扫描结束时先提供新结果，再更新运行状态，修复界面轮询时可能漏掉本次结果的问题。
+- 调整了磁盘健康、传感器助手安装和在资源管理器中定位文件时的部分英文提示。
+
+### English
+
+- Reduce peak memory use during full-drive folder walks. The scanner counts small files directly under Other and retains their file counts and sizes.
+- Load environment variables when you open process details. Environment variables are now shown in process details, and the process table column has been removed. On Windows, Fob checks the process creation time to avoid reading another process's environment after PID reuse.
+- Record new readings in the background sampler without copying the full history snapshot on each pass.
+- Make disk scan results available before marking the scan complete so the interface picks up the new result when polling.
+- Update several English messages for disk health, sensor helper setup, and locating files in File Explorer.
+
+### Download
+
+Download the Windows 10/11 x64 portable ZIP, extract the entire archive, and run `fob.exe`. The release includes the ZIP's SHA256 under **Verify the download**.
+
 ## 0.8.27
 
 ### 中文
