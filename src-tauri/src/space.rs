@@ -52,7 +52,7 @@ pub struct Progress {
 
 pub(crate) fn fold(node: &mut Node, mut kids: Vec<Node>) {
     kids.sort_by(|a, b| b.size.cmp(&a.size).then_with(|| a.name.cmp(&b.name)));
-    let total: u64 = kids.iter().map(|k| k.size).sum();
+    let total = node.other + kids.iter().map(|k| k.size).sum::<u64>();
     for (i, kid) in kids.into_iter().enumerate() {
         let keep = i < KEEP_MAX || kid.size.saturating_mul(KEEP_SHARE) >= total;
         if keep && kid.size >= KEEP_MIN_BYTES {
@@ -93,9 +93,8 @@ impl Walker<'_> {
     /// symlinks, junctions, mount points and any other directory reparse
     /// point (Windows), symlinks and other devices' folders (Unix).
     #[cfg(unix)]
-    fn list(&self, path: &Path) -> std::io::Result<Vec<Entry>> {
+    fn visit_entries(&self, path: &Path, mut visit: impl FnMut(Entry)) -> std::io::Result<()> {
         use std::os::unix::fs::MetadataExt;
-        let mut out = Vec::new();
         for entry in fs::read_dir(path)?.flatten() {
             let Ok(meta) = entry.metadata() else { continue };
             if meta.file_type().is_symlink() {
@@ -104,7 +103,7 @@ impl Walker<'_> {
             let name = entry.file_name().to_string_lossy().into_owned();
             if meta.is_dir() {
                 if meta.dev() == self.device {
-                    out.push(Entry {
+                    visit(Entry {
                         name,
                         dir: true,
                         size: 0,
@@ -117,21 +116,21 @@ impl Walker<'_> {
                         .lock()
                         .is_ok_and(|mut s| s.insert((meta.dev(), meta.ino())));
                 let size = if first { meta.blocks() * 512 } else { 0 };
-                out.push(Entry {
+                visit(Entry {
                     name,
                     dir: false,
                     size,
                 });
             }
         }
-        Ok(out)
+        Ok(())
     }
 
     /// FindFirstFileExW with the basic info level and large fetches (fewer
     /// kernel round trips), without the large-fetch flag where a file
     /// system refuses it.
     #[cfg(windows)]
-    fn list(&self, path: &Path) -> std::io::Result<Vec<Entry>> {
+    fn visit_entries(&self, path: &Path, mut visit: impl FnMut(Entry)) -> std::io::Result<()> {
         use windows::Win32::Foundation::ERROR_INVALID_PARAMETER;
         use windows::Win32::Storage::FileSystem::{
             FindClose, FindExInfoBasic, FindExSearchNameMatch, FindFirstFileExW, FindNextFileW,
@@ -159,7 +158,6 @@ impl Walker<'_> {
             }
             Err(e) => return Err(std::io::Error::other(e.to_string())),
         };
-        let mut out = Vec::new();
         loop {
             let len = data
                 .cFileName
@@ -180,7 +178,7 @@ impl Walker<'_> {
                     let len = (u64::from(data.nFileSizeHigh) << 32) | u64::from(data.nFileSizeLow);
                     self.allocated(path, &name, attrs, len)
                 };
-                out.push(Entry { name, dir, size });
+                visit(Entry { name, dir, size });
             }
             if unsafe { FindNextFileW(handle, &mut data) }.is_err() {
                 break;
@@ -189,7 +187,7 @@ impl Walker<'_> {
         unsafe {
             let _ = FindClose(handle);
         }
-        Ok(out)
+        Ok(())
     }
 
     #[cfg(windows)]
@@ -223,49 +221,50 @@ impl Walker<'_> {
             ..Node::default()
         };
         let listing = Instant::now();
-        let listed = self.list(path);
-        let p = self.progress;
-        p.list_ns
-            .fetch_add(listing.elapsed().as_nanos() as u64, Ordering::Relaxed);
-        p.dirs.fetch_add(1, Ordering::Relaxed);
-        let entries = match listed {
-            Ok(entries) => entries,
-            Err(_) => {
-                self.progress.skipped.fetch_add(1, Ordering::Relaxed);
-                node.denied = true;
-                return Some(node);
-            }
-        };
-        let mut kids = Vec::with_capacity(entries.len());
+        let mut kids = Vec::new();
         let mut dirs = Vec::new();
         let (mut files, mut bytes) = (0, 0);
-        for e in entries {
+        let listed = self.visit_entries(path, |e| {
             if e.dir {
                 dirs.push(e.name);
             } else {
                 files += 1;
                 bytes += e.size;
-                kids.push(Node {
-                    name: e.name,
-                    size: e.size,
-                    files: 1,
-                    ..Node::default()
-                });
+                if e.size < KEEP_MIN_BYTES {
+                    node.other += e.size;
+                    node.other_count += 1;
+                } else {
+                    kids.push(Node {
+                        name: e.name,
+                        size: e.size,
+                        files: 1,
+                        ..Node::default()
+                    });
+                }
             }
+        });
+        let p = self.progress;
+        p.list_ns
+            .fetch_add(listing.elapsed().as_nanos() as u64, Ordering::Relaxed);
+        p.dirs.fetch_add(1, Ordering::Relaxed);
+        if listed.is_err() {
+            p.skipped.fetch_add(1, Ordering::Relaxed);
+            node.denied = true;
+            return Some(node);
         }
         p.files.fetch_add(files, Ordering::Relaxed);
         p.bytes.fetch_add(bytes, Ordering::Relaxed);
-        let sub = |name: &String| self.folder(&path.join(name), name.clone());
+        let sub = |name: String| self.folder(&path.join(&name), name);
         let subs: Option<Vec<Node>> = if self.parallel && dirs.len() > 1 {
             use rayon::prelude::*;
-            dirs.par_iter().map(sub).collect()
+            dirs.into_par_iter().map(sub).collect()
         } else {
-            dirs.iter().map(sub).collect()
+            dirs.into_iter().map(sub).collect()
         };
         kids.extend(subs?);
         let folding = Instant::now();
-        node.size = kids.iter().map(|k| k.size).sum();
-        node.files = kids.iter().map(|k| k.files).sum();
+        node.size = node.other + kids.iter().map(|k| k.size).sum::<u64>();
+        node.files = node.other_count + kids.iter().map(|k| k.files).sum::<u64>();
         fold(&mut node, kids);
         p.fold_ns
             .fetch_add(folding.elapsed().as_nanos() as u64, Ordering::Relaxed);
@@ -825,8 +824,10 @@ pub fn folded_items(path: &Path, shown: &[String], known: Vec<Folded>) -> Vec<Fo
         seen: Default::default(),
     };
     let _ = &meta;
+    let mut entries = Vec::new();
+    let _ = walker.visit_entries(path, |entry| entries.push(entry));
     let mut out: Vec<Folded> = Vec::new();
-    for e in walker.list(path).unwrap_or_default() {
+    for e in entries {
         if shown.contains(e.name.as_str()) {
             continue;
         }
@@ -1119,6 +1120,29 @@ mod tests {
             total
         );
         assert!(node.children.iter().all(|c| c.name != "tiny"));
+    }
+
+    #[test]
+    fn pre_folded_files_count_toward_the_keep_share() {
+        let kids = (0..=KEEP_MAX)
+            .map(|i| Node {
+                name: format!("{i:04}"),
+                size: KEEP_MIN_BYTES,
+                files: 1,
+                ..Node::default()
+            })
+            .collect();
+        let small_files = KEEP_SHARE - KEEP_MAX as u64 + 1;
+        let small_bytes = small_files * (KEEP_MIN_BYTES - 1);
+        let mut node = Node {
+            other: small_bytes,
+            other_count: small_files,
+            ..Node::default()
+        };
+        fold(&mut node, kids);
+        assert_eq!(node.children.len(), KEEP_MAX);
+        assert_eq!(node.other, small_bytes + KEEP_MIN_BYTES);
+        assert_eq!(node.other_count, small_files + 1);
     }
 
     #[cfg(unix)]
