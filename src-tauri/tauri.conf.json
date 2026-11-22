@@ -24,7 +24,7 @@
   },
   "productName": "Fob",
   "mainBinaryName": "fob",
-  "version": "0.8.27",
+  "version": "0.8.28",
   "identifier": "com.hcb.fob",
   "plugins": {
     "os": {
