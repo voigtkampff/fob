@@ -390,12 +390,10 @@ fn diag_delete_pending_names() {
     }
     let report = |phase: &str| {
         let flush_ms = flush_volume(&root).as_millis();
-        let listed: Vec<String> = walker
-            .list(&base)
-            .unwrap()
-            .into_iter()
-            .map(|e| e.name)
-            .collect();
+        let mut listed = Vec::new();
+        walker
+            .visit_entries(&base, |entry| listed.push(entry.name))
+            .unwrap();
         let read = read_mft(&root, &ids);
         for ((name, _, how), id) in cases.iter().zip(&ids) {
             let under_base = read
