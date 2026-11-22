@@ -414,7 +414,7 @@ impl Hub {
             self.last_attempt = None;
         }
     }
-    pub fn read(&mut self, state: &AppState) -> Result<Snapshot, String> {
+    fn advance(&mut self, state: &AppState) {
         if self.due() {
             self.last_attempt = Some(Instant::now());
             match self.capture(state) {
@@ -429,6 +429,9 @@ impl Hub {
                 }
             }
         }
+    }
+    pub fn read(&mut self, state: &AppState) -> Result<Snapshot, String> {
+        self.advance(state);
         Ok(Snapshot {
             port_error: None,
             frame: self.frame.clone().ok_or_else(|| {
@@ -619,7 +622,7 @@ pub fn sample_in_background(app: tauri::AppHandle) {
                 use tauri::Manager;
                 let state = app.state::<AppState>();
                 if let Ok(mut hub) = state.hub.lock() {
-                    let _ = hub.read(&state);
+                    hub.advance(&state);
                 };
             }
             std::thread::sleep(Duration::from_millis(500));
@@ -907,21 +910,27 @@ mod tests {
         assert_eq!(h.len(), 2);
     }
     #[test]
-    fn both_readers_share_one_capture_and_pause() {
+    fn both_readers_share_the_background_capture_and_pause() {
         let state = AppState::new();
         let mut hub = Hub::default();
+        hub.advance(&state);
+        let background = hub.frame.clone().unwrap();
+        hub.advance(&state);
         let main = hub.read(&state).unwrap();
         let companion = hub.read(&state).unwrap();
+        assert!(Arc::ptr_eq(&background, &main.frame));
         assert!(Arc::ptr_eq(&main.frame, &companion.frame));
         assert_eq!(main.history.len(), 1);
         assert_eq!(companion.history.len(), 1);
         hub.pause(true);
+        hub.advance(&state);
         let paused = hub.read(&state).unwrap();
         assert!(paused.paused);
         assert!(Arc::ptr_eq(&main.frame, &paused.frame));
         assert!(paused.history.last().unwrap().cpu.is_none());
         hub.last_attempt = Some(Instant::now() - Duration::from_secs(4));
         hub.pause(false);
+        hub.advance(&state);
         let resumed = hub.read(&state).unwrap();
         assert_eq!(resumed.frame.sequence, main.frame.sequence + 1);
         let overview: Overview = resumed.into();
