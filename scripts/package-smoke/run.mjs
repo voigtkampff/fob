@@ -8,6 +8,21 @@ import { checkDiskHover } from "./hover.mjs";
 const [fobDir, out] = process.argv.slice(2);
 const PORT = 9222;
 const WIN32 = join(import.meta.dirname, "win32.ps1");
+// PowerShell 7 (pwsh) if present, else Windows PowerShell. The environment
+// metadata calls below only need a shell that runs the given cmdlets.
+const shell = (() => {
+  for (const name of ["pwsh", "powershell"]) {
+    try {
+      execFileSync(name, ["-NoProfile", "-Command", "exit 0"], {
+        stdio: "ignore",
+      });
+      return name;
+    } catch {
+      /* try the next */
+    }
+  }
+  return "powershell";
+})();
 const configDir = join(process.env.APPDATA, "com.hcb.fob");
 // WebView2 keeps page storage (the last tab, theme) here between runs.
 const webviewDir = join(process.env.LOCALAPPDATA, "com.hcb.fob");
@@ -322,7 +337,7 @@ async function hoverRows(tag, run, theme) {
 mkdirSync(out, { recursive: true });
 report.runner = {
   os: execFileSync(
-    "pwsh",
+    shell,
     [
       "-NoProfile",
       "-Command",
@@ -331,7 +346,7 @@ report.runner = {
     { encoding: "utf8" },
   ).trim(),
   webview2: execFileSync(
-    "pwsh",
+    shell,
     [
       "-NoProfile",
       "-Command",
@@ -340,7 +355,7 @@ report.runner = {
     { encoding: "utf8" },
   ).trim(),
   session: execFileSync(
-    "pwsh",
+    shell,
     [
       "-NoProfile",
       "-Command",
@@ -349,7 +364,7 @@ report.runner = {
     { encoding: "utf8" },
   ).trim(),
   disks: execFileSync(
-    "pwsh",
+    shell,
     [
       "-NoProfile",
       "-Command",
