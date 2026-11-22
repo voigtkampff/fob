@@ -114,7 +114,8 @@ test("staging copies the zip for the current version only", async (t) => {
 test("release notes come from the CHANGELOG entry for the version", async (t) => {
   const { root, version } = await fixture(t);
   const section = await changelogSection(version, root);
-  assert.ok(section.startsWith("- "));
+  assert.ok(section.includes("### 中文"));
+  assert.ok(section.includes("### English"));
   assert.ok(!section.includes(`## ${version}`));
   await assert.rejects(changelogSection("99.0.0", root), /no entry for 99.0.0/);
 });
