@@ -2,11 +2,23 @@
 
 ## 0.8.27
 
-这一版主要是清理和修小问题，界面行为基本没有变化。仓库里清理了 Rust 后端和前端共 117 个文件里约 1800 行冗余注释，只删注释、不改代码，类型注解和平台/协议说明都保留着。还修了几个小 bug：透明度滑块改成拖动时本地预览、松手才落盘，不再每拖一格就重写设置文件并重排状态栏；磁盘扫描结果现在先写结果再清运行标记，避免前端在中间窗口轮询时漏掉新结果；发版前的 `package-smoke` 冒烟脚本也修好了（探测 `pwsh` 并退回 `powershell`，磁盘加载检测改成语言无关的 DOM 判断）。另外补修了两个之前没人跑的孤儿测试，删掉了一个清理注释时留下的空文档注释。
+### 中文
 
----
+- 清理 Rust 后端与前端共 117 个文件的冗余叙述性注释（约 1800 行），只删注释、不改代码，类型注解与平台/协议说明保留
+- 透明度滑块改为拖动时本地预览、松手才落盘，不再每拖一格就重写设置文件并重排状态栏
+- 磁盘扫描结果先写结果再清运行标记，避免前端在中间窗口轮询时漏掉新结果
+- 修复 `package-smoke` 冒烟脚本：探测 `pwsh` 并退回 `powershell`，磁盘加载检测改为语言无关的 DOM 判断
+- 修复两个孤儿测试：英文文案不再用句号分隔句子，helper 预览测试在 Windows 与新 Node 上可正常关闭 dev server
+- 删除清理注释时留下的一个空文档注释
 
-This release is mostly cleanup and small fixes; the interface behavior is essentially unchanged. Around 1,800 lines of redundant comments were removed across 117 files in the Rust backend and frontend, with no code changed and type annotations and platform/protocol notes kept. A few small bugs are fixed too: the opacity slider now previews locally while dragging and writes settings only on release, instead of rewriting settings and re-laying the status bar on every step; the disk scan result is now published before the running flag is cleared, so the frontend can no longer miss a fresh result while polling in that window; and the `package-smoke` script is fixed to probe for `pwsh` and fall back to `powershell`, with disk-detail detection now language-agnostic. Two previously orphaned tests were also repaired, and an empty doc comment left by the cleanup was removed.
+### English
+
+- Removed ~1,800 lines of redundant narrative comments across 117 files in the Rust backend and frontend; no code changed, type annotations and platform/protocol notes kept.
+- The opacity slider now previews locally while dragging and writes settings only on release, instead of rewriting settings and re-laying the status bar on every step.
+- The disk scan result is now published before the running flag is cleared, so the frontend can no longer miss a fresh result while polling in that window.
+- Fixed the `package-smoke` script to probe for `pwsh` and fall back to `powershell`, with disk-detail detection now language-agnostic.
+- Fixed two orphan tests: English copy no longer splits sentences with periods, and the helper preview test shuts down its dev server cleanly on Windows and newer Node.
+- Removed an empty doc comment left over from the comment cleanup.
 
 ## 0.8.25
 
